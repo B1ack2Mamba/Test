@@ -49,8 +49,7 @@ export function Layout({
 
       <footer className="border-t bg-white">
         <div className="mx-auto max-w-4xl px-4 py-5 text-xs text-zinc-500">
-          MVP: тесты + Supabase. Расшифровка открывается за 99 ₽ из внутреннего
-          баланса.
+          MVP: тесты + Supabase. Авторская расшифровка — 99 ₽, подробная расшифровка — 49 ₽ (списывается из внутреннего баланса).
         </div>
       </footer>
     </div>

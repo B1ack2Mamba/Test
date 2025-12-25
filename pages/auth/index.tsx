@@ -1,63 +1,94 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
+import Link from "next/link";
 import { Layout } from "@/components/Layout";
-import { getSupabaseBrowser } from "@/lib/supabaseBrowser";
+import { useSession } from "@/lib/useSession";
 
 export default function AuthPage() {
+  const { supabase, user, session } = useSession();
   const router = useRouter();
-  const supabase = useMemo(() => getSupabaseBrowser(), []);
-  const [email, setEmail] = useState(""
-  );
-  const [status, setStatus] = useState<string>("");
+  const next = useMemo(() => {
+    const n = router.query.next;
+    return typeof n === "string" ? n : "/";
+  }, [router.query.next]);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (user && session) {
+      router.replace(next);
+    }
+  }, [user, session, next, router]);
+
+  const login = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase) return;
+    setLoading(true);
+    setError("");
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) throw error;
+      // редирект произойдёт в useEffect
+    } catch (err: any) {
+      setError(err?.message ?? "Ошибка входа");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Layout title="Вход">
       <div className="rounded-2xl border bg-white p-4">
         <div className="text-sm text-zinc-700">
-          Вход по email (magic-link). Ссылка придёт на почту.
+          Вход по email и паролю. (Если регистрации нет — создайте пользователя в Supabase Dashboard, либо включите регистрацию отдельно.)
         </div>
 
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
-          />
+        <form onSubmit={login} className="mt-4 grid gap-3">
+          <label className="grid gap-1">
+            <span className="text-xs text-zinc-600">Email</span>
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              placeholder="you@example.com"
+              className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+              required
+            />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs text-zinc-600">Пароль</span>
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              placeholder="••••••••"
+              className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+              required
+            />
+          </label>
+
+          {error ? <div className="text-sm text-red-600">{error}</div> : null}
+
           <button
-            onClick={async () => {
-              if (!supabase) {
-                setStatus("Supabase не настроен (.env.local)");
-                return;
-              }
-              const e = email.trim();
-              if (!e) {
-                setStatus("Введите email");
-                return;
-              }
-              setStatus("⏳ Отправляю ссылку...");
-              const next = typeof router.query.next === "string" ? router.query.next : "/";
-              const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
-              const { error } = await supabase.auth.signInWithOtp({
-                email: e,
-                options: { emailRedirectTo: redirectTo },
-              });
-              if (error) {
-                setStatus(`❌ ${error.message}`);
-              } else {
-                setStatus("✅ Проверь почту и перейди по ссылке");
-              }
-            }}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            disabled={loading}
+            type="submit"
+            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
           >
-            Получить ссылку
+            {loading ? "Входим…" : "Войти"}
           </button>
-        </div>
+        </form>
 
-        {status ? <div className="mt-3 text-sm text-zinc-700">{status}</div> : null}
-
-        <div className="mt-4 text-xs text-zinc-500">
-          После входа вернёшься обратно: {String(router.query.next ?? "/")}.
+        <div className="mt-4 text-xs text-zinc-600">
+          <Link href="/" className="hover:text-zinc-900">
+            ← На главную
+          </Link>
         </div>
       </div>
     </Layout>

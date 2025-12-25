@@ -1,11 +1,12 @@
-# Авторские тесты — Supabase + paywall + кошелёк (99 ₽)
+# Авторские тесты — Supabase + кошелёк (99 ₽ + 49 ₽)
 
 Минимальный проект на Next.js (Pages Router) + Tailwind, который:
 - показывает каталог тестов и страницу теста
 - даёт пройти forced-choice тест (1 из 2 утверждений)
 - считает результат (A–E) и рисует график
 - берёт тесты из Supabase (в проде это единственный источник; локальные JSON — только если Supabase не настроен)
-- расшифровку результата хранит отдельно и **открывает за 99 ₽** из внутреннего баланса
+- авторскую расшифровку результата хранит отдельно и **открывает за 99 ₽** из внутреннего баланса
+- Подробная расшифровка результатов **открывается за 49 ₽** из внутреннего баланса
 - баланс пополняется через **ЮKassa → СБП (QR)**
 
 ---
@@ -40,6 +41,8 @@ Supabase → SQL Editor → выполнить **по очереди**, копи
 1) `supabase/schema.sql`
 2) `supabase/paywall.sql`
 3) `supabase/yookassa.sql`
+4) `supabase/wallet_debit.sql`  (нужно для списания 99/49 ₽)
+4) `supabase/wallet_debit.sql`  (платные действия по кошельку: 99/49)
 
 ### Очистить демо-тесты (если уже сеял раньше)
 
@@ -58,6 +61,11 @@ Supabase → SQL Editor → выполнить **по очереди**, копи
 - `YOOKASSA_SHOP_ID=...`
 - `YOOKASSA_SECRET_KEY=...`
 - `APP_BASE_URL=https://твой-домен.ру` (без `/` в конце желательно)
+
+Для подробной расшифровки:
+- `DEEPSEEK_API_KEY=...`
+- `DEEPSEEK_BASE_URL=https://api.deepseek.com`
+- `DEEPSEEK_MODEL=deepseek-chat`
 
 ### 2) Webhook
 
@@ -95,10 +103,12 @@ Supabase → SQL Editor → выполнить **по очереди**, копи
 
 ---
 
-## Paywall / 99 ₽
+## Расшифровки (99 ₽ + 49 ₽)
 
 - Публичная часть теста (вопросы/подсчёт) хранится в `public.tests.json`.
-- Расшифровка хранится в `public.test_interpretations` и защищена RLS:
-  доступ есть только если пользователь купил доступ (`public.test_unlocks`).
-- Покупка делается через RPC: `public.unlock_test(test_slug, price_kopeks)`.
+- Авторская расшифровка хранится в `public.test_interpretations`.
+- Каждое открытие списывает деньги ("pay-per-use"):
+  - **99 ₽** — `/api/purchases/author`
+  - **49 ₽** — `/api/purchases/ai` (использует `DEEPSEEK_API_KEY`)
+- Для списания используется RPC из `supabase/wallet_debit.sql`: `public.debit_wallet(...)`.
 
