@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
+import { assertAdmin } from "@/lib/serverAdmin";
 
 type Body = {
   user_id?: string;
@@ -15,10 +16,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const adminToken = req.headers["x-admin-token"];
-  if (!process.env.ADMIN_UPLOAD_TOKEN || adminToken !== process.env.ADMIN_UPLOAD_TOKEN) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
+  // Only the configured admin email can call manual credit endpoint.
+  const admin = await assertAdmin(req, res);
+  if (!admin) return;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

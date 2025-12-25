@@ -70,47 +70,10 @@ export default async function handler(
     return res.status(401).json({ ok: false, error: "Invalid session" });
   }
   const userId = userData.user.id;
-  const userEmail = userData.user.email;
-  if (!userEmail) {
-    return res.status(400).json({ ok: false, error: "User email is missing in auth profile (needed for receipt)" });
-  }
-
-  // If you enabled fiscal receipts (54‑ФЗ) in YooKassa, you MUST send `receipt` in the create payment request.
-  // Otherwise YooKassa returns: "Receipt is missing or illegal".
-  const taxSystemCodeStr = process.env.YOOKASSA_TAX_SYSTEM_CODE || "1";
-  const vatCodeStr = process.env.YOOKASSA_VAT_CODE || "1"; // 1 = без НДС
-  const paymentSubject = (process.env.YOOKASSA_PAYMENT_SUBJECT || "service").trim();
-  const paymentMode = (process.env.YOOKASSA_PAYMENT_MODE || "full_payment").trim();
-
-  const taxSystemCode = Number(taxSystemCodeStr);
-  const vatCode = Number(vatCodeStr);
-  if (!Number.isFinite(taxSystemCode) || taxSystemCode < 1 || taxSystemCode > 6) {
-    return res.status(500).json({ ok: false, error: "Invalid YOOKASSA_TAX_SYSTEM_CODE (must be 1..6)" });
-  }
-  if (!Number.isFinite(vatCode) || vatCode < 1 || vatCode > 12) {
-    return res.status(500).json({ ok: false, error: "Invalid YOOKASSA_VAT_CODE (must be 1..12)" });
-  }
 
   // Create YooKassa payment (SBP)
   const auth = Buffer.from(`${shopId}:${secretKey}`).toString("base64");
   const returnUrl = `${appBaseUrl.replace(/\/$/, "")}/wallet?paid=1`;
-
-  const receipt = {
-    customer: { email: userEmail },
-    tax_system_code: taxSystemCode,
-    items: [
-      {
-        description: "Пополнение внутреннего баланса",
-        quantity: "1.00",
-        amount: { value: amountValue, currency: "RUB" },
-        vat_code: vatCode,
-        payment_subject: paymentSubject,
-        payment_mode: paymentMode,
-        // For FFD 1.2 some cash registers require measure.
-        measure: "piece",
-      },
-    ],
-  };
 
   const createResp = await fetch("https://api.yookassa.ru/v3/payments", {
     method: "POST",
@@ -125,7 +88,6 @@ export default async function handler(
       confirmation: { type: "redirect", return_url: returnUrl },
       payment_method_data: { type: "sbp" },
       description: "Пополнение внутреннего баланса",
-      receipt,
       metadata: {
         user_id: userId,
         kind: "wallet_topup",

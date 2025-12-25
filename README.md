@@ -4,7 +4,7 @@
 - показывает каталог тестов и страницу теста
 - даёт пройти forced-choice тест (1 из 2 утверждений)
 - считает результат (A–E) и рисует график
-- умеет брать тесты из Supabase (и падать обратно на локальные JSON в `data/tests`)
+- берёт тесты из Supabase (в проде это единственный источник; локальные JSON — только если Supabase не настроен)
 - расшифровку результата хранит отдельно и **открывает за 99 ₽** из внутреннего баланса
 - баланс пополняется через **ЮKassa → СБП (QR)**
 
@@ -41,11 +41,11 @@ Supabase → SQL Editor → выполнить **по очереди**, копи
 2) `supabase/paywall.sql`
 3) `supabase/yookassa.sql`
 
-### 3) Залей стартовый тест
+### Очистить демо-тесты (если уже сеял раньше)
 
-В SQL Editor выполни:
+Если ты уже заливал демо-тесты и хочешь пустой каталог — выполни:
 
-- `supabase/seed_negotiation_style.sql`
+- `supabase/reset_tests.sql`
 
 ---
 
@@ -83,25 +83,15 @@ Supabase → SQL Editor → выполнить **по очереди**, копи
 
 Открой `/admin/import`.
 
-Там два пути:
+Доступ есть только у email, указанного в:
 
-### A) Локально (fallback)
+- `NEXT_PUBLIC_ADMIN_EMAIL` (по умолчанию: `storyguild9@gmail.com`)
 
-1) Вставь JSON → “Проверить”
-2) “Скачать <slug>.json”
-3) Положи в `data/tests/<slug>.json`
-4) Перезапусти `npm run dev`
+Для загрузки теста нужен серверный ключ:
 
-### B) В Supabase (прод)
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only)
 
-1) Вставь JSON → “Проверить”
-2) Включи серверный аплоад:
-   - добавь в `.env.local`:
-     - `ADMIN_UPLOAD_TOKEN=...` (любой секретный токен)
-     - `SUPABASE_SERVICE_ROLE_KEY=...` (server-only)
-3) На странице появится блок “Загрузить в Supabase” — вставь токен и нажми “Загрузить”.
-
-Маршрут: `POST /api/admin/upsert-test` (требует `x-admin-token`).
+Маршрут: `POST /api/admin/upsert-test` (требует `Authorization: Bearer <access_token>`).
 
 ---
 
@@ -112,4 +102,3 @@ Supabase → SQL Editor → выполнить **по очереди**, копи
   доступ есть только если пользователь купил доступ (`public.test_unlocks`).
 - Покупка делается через RPC: `public.unlock_test(test_slug, price_kopeks)`.
 
-# Test

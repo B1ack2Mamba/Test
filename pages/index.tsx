@@ -26,13 +26,8 @@ export default function Home({ tests }: { tests: ForcedPairTestV1[] }) {
         ))}
         {tests.length === 0 ? (
           <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
-            Нет опубликованных тестов.
-            <div className="mt-2">
-              Локально можно положить JSON в{" "}
-              <code className="rounded bg-zinc-100 px-1">data/tests</code> (fallback),
-              либо загрузить в Supabase таблицу{" "}
-              <code className="rounded bg-zinc-100 px-1">tests</code>.
-            </div>
+            Пока нет опубликованных тестов.
+            <div className="mt-2">Скоро появятся.</div>
           </div>
         ) : null}
       </div>

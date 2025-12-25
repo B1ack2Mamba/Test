@@ -1,29 +1,16 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
 import { ForcedPairTestSchema } from "@/lib/testSchema";
-
-function getToken(req: NextApiRequest): string | null {
-  const h = req.headers["x-admin-token"];
-  if (typeof h === "string" && h) return h;
-  if (Array.isArray(h) && h[0]) return h[0];
-  if (req.body && typeof req.body.token === "string") return req.body.token;
-  return null;
-}
+import { assertAdmin } from "@/lib/serverAdmin";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const expectedToken = process.env.ADMIN_UPLOAD_TOKEN;
-  if (!expectedToken) {
-    return res.status(500).json({ ok: false, error: "Missing env ADMIN_UPLOAD_TOKEN" });
-  }
-
-  const token = getToken(req);
-  if (!token || token !== expectedToken) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
+  // Only the configured admin email can upload tests.
+  const admin = await assertAdmin(req, res);
+  if (!admin) return;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

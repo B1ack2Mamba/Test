@@ -22,7 +22,7 @@ export function formatRub(kopeks: number): string {
 }
 
 export function useWallet() {
-  const { supabase, user } = useSession();
+  const { supabase, user, session } = useSession();
   const [wallet, setWallet] = useState<WalletRow | null>(null);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,6 +37,20 @@ export function useWallet() {
     setLoading(true);
     setError("");
     try {
+      // Best-effort: sync any pending YooKassa top-ups for this user.
+      // SBP QR payments are often completed in the bank app without returning to the website,
+      // so relying on browser redirects alone is not enough.
+      if (session?.access_token) {
+        try {
+          await fetch("/api/yookassa/sync", {
+            method: "POST",
+            headers: { authorization: `Bearer ${session.access_token}` },
+          });
+        } catch {
+          // ignore
+        }
+      }
+
       // Ensure wallet exists.
       // IMPORTANT: do NOT allow client-side updates of the balance.
       // We only insert the row if missing.
@@ -54,6 +68,7 @@ export function useWallet() {
       const l = await supabase
         .from("wallet_ledger")
         .select("id,created_at,amount_kopeks,reason,ref")
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(20);
       if (l.error) throw l.error;
@@ -63,7 +78,7 @@ export function useWallet() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, user]);
+  }, [supabase, user, session]);
 
   useEffect(() => {
     refresh();

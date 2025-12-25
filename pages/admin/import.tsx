@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Layout } from "@/components/Layout";
 import type { Tag } from "@/lib/testTypes";
 import { ForcedPairTestSchema, type ImportedForcedPairTest } from "@/lib/testSchema";
+import { useSession } from "@/lib/useSession";
+import { isAdminEmail, ADMIN_EMAIL } from "@/lib/admin";
 
 function downloadJson(filename: string, obj: unknown) {
   const blob = new Blob([JSON.stringify(obj, null, 2)], {
@@ -16,11 +18,10 @@ function downloadJson(filename: string, obj: unknown) {
 }
 
 export default function ImportPage() {
+  const { user, session, loading, envOk } = useSession();
   const [raw, setRaw] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [test, setTest] = useState<ImportedForcedPairTest | null>(null);
-
-  const [adminToken, setAdminToken] = useState<string>("");
   const [uploadStatus, setUploadStatus] = useState<string>("");
 
   const stats = useMemo(() => {
@@ -53,11 +54,16 @@ export default function ImportPage() {
     if (!test) return;
     setUploadStatus("⏳ Загружаю в Supabase...");
     try {
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        setUploadStatus("❌ Нужен вход");
+        return;
+      }
       const r = await fetch("/api/admin/upsert-test", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-admin-token": adminToken,
+          authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ test }),
       });
@@ -72,6 +78,44 @@ export default function ImportPage() {
     }
   };
 
+  if (!envOk) {
+    return (
+      <Layout title="Импорт теста (JSON)">
+        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
+          Supabase не настроен. Добавь переменные из <code className="rounded bg-zinc-100 px-1">.env.example</code>.
+        </div>
+      </Layout>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Layout title="Импорт теста (JSON)">
+        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">Загрузка…</div>
+      </Layout>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Layout title="Импорт теста (JSON)">
+        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
+          Нужен вход. Перейди в <a className="underline" href="/auth">/auth</a>.
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!isAdminEmail(user.email)) {
+    return (
+      <Layout title="Импорт теста (JSON)">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Доступ запрещён. Админ: <span className="font-mono">{ADMIN_EMAIL}</span>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout title="Импорт теста (JSON)">
       <div className="rounded-2xl border bg-white p-4">
@@ -79,19 +123,7 @@ export default function ImportPage() {
           Вставь JSON теста (формат <code className="rounded bg-zinc-100 px-1">forced_pair_v1</code> или
           <code className="ml-1 rounded bg-zinc-100 px-1">forced_pair</code>) и нажми “Проверить”.
           <div className="mt-2">
-            Дальше есть два варианта:
-            <ul className="mt-1 list-disc pl-5">
-              <li>
-                <b>Локально (fallback)</b>: скачай файл и положи в
-                <code className="ml-1 rounded bg-zinc-100 px-1">data/tests</code>
-              </li>
-              <li>
-                <b>Supabase (прод)</b>: загрузи в таблицу
-                <code className="ml-1 rounded bg-zinc-100 px-1">public.tests</code> (поле
-                <code className="ml-1 rounded bg-zinc-100 px-1">json</code>) —
-                либо кнопкой ниже (нужен admin token + service role key на сервере).
-              </li>
-            </ul>
+            Загрузи через кнопку ниже (доступ только для админа по email).
           </div>
         </div>
 
@@ -177,21 +209,15 @@ export default function ImportPage() {
             <div className="mt-4 rounded-xl border bg-white p-3">
               <div className="text-sm font-medium">Загрузить в Supabase</div>
               <div className="mt-1 text-xs text-zinc-600">
-                Нужно прописать <code className="rounded bg-zinc-100 px-1">ADMIN_UPLOAD_TOKEN</code> и
-                <code className="ml-1 rounded bg-zinc-100 px-1">SUPABASE_SERVICE_ROLE_KEY</code> в
-                <code className="ml-1 rounded bg-zinc-100 px-1">.env.local</code>.
+                Доступ только администратору (по email). На сервере должен быть прописан
+                <code className="ml-1 rounded bg-zinc-100 px-1">SUPABASE_SERVICE_ROLE_KEY</code>.
               </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <input
-                  value={adminToken}
-                  onChange={(e) => setAdminToken(e.target.value)}
-                  placeholder="ADMIN_UPLOAD_TOKEN"
-                  className="w-72 rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
-                />
                 <button
+                  disabled={!user || !isAdminEmail(user.email)}
                   onClick={uploadToSupabase}
-                  className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                  className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
                 >
                   Загрузить
                 </button>

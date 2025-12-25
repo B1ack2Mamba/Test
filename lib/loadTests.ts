@@ -32,10 +32,10 @@ function getTestBySlugLocal(slug: string): ForcedPairTestV1 | null {
 
 /**
  * Load all tests.
- * 
+ *
  * Priority:
- * 1) Supabase table `public.tests` (column `json`)
- * 2) Local folder `data/tests/*.json` (fallback)
+ * 1) Supabase table `public.tests` (column `json`) — production source of truth.
+ * 2) Local folder `data/tests/*.json` — ONLY if Supabase env is not configured (dev-only).
  */
 export async function getAllTests(): Promise<ForcedPairTestV1[]> {
   const env = getSupabaseEnv();
@@ -61,15 +61,14 @@ export async function getAllTests(): Promise<ForcedPairTestV1[]> {
       })
       .filter(Boolean) as ForcedPairTestV1[];
 
-    if (tests.length === 0) {
-      // If DB is empty, still allow local dev.
-      return getAllTestsLocal();
-    }
+    // If DB is empty, return empty list (production behavior).
+    if (tests.length === 0) return [];
 
     return tests.sort((a, b) => a.title.localeCompare(b.title, "ru"));
   } catch (e) {
-    console.warn("Supabase load failed, falling back to local files:", e);
-    return getAllTestsLocal();
+    console.warn("Supabase load failed:", e);
+    // If Supabase is configured but failing, do NOT expose local fallback in prod.
+    return [];
   }
 }
 
@@ -88,19 +87,16 @@ export async function getTestBySlug(slug: string): Promise<ForcedPairTestV1 | nu
       .eq("slug", slug)
       .single();
 
-    if (error) {
-      // If not found in DB, try local fallback.
-      return getTestBySlugLocal(slug);
-    }
+    if (error) return null;
 
     const raw = (data as any)?.json as any;
-    if (!raw) return getTestBySlugLocal(slug);
+    if (!raw) return null;
     const { interpretation: _i, ...t } = raw;
     const test = t as ForcedPairTestV1;
     const price = typeof (data as any)?.price_rub === "number" ? (data as any).price_rub : test.pricing?.interpretation_rub ?? 0;
     return { ...test, pricing: { ...test.pricing, interpretation_rub: price }, has_interpretation: price > 0 };
   } catch (e) {
-    console.warn("Supabase load failed, falling back to local files:", e);
-    return getTestBySlugLocal(slug);
+    console.warn("Supabase load failed:", e);
+    return null;
   }
 }
