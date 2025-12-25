@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@supabase/supabase-js";
 
 export type AuthedUser = {
@@ -17,7 +18,7 @@ export async function requireUser(
   req: NextApiRequest,
   res: NextApiResponse,
   opts?: { requireEmail?: boolean }
-): Promise<{ user: AuthedUser; token: string; supabaseAdmin: ReturnType<typeof createClient> } | null> {
+): Promise<{ user: AuthedUser; token: string; supabaseAdmin: SupabaseClient } | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
