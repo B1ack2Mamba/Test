@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
-import { getTestBySlug } from "@/lib/loadTests";
-import type { ForcedPairTestV1, Tag } from "@/lib/testTypes";
-import type { ScoreResult } from "@/lib/score";
 import { LineChart } from "@/components/LineChart";
+import { getTestBySlug } from "@/lib/loadTests";
+import type { AnyTest } from "@/lib/testTypes";
+import type { ScoreResult } from "@/lib/score";
 import { useSession } from "@/lib/useSession";
-import { formatRub, useWallet } from "@/lib/useWallet";
+import { useWalletBalance } from "@/lib/useWalletBalance";
 
 function resultKey(slug: string) {
   return `attempt:${slug}:result`;
@@ -15,33 +16,49 @@ function authorKey(slug: string) {
   return `attempt:${slug}:author`;
 }
 
-const SHOW_RESULT_PRICE_RUB = 99; // списание на кнопке "Показать результат"
-const AI_PRICE_RUB = 49; // подробная расшифровка
+const DETAILS_PRICE_RUB = 49;
 
-export default function ResultPage({ test }: { test: ForcedPairTestV1 }) {
+function levelColor(level: string) {
+  const l = level.toLowerCase();
+  if (l.includes("выс")) return "bg-emerald-50 text-emerald-700";
+  if (l.includes("сред")) return "bg-amber-50 text-amber-700";
+  if (l.includes("низ")) return "bg-zinc-100 text-zinc-700";
+  return "bg-zinc-100 text-zinc-700";
+}
+
+function normLevelKey(level: string): "low" | "medium" | "high" {
+  const l = level.toLowerCase();
+  if (l.includes("низ")) return "low";
+  if (l.includes("сред")) return "medium";
+  return "high";
+}
+
+function priceRub(test: AnyTest) {
+  return test.pricing?.interpretation_rub ?? 0;
+}
+
+export default function TestResult({ test }: { test: AnyTest }) {
+  const router = useRouter();
+  const { user, session } = useSession();
+  const { balance_rub, refresh } = useWalletBalance(user?.id || null);
+
   const [result, setResult] = useState<ScoreResult | null>(null);
-  const { session, user } = useSession();
-  const { wallet, refresh: refreshWallet } = useWallet();
-
   const [authorContent, setAuthorContent] = useState<any | null>(null);
-  const [authorError, setAuthorError] = useState<string>("");
-  const [authorBusy, setAuthorBusy] = useState(false);
 
-  const [aiText, setAiText] = useState<string>("");
-  const [aiError, setAiError] = useState<string>("");
-  const [aiBusy, setAiBusy] = useState(false);
+  const [detailText, setDetailText] = useState<string>("");
+  const [detailBusy, setDetailBusy] = useState(false);
+  const [detailError, setDetailError] = useState<string>("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     const raw = window.sessionStorage.getItem(resultKey(test.slug));
-    if (!raw) return;
-    try {
-      setResult(JSON.parse(raw));
-    } catch {
-      setResult(null);
+    if (raw) {
+      try {
+        setResult(JSON.parse(raw));
+      } catch {
+        setResult(null);
+      }
     }
-
     const rawAuthor = window.sessionStorage.getItem(authorKey(test.slug));
     if (rawAuthor) {
       try {
@@ -53,239 +70,186 @@ export default function ResultPage({ test }: { test: ForcedPairTestV1 }) {
   }, [test.slug]);
 
   const chartData = useMemo(() => {
-    if (!result) return [];
-    return (Object.keys(result.percents) as Tag[]).map((tag) => ({ tag, percent: result.percents[tag] }));
+    if (!result?.ranked?.length) return [];
+    return result.ranked.map((r) => ({ tag: r.tag, percent: r.percent }));
   }, [result]);
 
-  const renderText = (t: string) => {
-    const parts = t
-      .split(/\n\s*\n/g)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    return (
-      <div className="grid gap-2">
-        {parts.map((p, i) => (
-          <p key={i} className="text-sm text-zinc-700">
-            {p}
-          </p>
-        ))}
-      </div>
-    );
+  const p = useMemo(() => priceRub(test), [test]);
+
+  const buyDetails = async () => {
+    setDetailError("");
+
+    if (!user || !session) {
+      router.push(`/auth?next=${encodeURIComponent(`/tests/${test.slug}/result`)}`);
+      return;
+    }
+    if (!result) {
+      setDetailError("Сначала нужно показать результат.");
+      return;
+    }
+
+    setDetailBusy(true);
+    try {
+      const opId = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
+      const resp = await fetch("/api/purchases/ai", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          op_id: opId,
+          test_slug: test.slug,
+          test_title: test.title,
+          result,
+        }),
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json?.ok) throw new Error(json?.error || "Ошибка оплаты");
+
+      setDetailText(String(json.text || ""));
+      refresh();
+    } catch (e: any) {
+      setDetailError(e?.message ?? "Ошибка");
+    } finally {
+      setDetailBusy(false);
+    }
   };
 
-  const getAuthorText = (tag: Tag, level: string) => {
-    const block = authorContent?.styles?.[tag];
-    if (!block) return null;
-    if (level === "сильная склонность") return block.strong ?? null;
-    if (level === "слабая склонность") return block.weak ?? null;
-    // для "умеренной" и остальных уровней используем основной текст
-    return block.strong ?? null;
+  const commentForRow = (row: { tag: string; level: string }) => {
+    if (!authorContent) return "";
+
+    // Motivation cards: authorContent.factors[code][low/medium/high]
+    if (test.type === "pair_sum5_v1") {
+      const key = normLevelKey(row.level);
+      const f = authorContent?.factors?.[row.tag];
+      const txt = f?.[key];
+      return typeof txt === "string" ? txt : "";
+    }
+
+    // Negotiation test (older payloads): authorContent.details[tag].text[] or authorContent.details[tag].level_texts
+    const det = authorContent?.details?.[row.tag];
+    if (!det) return "";
+    if (Array.isArray(det.text)) return det.text.join(" ");
+    if (typeof det === "string") return det;
+    return "";
   };
 
-  if (!result) {
-    return (
-      <Layout title="Результат">
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
-          Результат не найден (скорее всего ты обновил страницу). Пройди тест заново.
-        </div>
-        <div className="mt-4 flex gap-2">
-          <Link
-            href={`/tests/${test.slug}/take`}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-          >
-            Пройти ещё раз
-          </Link>
-          <Link
-            href={`/tests/${test.slug}`}
-            className="rounded-xl border bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
-          >
-            К описанию
-          </Link>
-        </div>
-      </Layout>
-    );
-  }
+  const introText = useMemo(() => {
+    if (!authorContent) return "";
+    const t = authorContent?.intro;
+    return typeof t === "string" ? t : "";
+  }, [authorContent]);
 
   return (
-    <Layout title="Результат">
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="text-sm text-zinc-600">
-          Чем выше процент, тем чаще ты выбирал утверждения, относящиеся к этому стилю.
+    <Layout title={`${test.title} — результат`}>
+      {!result ? (
+        <div className="rounded-2xl border bg-white p-4">
+          <div className="text-sm text-zinc-900">Результат не найден.</div>
+          <div className="mt-2 text-sm text-zinc-600">
+            Обычно это бывает после обновления страницы (результат хранится временно). Открой результат заново из истории.
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link href={`/tests/${test.slug}`} className="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-zinc-50">
+              ← К тесту
+            </Link>
+            <Link href="/" className="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-zinc-50">
+              На главную
+            </Link>
+          </div>
         </div>
-
-        <div className="mt-4">
-          <LineChart data={chartData} />
-        </div>
-
-        <div className="mt-4 grid gap-2">
-          {result.ranked.map((r) => {
-            const authorText = getAuthorText(r.tag, r.level);
-
-            // Если авторская расшифровка загружена — прячем её прямо в строке результата.
-            if (authorText) {
-              return (
-                <details key={r.tag} className="rounded-xl border bg-white">
-                  <summary className="cursor-pointer list-none px-3 py-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <div className="text-sm font-medium">
-                          {r.style} ({r.tag})
-                        </div>
-                        <div className="text-xs text-zinc-600">{r.level}</div>
-                      </div>
-                      <div className="text-sm font-semibold">{r.percent}%</div>
-                    </div>
-                    <div className="mt-1 text-xs text-zinc-500">Нажми, чтобы открыть расшифровку</div>
-                  </summary>
-                  <div className="border-t px-3 py-3">{renderText(String(authorText))}</div>
-                </details>
-              );
-            }
-
-            // Иначе показываем просто строку без раскрытия (например, после обновления страницы).
-            return (
-              <div key={r.tag} className="flex items-center justify-between rounded-xl border px-3 py-2">
-                <div>
-                  <div className="text-sm font-medium">
-                    {r.style} ({r.tag})
-                  </div>
-                  <div className="text-xs text-zinc-600">{r.level}</div>
+      ) : (
+        <>
+          <div className="mb-4 rounded-2xl border bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm text-zinc-600">
+                  Баланс: <b className="text-zinc-900">{balance_rub ?? 0} ₽</b>
                 </div>
-                <div className="text-sm font-semibold">{r.percent}%</div>
+                {test.has_interpretation && p > 0 ? (
+                  <div className="mt-1 text-xs text-zinc-600">
+                    Показ результата списывает <b className="text-zinc-900">{p} ₽</b>. Короткие комментарии появляются после оплаты.
+                  </div>
+                ) : (
+                  <div className="mt-1 text-xs text-zinc-600">Результат бесплатный.</div>
+                )}
               </div>
-            );
-          })}
-        </div>
 
-        <div className="mt-6 rounded-2xl border bg-zinc-50 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-[220px]">
-              <div className="text-sm font-medium">Расшифровка</div>
-              <div className="text-xs text-zinc-600">
-                Авторская — раскрой стиль в списке выше. Подробная — {AI_PRICE_RUB} ₽.
+              <div className="flex flex-wrap gap-2">
+                <Link href="/wallet" className="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-zinc-50">
+                  Кошелёк
+                </Link>
+                <button
+                  onClick={buyDetails}
+                  disabled={detailBusy}
+                  className="rounded-xl bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  {detailBusy ? "Обрабатываем…" : `Подробная расшифровка — ${DETAILS_PRICE_RUB} ₽`}
+                </button>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {user && wallet ? (
-                <div className="text-xs text-zinc-600">
-                  Баланс: <b>{formatRub(wallet.balance_kopeks)}</b>
-                </div>
-              ) : null}
+            {detailError ? <div className="mt-3 text-sm text-red-600">{detailError}</div> : null}
+            {introText ? <div className="mt-3 text-sm text-zinc-700">{introText}</div> : null}
+          </div>
 
-              {!user || !session ? (
-                <Link
-                  href={`/auth?next=${encodeURIComponent(`/tests/${test.slug}/result`)}`}
-                  className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-                >
-                  Войти
-                </Link>
-              ) : (
-                <>
-                  <button
-                    disabled={aiBusy}
-                    onClick={async () => {
-                      setAiBusy(true);
-                      setAiError("");
-                      try {
-                        const opId = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
-                        const resp = await fetch("/api/purchases/ai", {
-                          method: "POST",
-                          headers: {
-                            "content-type": "application/json",
-                            authorization: `Bearer ${session.access_token}`,
-                          },
-                          body: JSON.stringify({ test_slug: test.slug, test_title: test.title, result, op_id: opId }),
-                        });
-                        const json = await resp.json();
-                        if (!resp.ok || !json?.ok) throw new Error(json?.error || "Ошибка оплаты");
-                        setAiText(String(json.text || ""));
-                        await refreshWallet();
-                      } catch (e: any) {
-                        setAiError(e?.message ?? "Ошибка");
-                      } finally {
-                        setAiBusy(false);
-                      }
-                    }}
-                    className="rounded-xl border bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50 disabled:opacity-50"
-                  >
-                    Подробная расшифровка — {AI_PRICE_RUB} ₽
-                  </button>
+          {chartData.length ? (
+            <div className="mb-4 rounded-2xl border bg-white p-4">
+              <div className="mb-3 text-sm font-medium text-zinc-900">Профиль</div>
+              <LineChart data={chartData} />
+            </div>
+          ) : null}
 
-                  {!authorContent ? (
-                    <button
-                      disabled={authorBusy}
-                      onClick={async () => {
-                        setAuthorBusy(true);
-                        setAuthorError("");
-                        try {
-                          const opId = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
-                          const resp = await fetch("/api/purchases/author", {
-                            method: "POST",
-                            headers: {
-                              "content-type": "application/json",
-                              authorization: `Bearer ${session.access_token}`,
-                            },
-                            body: JSON.stringify({ test_slug: test.slug, op_id: opId }),
-                          });
-                          const json = await resp.json();
-                          if (!resp.ok || !json?.ok) throw new Error(json?.error || "Ошибка оплаты");
+          <div className="rounded-2xl border bg-white p-4">
+            <div className="mb-3 text-sm font-medium text-zinc-900">Таблица</div>
 
-                          setAuthorContent(json.content ?? null);
-                          if (typeof window !== "undefined") {
-                            window.sessionStorage.setItem(authorKey(test.slug), JSON.stringify(json.content ?? null));
-                          }
-                          await refreshWallet();
-                        } catch (e: any) {
-                          setAuthorError(e?.message ?? "Ошибка");
-                        } finally {
-                          setAuthorBusy(false);
-                        }
-                      }}
-                      className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
-                    >
-                      Авторская — {SHOW_RESULT_PRICE_RUB} ₽
-                    </button>
-                  ) : null}
-                </>
-              )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="py-2 text-left font-medium text-zinc-700">Фактор</th>
+                    <th className="py-2 text-left font-medium text-zinc-700">Процент</th>
+                    <th className="py-2 text-left font-medium text-zinc-700">Уровень</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.ranked.map((r) => {
+                    const comment = commentForRow(r);
+                    return (
+                      <tr key={r.tag} className="border-b align-top">
+                        <td className="py-3 pr-4">
+                          <div className="font-medium text-zinc-900">{r.style}</div>
+                          {comment ? <div className="mt-1 text-xs text-zinc-600">{comment}</div> : null}
+                        </td>
+                        <td className="py-3 pr-4 text-zinc-900">{r.percent}%</td>
+                        <td className="py-3">
+                          <span className={["inline-flex rounded-full px-2 py-1 text-xs", levelColor(r.level)].join(" ")}>{r.level}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-              <Link
-                href="/wallet"
-                className="rounded-xl border bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
-              >
-                Кошелёк
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link href={`/tests/${test.slug}`} className="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-zinc-50">
+                ← К тесту
+              </Link>
+              <Link href="/" className="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-zinc-50">
+                На главную
               </Link>
             </div>
           </div>
 
-          {!authorContent ? (
-            <div className="mt-2 text-xs text-zinc-600">
-              Если обновил страницу и текст в строках не раскрывается — открой авторскую заново.
+          {detailText ? (
+            <div className="mt-4 rounded-2xl border bg-white p-4">
+              <div className="mb-2 text-sm font-medium text-zinc-900">Подробная расшифровка</div>
+              <div className="prose max-w-none whitespace-pre-wrap text-sm text-zinc-800">{detailText}</div>
             </div>
           ) : null}
-
-          {authorError ? <div className="mt-2 text-sm text-red-600">{authorError}</div> : null}
-          {aiError ? <div className="mt-2 text-sm text-red-600">{aiError}</div> : null}
-
-          {aiText ? <div className="mt-4 whitespace-pre-wrap text-sm text-zinc-700">{aiText}</div> : null}
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Link
-            href={`/tests/${test.slug}/take`}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-          >
-            Пройти ещё раз
-          </Link>
-          <Link
-            href="/"
-            className="rounded-xl border bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
-          >
-            В каталог
-          </Link>
-        </div>
-      </div>
+        </>
+      )}
     </Layout>
   );
 }

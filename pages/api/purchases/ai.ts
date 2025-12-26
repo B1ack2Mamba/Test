@@ -14,22 +14,44 @@ type ErrResp = { ok: false; error: string };
 
 const PRICE_KOPEKS = 4900; // 49 ₽
 
-function buildPrompt(testTitle: string, result: ScoreResult): string {
+function buildPrompt(testTitle: string, result: ScoreResult, testJson?: any): string {
+  const kind = (result?.kind || "forced_pair_v1") as ScoreResult["kind"];
+
+  if (kind === "pair_sum5_v1") {
+    const factorToName: Record<string, string> = testJson?.scoring?.factor_to_name || {};
+    const lines: string[] = [];
+    lines.push(
+      `Ты — консультант по мотивации и карьере. Дай понятное и практичное подведение итогов по результатам теста «${testTitle}».`
+    );
+    lines.push("\nТребования к ответу:");
+    lines.push("- Пиши по-русски, кратко, но содержательно.");
+    lines.push("- Не упоминай технологии, модели, нейросети, ИИ, API и т.п. Просто как обычный эксперт.");
+    lines.push("- Структура: 1) общий вывод (2–3 предложения); 2) топ-3 фактора с объяснением; 3) что важно учесть при выборе работы/условий; 4) риски (2–3) и как их компенсировать; 5) 5 практических шагов на ближайшие 7 дней.");
+    lines.push("\nМои результаты (проценты — относительная важность фактора):");
+    for (const r of result.ranked) {
+      const name = factorToName[r.tag] ? ` — ${factorToName[r.tag]}` : "";
+      lines.push(`- ${r.tag}${name}: ${r.percent}% — ${r.level}`);
+    }
+    lines.push("\nВажно: не придумывай факты обо мне. Опирайся только на результаты.");
+    return lines.join("\n");
+  }
+
+  // Default (negotiations style etc.)
   const lines: string[] = [];
-  lines.push(`Ты — психолог/коуч по переговорам. Дай понятную и полезную расшифровку результатов теста «${testTitle}».`);
+  lines.push(`Ты — психолог/коуч. Дай понятную и полезную расшифровку результатов теста «${testTitle}».`);
   lines.push("\nТребования к ответу:");
   lines.push("- Пиши по-русски, без воды, но дружелюбно.");
-  lines.push("- Объясни, что означают лидирующие стили и чем они полезны/опасны.");
-  lines.push("- Дай 5–8 конкретных рекомендаций, как улучшить переговоры.");
+  lines.push("- Объясни, что означают лидирующие стили/тенденции и чем они полезны/опасны.");
+  lines.push("- Дай 5–8 конкретных рекомендаций.");
   lines.push("- Добавь 3 типичных ошибки для моего профиля и как их избежать.");
   lines.push("- В конце: короткий план на 7 дней (по 1 действию в день).");
 
-  lines.push("\nМои результаты (по стилям):");
+  lines.push("\nМои результаты:");
   for (const r of result.ranked) {
-    lines.push(`- ${r.style} (буква ${r.tag}): ${r.count}/${result.total} = ${r.percent}% — ${r.level}`);
+    lines.push(`- ${r.style} (${r.tag}): ${r.percent}% — ${r.level}`);
   }
 
-  lines.push("\nВажно: не упоминай никакие юридические дисклеймеры. Не придумывай факты обо мне, которых нет в данных.");
+  lines.push("\nВажно: не упоминай юридические дисклеймеры. Не придумывай факты обо мне.");
   return lines.join("\n");
 }
 
@@ -66,7 +88,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     return res.status(400).json({ ok: false, error: debitErr.message || "Failed to charge wallet" });
   }
 
-  const prompt = buildPrompt(testTitle, body.result);
+  const { data: testRow } = await auth.supabaseAdmin
+    .from("tests")
+    .select("json")
+    .eq("slug", testSlug)
+    .single();
+
+  const prompt = buildPrompt(testTitle, body.result, testRow?.json);
 
   const aiResp = await fetch(`${deepseekBaseUrl}/chat/completions`, {
     method: "POST",

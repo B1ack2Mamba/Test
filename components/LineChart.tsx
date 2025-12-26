@@ -1,7 +1,5 @@
 import React from "react";
-import type { Tag } from "@/lib/testTypes";
-
-export function LineChart({ data }: { data: { tag: Tag; percent: number }[] }) {
+export function LineChart({ data }: { data: { tag: string; percent: number }[] }) {
   const w = 640;
   const h = 220;
   const padX = 36;

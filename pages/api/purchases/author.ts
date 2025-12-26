@@ -9,8 +9,6 @@ type Body = {
 type OkResp = { ok: true; content: any; balance_kopeks: number; charged_kopeks: number };
 type ErrResp = { ok: false; error: string };
 
-const PRICE_KOPEKS = 9900; // 99 ₽
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse<OkResp | ErrResp>) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
@@ -23,10 +21,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
   const ref = body.op_id ? `author:${testSlug}:${body.op_id}` : `author:${testSlug}:${Date.now()}`;
 
+  // Price is driven by the test record in DB (RUB → kopeks)
+  const { data: testRow, error: testErr } = await auth.supabaseAdmin
+    .from("tests")
+    .select("price_rub,is_published")
+    .eq("slug", testSlug)
+    .single();
+
+  if (testErr || !testRow) {
+    return res.status(404).json({ ok: false, error: testErr?.message || "Test not found" });
+  }
+  if (!testRow.is_published) {
+    return res.status(403).json({ ok: false, error: "Test is not published" });
+  }
+
+  const priceRub = Number(testRow.price_rub ?? 0);
+  if (!Number.isFinite(priceRub) || priceRub <= 0) {
+    return res.status(400).json({ ok: false, error: "This test does not require payment" });
+  }
+  const priceKopeks = Math.round(priceRub * 100);
+
   // Charge wallet
   const { data: debitData, error: debitErr } = await auth.supabaseAdmin.rpc("debit_wallet", {
     p_user_id: auth.user.id,
-    p_amount_kopeks: PRICE_KOPEKS,
+    p_amount_kopeks: priceKopeks,
     p_reason: "author_interpretation",
     p_ref: ref,
   });
@@ -47,6 +65,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   }
 
   const balance = Number(debitData?.balance_kopeks ?? 0);
-  const charged = Number(debitData?.charged_kopeks ?? PRICE_KOPEKS);
+  const charged = Number(debitData?.charged_kopeks ?? priceKopeks);
   return res.status(200).json({ ok: true, content: row.content, balance_kopeks: balance, charged_kopeks: charged });
 }
