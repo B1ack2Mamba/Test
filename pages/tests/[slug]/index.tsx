@@ -5,13 +5,16 @@ import { Layout } from "@/components/Layout";
 import { getTestBySlug } from "@/lib/loadTests";
 import type { AnyTest } from "@/lib/testTypes";
 import { useSession } from "@/lib/useSession";
-import { formatLocalDate, loadAttempts, type LocalAttempt } from "@/lib/localHistory";
+import { formatLocalDate, getAttempt, loadAttempts, updateAttempt, type LocalAttempt } from "@/lib/localHistory";
 
 function resultKey(slug: string) {
   return `attempt:${slug}:result`;
 }
 function authorKey(slug: string) {
   return `attempt:${slug}:author`;
+}
+function attemptIdKey(slug: string) {
+  return `attempt:${slug}:id`;
 }
 
 function priceRub(test: AnyTest) {
@@ -37,15 +40,46 @@ export default function TestDetail({ test }: { test: AnyTest }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const list = loadAttempts(user?.id || "guest", test.slug);
-    setAttempts(list);
+    const userId = user?.id || "guest";
+    const refresh = () => setAttempts(loadAttempts(userId, test.slug));
+    refresh();
+
+    // На back/forward (bfcache) или при возврате на вкладку состояние может быть старым.
+    // Поэтому всегда обновляем историю при фокусе/видимости.
+    const onFocus = () => refresh();
+    const onVis = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [user?.id, test.slug]);
 
   const openAttemptPaid = async (a: LocalAttempt) => {
     setOpenError("");
 
-    // Открытие результата всегда платное (если у теста выставлена цена)
+    const userId = user?.id || "guest";
+    // Берём самую свежую версию попытки из localStorage (на случай устаревшего state)
+    const latest = getAttempt(userId, test.slug, a.id) ?? a;
+
+    // Платные тесты: первый показ конкретной попытки — платный.
+    // Повторный просмотр этой же попытки — бесплатный (локальный кэш).
     if (test.has_interpretation && p > 0) {
+      // Уже оплачено для этой попытки — открываем без списания
+      if (latest.paid_author?.at) {
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(latest.result));
+          window.sessionStorage.setItem(authorKey(test.slug), JSON.stringify(latest.paid_author?.content ?? null));
+          window.sessionStorage.setItem(attemptIdKey(test.slug), latest.id);
+        }
+        router.push(`/tests/${test.slug}/result`);
+        return;
+      }
+
+      // Не оплачено: для списания нужен логин
       if (!user || !session) {
         router.push(`/auth?next=${encodeURIComponent(`/tests/${test.slug}`)}`);
         return;
@@ -65,9 +99,16 @@ export default function TestDetail({ test }: { test: AnyTest }) {
         const json = await resp.json();
         if (!resp.ok || !json?.ok) throw new Error(json?.error || "Ошибка оплаты");
 
+        // Кэшируем оплату для конкретной попытки (повторный просмотр бесплатный)
+        updateAttempt(user.id, test.slug, latest.id, { paid_author: { at: Date.now(), content: json.content ?? null } });
+
+        // Обновляем список в состоянии, чтобы кнопка сразу стала "оплачено"
+        setAttempts(loadAttempts(user.id, test.slug));
+
         if (typeof window !== "undefined") {
-          window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(a.result));
+          window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(latest.result));
           window.sessionStorage.setItem(authorKey(test.slug), JSON.stringify(json.content ?? null));
+          window.sessionStorage.setItem(attemptIdKey(test.slug), latest.id);
         }
 
         router.push(`/tests/${test.slug}/result`);
@@ -83,6 +124,7 @@ export default function TestDetail({ test }: { test: AnyTest }) {
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(a.result));
       window.sessionStorage.removeItem(authorKey(test.slug));
+      window.sessionStorage.setItem(attemptIdKey(test.slug), a.id);
     }
     router.push(`/tests/${test.slug}/result`);
   };
@@ -96,7 +138,7 @@ export default function TestDetail({ test }: { test: AnyTest }) {
         <div className="mt-2 text-sm text-zinc-600">Вопросов: {test.questions.length}</div>
         {test.has_interpretation && p > 0 ? (
           <div className="mt-2 text-sm text-zinc-600">
-            Показ результата списывает <b className="text-zinc-900">{p} ₽</b>.
+            Первый показ результата этой попытки списывает <b className="text-zinc-900">{p} ₽</b>. Повторный просмотр — бесплатный.
           </div>
         ) : null}
 
@@ -121,7 +163,7 @@ export default function TestDetail({ test }: { test: AnyTest }) {
           <div className="text-sm font-medium">История (локально на этом устройстве)</div>
           {test.has_interpretation && p > 0 ? (
             <div className="mt-1 text-xs text-zinc-600">
-              Важно: открытие результата списывает <b>{p} ₽</b> каждый раз.
+              Важно: списание <b>{p} ₽</b> происходит только при первом открытии <b>конкретной попытки</b>. Повторный просмотр этой же попытки бесплатный.
             </div>
           ) : (
             <div className="mt-1 text-xs text-zinc-600">Можно открывать результаты бесплатно.</div>
@@ -133,6 +175,7 @@ export default function TestDetail({ test }: { test: AnyTest }) {
             {attempts.map((a) => {
               const top = a.result.ranked?.[0];
               const busy = openBusyId === a.id;
+              const paid = !!a.paid_author?.at;
               return (
                 <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2">
                   <div>
@@ -148,7 +191,13 @@ export default function TestDetail({ test }: { test: AnyTest }) {
                     disabled={busy}
                     className="rounded-xl border bg-white px-3 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50 disabled:opacity-50"
                   >
-                    {busy ? "Открываем…" : test.has_interpretation && p > 0 ? `Открыть — ${p} ₽` : "Открыть"}
+                    {busy
+                      ? "Открываем…"
+                      : test.has_interpretation && p > 0
+                      ? paid
+                        ? "Открыть"
+                        : `Открыть — ${p} ₽`
+                      : "Открыть"}
                   </button>
                 </div>
               );

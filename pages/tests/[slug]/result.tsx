@@ -8,12 +8,16 @@ import type { AnyTest } from "@/lib/testTypes";
 import type { ScoreResult } from "@/lib/score";
 import { useSession } from "@/lib/useSession";
 import { useWalletBalance } from "@/lib/useWalletBalance";
+import { getAttempt, updateAttempt } from "@/lib/localHistory";
 
 function resultKey(slug: string) {
   return `attempt:${slug}:result`;
 }
 function authorKey(slug: string) {
   return `attempt:${slug}:author`;
+}
+function attemptIdKey(slug: string) {
+  return `attempt:${slug}:id`;
 }
 
 const DETAILS_PRICE_RUB = 49;
@@ -67,7 +71,20 @@ export default function TestResult({ test }: { test: AnyTest }) {
         setAuthorContent(null);
       }
     }
-  }, [test.slug]);
+
+    // Фоллбек: если пользователь открыл результат из истории/после перезагрузки,
+    // подхватываем данные конкретной попытки из localStorage.
+    const attemptId = window.sessionStorage.getItem(attemptIdKey(test.slug));
+    if (attemptId) {
+      const userId = user?.id || "guest";
+      const a = getAttempt(userId, test.slug, attemptId);
+      if (a) {
+        if (!raw) setResult(a.result);
+        if (!rawAuthor && a.paid_author?.content) setAuthorContent(a.paid_author.content);
+        if (!detailText && a.paid_detail?.text) setDetailText(a.paid_detail.text);
+      }
+    }
+  }, [test.slug, user?.id]);
 
   const chartData = useMemo(() => {
     if (!result?.ranked?.length) return [];
@@ -86,6 +103,18 @@ export default function TestResult({ test }: { test: AnyTest }) {
     if (!result) {
       setDetailError("Сначала нужно показать результат.");
       return;
+    }
+
+    // Уже оплачено для этой попытки? Тогда просто показываем.
+    if (typeof window !== "undefined") {
+      const attemptId = window.sessionStorage.getItem(attemptIdKey(test.slug));
+      if (attemptId) {
+        const a = getAttempt(user.id, test.slug, attemptId);
+        if (a?.paid_detail?.text) {
+          setDetailText(a.paid_detail.text);
+          return;
+        }
+      }
     }
 
     setDetailBusy(true);
@@ -107,7 +136,16 @@ export default function TestResult({ test }: { test: AnyTest }) {
       const json = await resp.json();
       if (!resp.ok || !json?.ok) throw new Error(json?.error || "Ошибка оплаты");
 
-      setDetailText(String(json.text || ""));
+      const text = String(json.text || "");
+      setDetailText(text);
+
+      // Кэшируем для конкретной попытки (повторный просмотр бесплатный)
+      if (typeof window !== "undefined") {
+        const attemptId = window.sessionStorage.getItem(attemptIdKey(test.slug));
+        if (attemptId) {
+          updateAttempt(user.id, test.slug, attemptId, { paid_detail: { at: Date.now(), text } });
+        }
+      }
       refresh();
     } catch (e: any) {
       setDetailError(e?.message ?? "Ошибка");
@@ -168,7 +206,7 @@ export default function TestResult({ test }: { test: AnyTest }) {
                 </div>
                 {test.has_interpretation && p > 0 ? (
                   <div className="mt-1 text-xs text-zinc-600">
-                    Показ результата списывает <b className="text-zinc-900">{p} ₽</b>. Короткие комментарии появляются после оплаты.
+                    Первый показ результата этой попытки списывает <b className="text-zinc-900">{p} ₽</b>. Короткие комментарии появляются после оплаты.
                   </div>
                 ) : (
                   <div className="mt-1 text-xs text-zinc-600">Результат бесплатный.</div>

@@ -13,6 +13,19 @@ type CreateTopupResp = {
 
 const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000];
 
+function reasonLabel(reason: string): string {
+  switch (reason) {
+    case "topup":
+      return "Пополнение";
+    case "author_interpretation":
+      return "Авторская расшифровка";
+    case "detailed_interpretation":
+      return "Подробная расшифровка";
+    default:
+      return reason;
+  }
+}
+
 export default function WalletPage() {
   const { user, session } = useSession();
   const { wallet, ledger, loading, error, refresh } = useWallet();
@@ -84,7 +97,7 @@ export default function WalletPage() {
                   {wallet ? formatRub(wallet.balance_kopeks) : "—"}
                 </div>
                 <div className="mt-1 text-xs text-zinc-500">
-                  Расшифровка любого теста: <span className="font-medium">99 ₽</span>
+                  Стоимость расшифровки зависит от теста (указана на странице теста)
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -109,8 +122,8 @@ export default function WalletPage() {
             <div className="mt-4 rounded-xl border bg-zinc-50 p-3 text-xs text-zinc-700">
               <div className="font-medium">Как это работает</div>
               <div className="mt-1">
-                Ты пополняешь внутренний баланс через СБП (QR). Дальше расшифровка любого
-                теста открывается списанием <b>ровно 99 ₽</b> с этого баланса.
+                Ты пополняешь внутренний баланс через СБП (QR). Дальше расшифровка теста
+                открывается списанием <b>его стоимости</b> с этого баланса.
               </div>
             </div>
           </div>
@@ -134,7 +147,7 @@ export default function WalletPage() {
                         {new Date(row.created_at).toLocaleString()}
                       </td>
                       <td className="py-2">{formatRub(row.amount_kopeks)}</td>
-                      <td className="py-2">{row.reason}</td>
+                      <td className="py-2">{reasonLabel(row.reason)}</td>
                       <td className="py-2 text-xs text-zinc-600">{row.ref ?? "—"}</td>
                     </tr>
                   ))}

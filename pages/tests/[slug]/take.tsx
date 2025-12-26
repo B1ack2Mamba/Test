@@ -6,7 +6,7 @@ import { getTestBySlug } from "@/lib/loadTests";
 import type { AnyTest, ForcedPairTestV1, PairSplitTestV1, Tag } from "@/lib/testTypes";
 import { scoreForcedPair, scorePairSplit } from "@/lib/score";
 import { useSession } from "@/lib/useSession";
-import { saveAttempt } from "@/lib/localHistory";
+import { saveAttempt, updateAttempt } from "@/lib/localHistory";
 
 function storageKey(slug: string) {
   return `attempt:${slug}:draft`;
@@ -16,6 +16,9 @@ function resultKey(slug: string) {
 }
 function authorKey(slug: string) {
   return `attempt:${slug}:author`;
+}
+function attemptIdKey(slug: string) {
+  return `attempt:${slug}:id`;
 }
 
 function priceRub(test: AnyTest) {
@@ -54,6 +57,7 @@ function clearSession(slug: string) {
   window.sessionStorage.removeItem(storageKey(slug));
   window.sessionStorage.removeItem(resultKey(slug));
   window.sessionStorage.removeItem(authorKey(slug));
+  window.sessionStorage.removeItem(attemptIdKey(slug));
 }
 
 async function buyAndAttachAuthor({
@@ -114,11 +118,14 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
       const tags = answers.filter(Boolean) as Tag[];
       const res = scoreForcedPair(test, tags);
 
+      const userId = user?.id || "guest";
+      const attempt = typeof window !== "undefined" ? saveAttempt(userId, test.slug, res) : null;
+
       if (typeof window !== "undefined") {
         // До оплаты не кладём result/author
         window.sessionStorage.removeItem(resultKey(test.slug));
         window.sessionStorage.removeItem(authorKey(test.slug));
-        saveAttempt(user?.id || "guest", test.slug, res);
+        if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
       }
 
       // 2) если тест платный — нужна сессия
@@ -131,14 +138,23 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
 
         const author = await buyAndAttachAuthor({ test, accessToken: session.access_token });
 
+        // 2.1) помечаем конкретную попытку как уже оплаченную (повторный просмотр бесплатный)
+        if (attempt?.id) {
+          updateAttempt(userId, test.slug, attempt.id, {
+            paid_author: { at: Date.now(), content: author },
+          });
+        }
+
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
           window.sessionStorage.setItem(authorKey(test.slug), JSON.stringify(author));
+          if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
           window.sessionStorage.removeItem(storageKey(test.slug));
         }
       } else {
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
+          if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
           window.sessionStorage.removeItem(storageKey(test.slug));
         }
       }
@@ -215,7 +231,7 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
             {test.has_interpretation && p > 0 ? (
               <>
                 <span className="text-zinc-500"> </span>
-                <span className="text-zinc-900">Показ результата списывает </span>
+                <span className="text-zinc-900">Первый показ результата этой попытки списывает </span>
                 <b className="text-zinc-900">{p} ₽</b>
                 <span className="text-zinc-900"> (авторская расшифровка включена).</span>
               </>
@@ -279,10 +295,13 @@ function PairSplitForm({ test }: { test: PairSplitTestV1 }) {
       const rawSplits = splits.map((v) => (v ?? 0));
       const res = scorePairSplit(test, rawSplits);
 
+      const userId = user?.id || "guest";
+      const attempt = typeof window !== "undefined" ? saveAttempt(userId, test.slug, res) : null;
+
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem(resultKey(test.slug));
         window.sessionStorage.removeItem(authorKey(test.slug));
-        saveAttempt(user?.id || "guest", test.slug, res);
+        if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
       }
 
       if (test.has_interpretation && priceRub(test) > 0) {
@@ -294,14 +313,20 @@ function PairSplitForm({ test }: { test: PairSplitTestV1 }) {
 
         const author = await buyAndAttachAuthor({ test, accessToken: session.access_token });
 
+        if (attempt?.id) {
+          updateAttempt(userId, test.slug, attempt.id, { paid_author: { at: Date.now(), content: author } });
+        }
+
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
           window.sessionStorage.setItem(authorKey(test.slug), JSON.stringify(author));
+          if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
           window.sessionStorage.removeItem(storageKey(test.slug));
         }
       } else {
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
+          if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
           window.sessionStorage.removeItem(storageKey(test.slug));
         }
       }
@@ -401,7 +426,7 @@ function PairSplitForm({ test }: { test: PairSplitTestV1 }) {
             {test.has_interpretation && p > 0 ? (
               <>
                 <span className="text-zinc-500"> </span>
-                <span className="text-zinc-900">Показ результата списывает </span>
+                <span className="text-zinc-900">Первый показ результата этой попытки списывает </span>
                 <b className="text-zinc-900">{p} ₽</b>
                 <span className="text-zinc-900"> (авторская расшифровка включена).</span>
               </>
