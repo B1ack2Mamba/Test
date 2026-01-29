@@ -17,6 +17,8 @@ export default function AuthPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isSpecialist, setIsSpecialist] = useState(false);
+  const [specialistCode, setSpecialistCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -52,6 +54,20 @@ export default function AuthPage() {
       }
 
       if (mode === "signup") {
+        // Specialist sign-up uses server route (service_role) and a shared code.
+        if (isSpecialist) {
+          const r = await fetch("/api/auth/specialist-signup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: email.trim(), password, code: specialistCode }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok || !j.ok) throw new Error(j.error || "Не удалось создать специалиста");
+          setInfo("Аккаунт специалиста создан. Теперь войдите по email и паролю.");
+          setMode("login");
+          return;
+        }
+
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -114,7 +130,9 @@ export default function AuthPage() {
 
         <div className="mt-3 text-xs text-zinc-600">
           {mode === "login" ? "Вход по email и паролю." : null}
-          {mode === "signup" ? "Создайте аккаунт по email и паролю." : null}
+          {mode === "signup"
+            ? "Создайте аккаунт по email и паролю. Если вы специалист — включите переключатель и введите общий код."
+            : null}
           {mode === "otp" ? "Вход по ссылке (magic link). Требует настроенный SMTP в Supabase." : null}
         </div>
 
@@ -143,6 +161,40 @@ export default function AuthPage() {
                 required
               />
             </label>
+          ) : null}
+
+          {mode === "signup" ? (
+            <div className="rounded-2xl border bg-zinc-50 p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={isSpecialist}
+                  onChange={(e) => setIsSpecialist(e.target.checked)}
+                />
+                Я специалист
+              </label>
+
+              {isSpecialist ? (
+                <label className="mt-2 grid gap-1">
+                  <span className="text-xs text-zinc-600">Код специалиста</span>
+                  <input
+                    value={specialistCode}
+                    onChange={(e) => setSpecialistCode(e.target.value)}
+                    type="password"
+                    placeholder="SPECIALIST_SIGNUP_CODE"
+                    className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+                    required
+                  />
+                  <div className="text-[11px] text-zinc-500">
+                    Код общий для всех специалистов. Хранится в ENV как <b>SPECIALIST_SIGNUP_CODE</b>.
+                  </div>
+                </label>
+              ) : (
+                <div className="mt-2 text-[11px] text-zinc-500">
+                  Если вы участник тренинга — просто регистрируйтесь как обычный пользователь.
+                </div>
+              )}
+            </div>
           ) : null}
 
           {error ? <div className="text-sm text-red-600">{error}</div> : null}

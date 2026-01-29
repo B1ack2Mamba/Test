@@ -41,8 +41,10 @@ Supabase → SQL Editor → выполнить **по очереди**, копи
 1) `supabase/schema.sql`
 2) `supabase/paywall.sql`
 3) `supabase/yookassa.sql`
-4) `supabase/wallet_debit.sql`  (нужно для списания 99/49 ₽)
-4) `supabase/wallet_debit.sql`  (платные действия по кошельку: 99/49)
+4) `supabase/wallet_debit.sql`
+5) `supabase/training_rooms.sql`  (комнаты тренинга / кабинет специалиста)  (нужно для списания 99/49 ₽)
+4) `supabase/wallet_debit.sql`
+5) `supabase/training_rooms.sql`  (комнаты тренинга / кабинет специалиста)  (платные действия по кошельку: 99/49)
 
 ### Очистить демо-тесты (если уже сеял раньше)
 
@@ -112,3 +114,22 @@ Supabase → SQL Editor → выполнить **по очереди**, копи
   - **49 ₽** — `/api/purchases/ai` (использует `DEEPSEEK_API_KEY`)
 - Для списания используется RPC из `supabase/wallet_debit.sql`: `public.debit_wallet(...)`.
 
+
+
+---
+
+## Тренинг-комнаты (новое)
+
+- Для участников: `/training`
+- Для специалиста: `/specialist`
+
+### Роль "специалист"
+
+Чтобы регистрация специалиста была отдельной:
+
+1) Задайте общий код в ENV: `SPECIALIST_SIGNUP_CODE=...`
+2) На странице `/auth` в режиме регистрации включите "Я специалист" и введите этот код
+
+Роль сохраняется в Supabase (metadata), поэтому интерфейс и API автоматически ограничивают доступ.
+
+Комнаты и попытки тренинга доступны **только через серверные API** (service_role), поэтому нужно выполнить `supabase/training_rooms.sql`.

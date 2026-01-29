@@ -86,4 +86,66 @@ export type PairSplitTestV1 = {
   scoring: PairSplitScoring;
 };
 
-export type AnyTest = ForcedPairTestV1 | PairSplitTestV1;
+// ===================== Color types / Structogram (Green/Red/Blue) =====================
+
+export type ABC = "A" | "B" | "C";
+
+export type ColorTypesChoiceQuestion = {
+  order: 1 | 2;
+  kind: "choice_abc";
+  prompt: string;
+  options: Record<ABC, string>;
+};
+
+export type ColorTypesRankQuestion = {
+  order: 3 | 4;
+  kind: "rank_abc";
+  prompt: string;
+  options: Record<ABC, string>;
+};
+
+export type ColorTypesPick3Question = {
+  order: 5 | 6;
+  kind: "pick3_6";
+  prompt: string;
+  options: Record<"1" | "2" | "3" | "4" | "5" | "6", string>;
+  /** How many options must be picked. Defaults to 3. */
+  pick: number;
+};
+
+export type ColorTypesQuestion = ColorTypesChoiceQuestion | ColorTypesRankQuestion | ColorTypesPick3Question;
+
+export type ColorTypesScoring = {
+  /** Base constant (12 in the original key). */
+  base: number;
+  /** Per-question matrix giving +/- contribution to parameters a (green) and b (red). */
+  matrix: {
+    q1: Record<ABC, { a: number; b: number }>;
+    q2: Record<ABC, { a: number; b: number }>;
+    q3: Record<string, { a: number; b: number }>;
+    q4: Record<string, { a: number; b: number }>;
+    q5: Record<string, { a: number; b: number }>;
+    q6: Record<string, { a: number; b: number }>;
+  };
+  labels?: {
+    green?: string;
+    red?: string;
+    blue?: string;
+  };
+};
+
+export type ColorTypesTestV1 = {
+  slug: string;
+  title: string;
+  description?: string;
+  type: "color_types_v1";
+  pricing?: {
+    interpretation_rub?: number;
+    details_rub?: number;
+  };
+  has_interpretation?: boolean;
+  questions: ColorTypesQuestion[];
+  scoring: ColorTypesScoring;
+};
+
+export type AnyTest = ForcedPairTestV1 | PairSplitTestV1 | ColorTypesTestV1;

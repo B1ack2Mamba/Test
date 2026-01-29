@@ -32,6 +32,7 @@ export function AuthNav() {
         {email || user.id}
       </span>
       <button
+        type="button"
         disabled={busy}
         onClick={async () => {
           if (!supabase) return;

@@ -1,4 +1,4 @@
-import type { ForcedPairTestV1, PairSplitTestV1, Tag, MotivationFactor } from "@/lib/testTypes";
+import type { ForcedPairTestV1, PairSplitTestV1, ColorTypesTestV1, Tag, MotivationFactor, ABC } from "@/lib/testTypes";
 
 export type ScoreRow = {
   tag: string;
@@ -9,7 +9,7 @@ export type ScoreRow = {
 };
 
 export type ScoreResult = {
-  kind: "forced_pair_v1" | "pair_sum5_v1";
+  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1";
   total: number;
   counts: Record<string, number>;
   percents: Record<string, number>;
@@ -148,5 +148,113 @@ export function scorePairSplit(test: PairSplitTestV1, answersLeftPoints: number[
     percents: percents as any,
     ranked,
     meta,
+  };
+}
+
+// ===================== Color types / Structogram (Green/Red/Blue) =====================
+
+export type ColorTypesAnswers = {
+  q1: ABC;
+  q2: ABC;
+  q3: ABC[]; // ranked (most -> least)
+  q4: ABC[];
+  q5: number[]; // picked 3 of 1..6
+  q6: number[];
+};
+
+function normKey(parts: (string | number)[], sep = "/") {
+  return parts.map((x) => String(x).trim()).filter(Boolean).join(sep);
+}
+
+function uniq<T>(arr: T[]) {
+  return Array.from(new Set(arr));
+}
+
+function clampInt(n: any, min: number, max: number) {
+  const x = Math.round(Number(n));
+  if (!Number.isFinite(x)) return min;
+  return Math.max(min, Math.min(max, x));
+}
+
+export function scoreColorTypes(test: ColorTypesTestV1, answers: ColorTypesAnswers): ScoreResult {
+  const base = Number(test.scoring?.base ?? 12);
+  if (!Number.isFinite(base)) throw new Error("Bad base");
+
+  const m = test.scoring.matrix;
+  if (!m) throw new Error("Missing matrix");
+
+  const safeABC = (v: any): ABC => (v === "A" || v === "B" || v === "C" ? v : "A");
+
+  const q1 = safeABC((answers as any)?.q1);
+  const q2 = safeABC((answers as any)?.q2);
+
+  const q3arr = Array.isArray((answers as any)?.q3) ? ((answers as any).q3 as any[]).map(safeABC) : [];
+  const q4arr = Array.isArray((answers as any)?.q4) ? ((answers as any).q4 as any[]).map(safeABC) : [];
+
+  const q5arr = Array.isArray((answers as any)?.q5) ? ((answers as any).q5 as any[]).map((x) => clampInt(x, 1, 6)) : [];
+  const q6arr = Array.isArray((answers as any)?.q6) ? ((answers as any).q6 as any[]).map((x) => clampInt(x, 1, 6)) : [];
+
+  if (q3arr.length !== 3 || uniq(q3arr).length !== 3) throw new Error("Q3 must be a ranking of A/B/C");
+  if (q4arr.length !== 3 || uniq(q4arr).length !== 3) throw new Error("Q4 must be a ranking of A/B/C");
+  if (q5arr.length !== 3 || uniq(q5arr).length !== 3) throw new Error("Q5 must pick 3 distinct options");
+  if (q6arr.length !== 3 || uniq(q6arr).length !== 3) throw new Error("Q6 must pick 3 distinct options");
+
+  const k3 = normKey(q3arr, "/");
+  const k4 = normKey(q4arr, "/");
+  const k5 = normKey([...q5arr].sort((a, b) => a - b), "/");
+  const k6 = normKey([...q6arr].sort((a, b) => a - b), "/");
+
+  const get = (obj: Record<string, { a: number; b: number }>, key: string) => obj[key] ?? obj["default"] ?? { a: 0, b: 0 };
+
+  const c1 = m.q1[q1] ?? { a: 0, b: 0 };
+  const c2 = m.q2[q2] ?? { a: 0, b: 0 };
+  const c3 = get(m.q3, k3);
+  const c4 = get(m.q4, k4);
+  const c5 = get(m.q5, k5);
+  const c6 = get(m.q6, k6);
+
+  const a = (c1.a ?? 0) + (c2.a ?? 0) + (c3.a ?? 0) + (c4.a ?? 0) + (c5.a ?? 0) + (c6.a ?? 0);
+  const b = (c1.b ?? 0) + (c2.b ?? 0) + (c3.b ?? 0) + (c4.b ?? 0) + (c5.b ?? 0) + (c6.b ?? 0);
+
+  const green = base + a;
+  const blue = base + b;
+  const red = base - a - b;
+
+  const total = green + red + blue;
+  const denom = total || 1;
+
+  const labels = {
+    green: test.scoring?.labels?.green ?? "Зелёный",
+    red: test.scoring?.labels?.red ?? "Красный",
+    blue: test.scoring?.labels?.blue ?? "Синий",
+  };
+
+  const percents = {
+    green: Math.round((green / denom) * 100),
+    red: Math.round((red / denom) * 100),
+    blue: Math.round((blue / denom) * 100),
+  };
+
+  const levelForPercent = (p: number) => (p >= 40 ? "высокая выраженность" : p >= 30 ? "средняя выраженность" : "низкая выраженность");
+
+  const ranked: ScoreRow[] = [
+    { tag: "green", style: labels.green, count: green, percent: percents.green, level: levelForPercent(percents.green) },
+    { tag: "red", style: labels.red, count: red, percent: percents.red, level: levelForPercent(percents.red) },
+    { tag: "blue", style: labels.blue, count: blue, percent: percents.blue, level: levelForPercent(percents.blue) },
+  ].sort((x, y) => y.percent - x.percent);
+
+  return {
+    kind: "color_types_v1",
+    total,
+    counts: { green, red, blue },
+    percents,
+    ranked,
+    meta: {
+      base,
+      a,
+      b,
+      contributions: { q1: c1, q2: c2, q3: c3, q4: c4, q5: c5, q6: c6 },
+      keys: { q3: k3, q4: k4, q5: k5, q6: k6 },
+    },
   };
 }

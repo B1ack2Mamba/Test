@@ -4,6 +4,11 @@ import dynamic from "next/dynamic";
 
 // Auth UI depends on browser-only session state.
 // Render client-side only to avoid SSR hydration mismatches.
+const SpecialistNavNoSSR = dynamic(
+  () => import("@/components/SpecialistNav").then((m) => m.SpecialistNav),
+  { ssr: false, loading: () => null }
+);
+
 const AuthNavNoSSR = dynamic(
   () => import("@/components/AuthNav").then((m) => m.AuthNav),
   {
@@ -29,8 +34,15 @@ export function Layout({
               href="/"
               className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-50"
             >
-              Главная
+              Тесты
             </Link>
+            <Link
+              href="/training"
+              className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-50"
+            >
+              Тренинги
+            </Link>
+            <SpecialistNavNoSSR />
             <Link
               href="/wallet"
               className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-50"
@@ -49,7 +61,7 @@ export function Layout({
 
       <footer className="border-t bg-white">
         <div className="mx-auto max-w-4xl px-4 py-5 text-xs text-zinc-500">
-          MVP: тесты + Supabase. Авторская расшифровка — 99 ₽, подробная расшифровка — 49 ₽ (списывается из внутреннего баланса).
+          MVP: тесты + Supabase + внутренний баланс + тренинг-комнаты.
         </div>
       </footer>
     </div>

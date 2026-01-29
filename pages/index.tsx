@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { Layout } from "@/components/Layout";
 import { getAllTests } from "@/lib/loadTests";
-import type { ForcedPairTestV1 } from "@/lib/testTypes";
+import type { AnyTest } from "@/lib/testTypes";
 
-export default function Home({ tests }: { tests: ForcedPairTestV1[] }) {
+export default function Home({ tests }: { tests: AnyTest[] }) {
   return (
     <Layout title="Каталог тестов">
       <div className="grid gap-3">

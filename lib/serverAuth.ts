@@ -5,6 +5,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type AuthedUser = {
   id: string;
   email: string | null;
+  app_metadata?: Record<string, any>;
+  user_metadata?: Record<string, any>;
 };
 
 function getBearerToken(req: NextApiRequest): string | null {
@@ -41,7 +43,12 @@ export async function requireUser(
     return null;
   }
 
-  const user: AuthedUser = { id: data.user.id, email: data.user.email ?? null };
+  const user: AuthedUser = {
+    id: data.user.id,
+    email: data.user.email ?? null,
+    app_metadata: (data.user as any)?.app_metadata || {},
+    user_metadata: (data.user as any)?.user_metadata || {},
+  };
   if (opts?.requireEmail && !user.email) {
     res.status(400).json({ ok: false, error: "User email is missing" });
     return null;
