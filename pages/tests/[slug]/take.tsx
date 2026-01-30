@@ -3,8 +3,8 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import { getTestBySlug } from "@/lib/loadTests";
-import type { AnyTest, ForcedPairTestV1, PairSplitTestV1, ColorTypesTestV1, Tag, ABC } from "@/lib/testTypes";
-import { scoreForcedPair, scorePairSplit, scoreColorTypes } from "@/lib/score";
+import type { AnyTest, ForcedPairTestV1, PairSplitTestV1, ColorTypesTestV1, USKTestV1, Tag, ABC } from "@/lib/testTypes";
+import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK } from "@/lib/score";
 import { useSession } from "@/lib/useSession";
 import { saveAttempt, updateAttempt } from "@/lib/localHistory";
 
@@ -875,6 +875,169 @@ function ColorTypesForm({ test }: { test: ColorTypesTestV1 }) {
   );
 }
 
+function USKForm({ test }: { test: USKTestV1 }) {
+  const router = useRouter();
+  const { user, session } = useSession();
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>("");
+
+  const [answers, setAnswers] = useState<(number | null)[]>(() => Array(test.questions.length).fill(null));
+
+  useEffect(() => {
+    const draft = getSessionDraft<(number | null)[]>(test.slug);
+    if (draft && Array.isArray(draft) && draft.length === test.questions.length) {
+      setAnswers(draft);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [test.slug, test.questions.length]);
+
+  const answeredCount = useMemo(() => answers.filter((v) => v !== null).length, [answers]);
+  const canSubmit = answeredCount === test.questions.length;
+
+  const pick = (idx: number, v: number) => {
+    setAnswers((prev) => {
+      const next = [...prev];
+      next[idx] = v;
+      setSessionDraft(test.slug, next);
+      return next;
+    });
+  };
+
+  const CHOICES: { v: number; label: string }[] = [
+    { v: -3, label: "Полностью не согласен" },
+    { v: -2, label: "Скорее не согласен" },
+    { v: -1, label: "Скорее не согласен, чем согласен" },
+    { v: 0, label: "Нет ответа" },
+    { v: 1, label: "Скорее согласен, чем нет" },
+    { v: 2, label: "Скорее согласен" },
+    { v: 3, label: "Полностью согласен" },
+  ];
+
+  const submit = async () => {
+    if (!canSubmit || busy) return;
+    setBusy(true);
+    setError("");
+
+    try {
+      const vals = answers.map((v) => (v === null ? 0 : v));
+      const res = scoreUSK(test, vals);
+
+      const userId = user?.id || "guest";
+      const attempt = typeof window !== "undefined" ? saveAttempt(userId, test.slug, res) : null;
+
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(resultKey(test.slug));
+        window.sessionStorage.removeItem(authorKey(test.slug));
+        if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
+      }
+
+      // Paid interpretation (if enabled)
+      if (test.has_interpretation && priceRub(test) > 0) {
+        if (!user || !session) {
+          setError("Для показа результата нужно войти. После входа нажми «Показать результат» ещё раз.");
+          router.push(`/auth?next=${encodeURIComponent(`/tests/${test.slug}/take`)}`);
+          return;
+        }
+
+        const author = await buyAndAttachAuthor({ test, accessToken: session.access_token });
+
+        if (attempt?.id) {
+          updateAttempt(userId, test.slug, attempt.id, {
+            paid_author: { at: Date.now(), content: author },
+          });
+        }
+
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
+          window.sessionStorage.setItem(authorKey(test.slug), JSON.stringify(author));
+          if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
+          window.sessionStorage.removeItem(storageKey(test.slug));
+        }
+      } else {
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
+          if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
+          window.sessionStorage.removeItem(storageKey(test.slug));
+        }
+      }
+
+      router.push(`/tests/${test.slug}/result`);
+    } catch (e: any) {
+      setError(e?.message ?? "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Layout title={test.title}>
+      <div className="mb-4 rounded-2xl border bg-white p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm text-zinc-600">
+            Прогресс: <span className="font-medium text-zinc-900">{answeredCount}/{test.questions.length}</span>
+          </div>
+          <Link href={`/tests/${test.slug}`} className="text-sm text-zinc-600 hover:text-zinc-900">
+            ← к описанию
+          </Link>
+        </div>
+
+        <div className="mt-3 h-2 w-full rounded-full bg-zinc-100">
+          <div
+            className="h-2 rounded-full bg-zinc-900 transition-all"
+            style={{ width: `${ensureProgress(test.questions.length, answeredCount)}%` }}
+          />
+        </div>
+
+        <div className="mt-3 text-xs text-zinc-600">
+          Шкала ответов: −3…3 (можно выбрать «Нет ответа», это 0 баллов).
+        </div>
+      </div>
+
+      <div className="grid gap-3">
+        {test.questions.map((q, idx) => (
+          <div key={q.order} className="rounded-2xl border bg-white p-4">
+            <div className="text-sm font-semibold text-zinc-900">{q.order}. {q.text}</div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-7">
+              {CHOICES.map((c) => (
+                <button
+                  key={c.v}
+                  type="button"
+                  onClick={() => pick(idx, c.v)}
+                  className={cls(answers[idx] === c.v)}
+                >
+                  <div className="text-xs font-semibold">{c.v}</div>
+                  <div className={`mt-1 text-[10px] leading-tight ${answers[idx] === c.v ? "text-white/80" : "text-zinc-500"}`}>
+                    {c.label}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 rounded-2xl border bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-zinc-600">Ответьте на все утверждения, чтобы увидеть результат.</div>
+          <button
+            type="button"
+            disabled={!canSubmit || busy}
+            onClick={submit}
+            className={[
+              "rounded-xl px-4 py-2 text-sm font-medium text-white",
+              canSubmit && !busy ? "bg-zinc-900 hover:bg-zinc-800" : "cursor-not-allowed bg-zinc-300",
+            ].join(" ")}
+          >
+            {busy ? "Обрабатываем…" : buttonLabel(test)}
+          </button>
+        </div>
+        {error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
+      </div>
+    </Layout>
+  );
+}
+
 export default function TakeTest({ test }: { test: AnyTest }) {
   // В редких случаях хочется очистить черновик вручную (например, при смене теста)
   const router = useRouter();
@@ -887,6 +1050,8 @@ export default function TakeTest({ test }: { test: AnyTest }) {
         <PairSplitForm test={test as PairSplitTestV1} />
       ) : test.type === "color_types_v1" ? (
         <ColorTypesForm test={test as ColorTypesTestV1} />
+      ) : test.type === "usk_v1" ? (
+        <USKForm test={test as USKTestV1} />
       ) : (
         <Layout title={test.title}>
           <div className="rounded-2xl border bg-white p-4">

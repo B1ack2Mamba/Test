@@ -1,4 +1,13 @@
-import type { ForcedPairTestV1, PairSplitTestV1, ColorTypesTestV1, Tag, MotivationFactor, ABC } from "@/lib/testTypes";
+import type {
+  ForcedPairTestV1,
+  PairSplitTestV1,
+  ColorTypesTestV1,
+  USKTestV1,
+  USKScale,
+  Tag,
+  MotivationFactor,
+  ABC,
+} from "@/lib/testTypes";
 
 export type ScoreRow = {
   tag: string;
@@ -9,7 +18,7 @@ export type ScoreRow = {
 };
 
 export type ScoreResult = {
-  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1";
+  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1";
   total: number;
   counts: Record<string, number>;
   percents: Record<string, number>;
@@ -255,6 +264,74 @@ export function scoreColorTypes(test: ColorTypesTestV1, answers: ColorTypesAnswe
       b,
       contributions: { q1: c1, q2: c2, q3: c3, q4: c4, q5: c5, q6: c6 },
       keys: { q3: k3, q4: k4, q5: k5, q6: k6 },
+    },
+  };
+}
+
+// ===================== USK (Уровень субъективного контроля) =====================
+
+function toSten(ranges: { min: number; max: number; sten: number }[], raw: number) {
+  for (const r of ranges) {
+    if (raw >= r.min && raw <= r.max) return r.sten;
+  }
+  // Fallback: clamp to 1..10 if out of ranges.
+  if (!ranges?.length) return 5;
+  const min = Math.min(...ranges.map((x) => x.min));
+  const max = Math.max(...ranges.map((x) => x.max));
+  if (raw < min) return 1;
+  if (raw > max) return 10;
+  return 5;
+}
+
+export function scoreUSK(test: USKTestV1, answers: number[]): ScoreResult {
+  const scales = test.scoring.scales;
+  const rawByScale: Record<USKScale, number> = Object.fromEntries(scales.map((s) => [s, 0])) as any;
+  const stenByScale: Record<USKScale, number> = Object.fromEntries(scales.map((s) => [s, 5])) as any;
+  const percentByScale: Record<USKScale, number> = Object.fromEntries(scales.map((s) => [s, 50])) as any;
+
+  // Normalize answers to -3..3. Missing -> 0.
+  const vals = Array.from({ length: test.questions.length }, (_, i) => clampInt(answers?.[i] ?? 0, -3, 3));
+
+  const valAt = (idx1: number) => vals[idx1 - 1] ?? 0; // 1-based to 0-based
+
+  for (const s of scales) {
+    const key = test.scoring.keys[s];
+    let raw = 0;
+    for (const i of key.plus ?? []) raw += valAt(i);
+    for (const i of key.minus ?? []) raw -= valAt(i);
+    rawByScale[s] = raw;
+
+    const sten = toSten(test.scoring.stens[s] ?? [], raw);
+    stenByScale[s] = sten;
+    percentByScale[s] = Math.round((sten / 10) * 100);
+  }
+
+  const levelForSten = (sten: number) => {
+    if (sten <= 4) return "экстернальность";
+    if (sten <= 6) return "средний уровень";
+    return "интернальность";
+  };
+
+  const ranked: ScoreRow[] = scales
+    .map((s) => ({
+      tag: s,
+      style: test.scoring.scale_to_name[s] ?? s,
+      count: stenByScale[s],
+      percent: percentByScale[s],
+      level: levelForSten(stenByScale[s]),
+    }))
+    .sort((a, b) => b.percent - a.percent);
+
+  return {
+    kind: "usk_v1",
+    total: 10,
+    counts: stenByScale as any,
+    percents: percentByScale as any,
+    ranked,
+    meta: {
+      rawByScale,
+      stenByScale,
+      note: "count=stens (1..10), percent=stens*10",
     },
   };
 }

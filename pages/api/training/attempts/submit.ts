@@ -1,7 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
 import { loadTestJsonBySlugAdmin } from "@/lib/loadTestAdmin";
-import { scoreForcedPair, scorePairSplit, scoreColorTypes } from "@/lib/score";
+import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK } from "@/lib/score";
+import { ensureRoomTests } from "@/lib/trainingRoomTests";
 import type { Tag } from "@/lib/testTypes";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -27,6 +28,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .maybeSingle();
 
   if (memErr || !member) return res.status(403).json({ ok: false, error: "Сначала войдите в комнату" });
+
+  // room-specific enabled tests
+  try {
+    const roomTests = await ensureRoomTests(supabaseAdmin as any, roomId);
+    const rt = roomTests.find((r: any) => String(r.test_slug) === slug);
+    if (rt && rt.is_enabled === false) {
+      return res.status(403).json({ ok: false, error: "Этот тест выключен для комнаты" });
+    }
+  } catch (e) {
+    // If config table doesn't exist yet, we don't block (for backward compatibility).
+  }
+
 
   const test = await loadTestJsonBySlugAdmin(supabaseAdmin as any, slug);
   if (!test) return res.status(404).json({ ok: false, error: "Тест не найден" });
@@ -56,6 +69,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
       result = scoreColorTypes(test as any, colorAnswers as any);
       answersJson = { color: colorAnswers };
+    } else if (test.type === "usk_v1") {
+      const vals = Array.isArray(answers) ? (answers as any[]) : [];
+      const numeric = vals.map((v) => Number(v));
+      result = scoreUSK(test as any, numeric);
+      answersJson = { usk: numeric };
     } else {
       return res.status(400).json({ ok: false, error: "Unknown test type" });
     }

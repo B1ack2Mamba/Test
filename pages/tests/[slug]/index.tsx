@@ -182,7 +182,22 @@ export default function TestDetail({ test }: { test: AnyTest }) {
                     <div className="text-xs text-zinc-600">{formatLocalDate(a.created_at)}</div>
                     {top ? (
                       <div className="text-sm">
-                        Топ: <b>{top.style}</b> ({top.percent}%)
+                        {(() => {
+                          const kind = a.result.kind;
+                          let denom: number | null = null;
+                          if (kind === "forced_pair_v1" || kind === "color_types_v1" || kind === "usk_v1") denom = a.result.total;
+                          if (kind === "pair_sum5_v1") {
+                            const m = (a.result as any).meta?.maxByFactor;
+                            const d = m?.[top.tag];
+                            denom = Number.isFinite(d) ? Number(d) : null;
+                          }
+                          const extra = denom ? ` (${top.count}/${denom})` : ` (${top.count})`;
+                          return (
+                            <>
+                              Топ: <b>{top.style}</b> ({top.percent}%<span className="text-xs text-zinc-600">{extra}</span>)
+                            </>
+                          );
+                        })()}
                       </div>
                     ) : null}
                   </div>

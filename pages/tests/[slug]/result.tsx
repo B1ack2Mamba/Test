@@ -253,13 +253,38 @@ export default function TestResult({ test }: { test: AnyTest }) {
                 <tbody>
                   {result.ranked.map((r) => {
                     const comment = commentForRow(r);
+                    const denom = (() => {
+                      if (result.kind === "forced_pair_v1") return result.total;
+                      if (result.kind === "color_types_v1") return result.total;
+                      if (result.kind === "pair_sum5_v1") {
+                        const m = (result as any).meta?.maxByFactor;
+                        const d = m?.[r.tag];
+                        return Number.isFinite(d) ? Number(d) : null;
+                      }
+                      if (result.kind === "usk_v1") return result.total || 10;
+                      return null;
+                    })();
+
+                    const extraRaw =
+                      result.kind === "usk_v1" ? (result as any).meta?.raw?.[r.tag] : null;
+
                     return (
                       <tr key={r.tag} className="border-b align-top">
                         <td className="py-3 pr-4">
                           <div className="font-medium text-zinc-900">{r.style}</div>
                           {comment ? <div className="mt-1 text-xs text-zinc-600">{comment}</div> : null}
                         </td>
-                        <td className="py-3 pr-4 text-zinc-900">{r.percent}%</td>
+                        <td className="py-3 pr-4 text-zinc-900">
+                          <div>
+                            {r.percent}%{" "}
+                            <span className="text-xs text-zinc-600">
+                              ({typeof denom === "number" ? `${r.count}/${denom}` : String(r.count)})
+                            </span>
+                          </div>
+                          {extraRaw !== null && extraRaw !== undefined ? (
+                            <div className="mt-1 text-[11px] text-zinc-500">Сырые баллы: {String(extraRaw)}</div>
+                          ) : null}
+                        </td>
                         <td className="py-3">
                           <span className={["inline-flex rounded-full px-2 py-1 text-xs", levelColor(r.level)].join(" ")}>{r.level}</span>
                         </td>

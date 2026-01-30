@@ -148,4 +148,36 @@ export type ColorTypesTestV1 = {
   scoring: ColorTypesScoring;
 };
 
-export type AnyTest = ForcedPairTestV1 | PairSplitTestV1 | ColorTypesTestV1;
+// ===================== USK (Уровень субъективного контроля) =====================
+
+export type USKScale = "IO" | "ID" | "IN" | "IS" | "IP" | "IM" | "IZ";
+
+export type USKQuestion = {
+  order: number;
+  text: string;
+};
+
+export type USKScoring = {
+  scales: USKScale[];
+  scale_to_name: Record<USKScale, string>;
+  /** Items that add with sign (+) vs add with inverted sign (-). 1-based question indices. */
+  keys: Record<USKScale, { plus: number[]; minus: number[] }>;
+  /** Raw -> sten conversion. */
+  stens: Record<USKScale, { min: number; max: number; sten: number }[]>;
+};
+
+export type USKTestV1 = {
+  slug: string;
+  title: string;
+  description?: string;
+  type: "usk_v1";
+  pricing?: {
+    interpretation_rub?: number;
+    details_rub?: number;
+  };
+  has_interpretation?: boolean;
+  questions: USKQuestion[];
+  scoring: USKScoring;
+};
+
+export type AnyTest = ForcedPairTestV1 | PairSplitTestV1 | ColorTypesTestV1 | USKTestV1;

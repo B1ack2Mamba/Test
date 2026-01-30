@@ -66,6 +66,11 @@ export default function SpecialistRoom({ tests }: Props) {
 
   const [members, setMembers] = useState<Member[]>([]);
   const [progress, setProgress] = useState<Progress[]>([]);
+  const [roomTests, setRoomTests] = useState<any[]>([]);
+  const [roomTestsDraft, setRoomTestsDraft] = useState<any[]>([]);
+  const [savingRoomTests, setSavingRoomTests] = useState(false);
+  const [roomTestsMsg, setRoomTestsMsg] = useState<string>("");
+  const [cells, setCells] = useState<Record<string, any>>({});
   const [roomName, setRoomName] = useState<string>("Комната");
   const [editRoomName, setEditRoomName] = useState<string>("");
   const [savingRoom, setSavingRoom] = useState(false);
@@ -95,29 +100,23 @@ export default function SpecialistRoom({ tests }: Props) {
     setLoading(true);
     setErr("");
     try {
-      const roomRes = await fetch(`/api/training/rooms/get?room_id=${encodeURIComponent(roomId)}`, {
+      const dashRes = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(roomId)}`, {
         headers: { authorization: `Bearer ${session.access_token}` },
       });
-      const roomJson = await roomRes.json();
-      if (!roomRes.ok || !roomJson?.ok) throw new Error(roomJson?.error || "Не удалось загрузить комнату");
-      const name = roomJson.room?.name || "Комната";
+      const dashJson = await dashRes.json();
+      if (!dashRes.ok || !dashJson?.ok) throw new Error(dashJson?.error || "Не удалось загрузить комнату");
+
+      const name = dashJson.room?.name || "Комната";
       setRoomName(name);
-      setEditRoomName(name);
+      setEditRoomName((prev) => (prev ? prev : name));
       setRoomMsg("");
 
-      const memRes = await fetch(`/api/training/rooms/members?room_id=${encodeURIComponent(roomId)}`, {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      });
-      const memJson = await memRes.json();
-      if (!memRes.ok || !memJson?.ok) throw new Error(memJson?.error || "Не удалось загрузить участников");
-      setMembers(memJson.members || []);
-
-      const prRes = await fetch(`/api/training/progress/room?room_id=${encodeURIComponent(roomId)}`, {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      });
-      const prJson = await prRes.json();
-      if (!prRes.ok || !prJson?.ok) throw new Error(prJson?.error || "Не удалось загрузить прогресс");
-      setProgress(prJson.progress || []);
+      setMembers(dashJson.members || []);
+      setProgress(dashJson.progress || []);
+      setRoomTests(dashJson.room_tests || []);
+      setRoomTestsDraft(dashJson.room_tests || []);
+      setCells(dashJson.cells || {});
+      setRoomTestsMsg("");
     } catch (e: any) {
       setErr(e?.message || "Ошибка");
     } finally {
@@ -140,6 +139,24 @@ export default function SpecialistRoom({ tests }: Props) {
     }
     return m;
   }, [progress]);
+
+  const testsBySlug = useMemo(() => {
+    const m = new Map<string, AnyTest>();
+    for (const t of tests) m.set(t.slug, t);
+    return m;
+  }, [tests]);
+
+  const orderedRoomTests = useMemo(() => {
+    const base = Array.isArray(roomTests) && roomTests.length ? roomTests : tests.map((t, i) => ({ test_slug: t.slug, is_enabled: true, sort_order: i }));
+    return [...base].sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+  }, [roomTests, tests]);
+
+  const enabledTests = useMemo(() => {
+    return orderedRoomTests
+      .filter((r: any) => !!r.is_enabled)
+      .map((r: any) => testsBySlug.get(String(r.test_slug)))
+      .filter(Boolean) as AnyTest[];
+  }, [orderedRoomTests, testsBySlug]);
 
   const participants = useMemo(() => {
     const selfId = user?.id;
@@ -294,19 +311,19 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
     });
   }, [attempt, attemptTest]);
 
-  const openAttempt = async (p: Progress, displayName: string, testTitle: string) => {
+  const openAttempt = async (attemptId: string, displayName: string, testTitle: string) => {
     if (!session) return;
-    if (!p.attempt_id) return;
+    if (!attemptId) return;
     setOpen(true);
     setModalTitle(`${displayName} · ${testTitle}`);
-    setAttemptId(p.attempt_id);
+    setAttemptId(attemptId);
     setAttempt(null);
     setInterp("");
     setCopyMsg("");
     setShareMsg("");
     setShared(false);
     try {
-      const r = await fetch(`/api/training/attempts/get?attempt_id=${encodeURIComponent(p.attempt_id)}`, {
+      const r = await fetch(`/api/training/attempts/get?attempt_id=${encodeURIComponent(attemptId)}`, {
         headers: { authorization: `Bearer ${session.access_token}` },
       });
       const j = await r.json();
@@ -461,7 +478,60 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
     }
   };
 
-  const copyParticipantLink = async () => {
+  
+  const normalizeRoomTestsDraft = (rows: any[]) => {
+    const sorted = [...rows].sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+    return sorted.map((r: any, i: number) => ({ ...r, sort_order: i }));
+  };
+
+  const moveRoomTest = (slug: string, dir: -1 | 1) => {
+    setRoomTestsDraft((prev) => {
+      const rows = normalizeRoomTestsDraft(Array.isArray(prev) && prev.length ? prev : roomTests);
+      const i = rows.findIndex((r: any) => String(r.test_slug) === slug);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= rows.length) return rows;
+      const next = [...rows];
+      const tmp = next[i];
+      next[i] = next[j];
+      next[j] = tmp;
+      return next.map((r, idx) => ({ ...r, sort_order: idx }));
+    });
+  };
+
+  const toggleRoomTest = (slug: string) => {
+    setRoomTestsDraft((prev) => {
+      const rows = normalizeRoomTestsDraft(Array.isArray(prev) && prev.length ? prev : roomTests);
+      return rows.map((r: any) => (String(r.test_slug) === slug ? { ...r, is_enabled: !r.is_enabled } : r));
+    });
+  };
+
+  const saveRoomTests = async () => {
+    if (!session || !roomId) return;
+    const rows = normalizeRoomTestsDraft(Array.isArray(roomTestsDraft) && roomTestsDraft.length ? roomTestsDraft : roomTests);
+    setSavingRoomTests(true);
+    setRoomTestsMsg("");
+    try {
+      const r = await fetch("/api/training/rooms/tests/set", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ room_id: roomId, room_tests: rows }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось сохранить");
+      setRoomTests(j.room_tests || rows);
+      setRoomTestsDraft(j.room_tests || rows);
+      setRoomTestsMsg("Сохранено ✅");
+      setTimeout(() => setRoomTestsMsg(""), 2500);
+      // refresh dashboard cells (mini + sent flags)
+      load();
+    } catch (e: any) {
+      setRoomTestsMsg(e?.message || "Ошибка");
+    } finally {
+      setSavingRoomTests(false);
+    }
+  };
+
+const copyParticipantLink = async () => {
     if (!attemptId || typeof window === "undefined") return;
     const url = `${window.location.origin}/training/results?attempt=${encodeURIComponent(attemptId)}`;
     try {
@@ -553,6 +623,66 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
         </div>
       </div>
 
+      <div className="mb-4 rounded-2xl border bg-white p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Тесты комнаты</div>
+            <div className="mt-1 text-xs text-zinc-600">Выберите, какие тесты доступны участникам этой комнаты, и порядок отображения.</div>
+          </div>
+          <button
+            onClick={saveRoomTests}
+            disabled={savingRoomTests}
+            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {savingRoomTests ? "…" : "Сохранить"}
+          </button>
+        </div>
+
+        {roomTestsMsg ? <div className="mt-2 text-xs text-zinc-600">{roomTestsMsg}</div> : null}
+
+        <div className="mt-3 overflow-auto">
+          <div className="min-w-[700px] grid gap-2">
+            {(normalizeRoomTestsDraft(Array.isArray(roomTestsDraft) && roomTestsDraft.length ? roomTestsDraft : roomTests) as any[]).map((rt: any, idx: number) => {
+              const t = testsBySlug.get(String(rt.test_slug));
+              const title = t?.title || String(rt.test_slug);
+              return (
+                <div key={String(rt.test_slug)} className="flex items-center justify-between gap-3 rounded-2xl border bg-white p-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={!!rt.is_enabled}
+                      onChange={() => toggleRoomTest(String(rt.test_slug))}
+                    />
+                    <div>
+                      <div className="text-sm font-medium">{title}</div>
+                      <div className="text-[11px] text-zinc-500">{String(rt.test_slug)}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => moveRoomTest(String(rt.test_slug), -1)}
+                      disabled={idx === 0}
+                      className="rounded-lg border bg-zinc-50 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:opacity-40"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => moveRoomTest(String(rt.test_slug), 1)}
+                      disabled={idx === (roomTestsDraft?.length ? roomTestsDraft.length - 1 : roomTests.length - 1)}
+                      className="rounded-lg border bg-zinc-50 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:opacity-40"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       <div className="mb-4 rounded-2xl border bg-white p-4 text-sm text-zinc-700">
         Участники (онлайн обновляется раз в ~10 сек). Нажмите на ✅ в таблице, чтобы открыть результаты в цифрах и сделать
         расшифровку по ключам.
@@ -564,7 +694,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
             <tr>
               <th className="sticky left-0 bg-white z-10 border-b p-2 text-left">Участник</th>
               <th className="border-b p-2 text-left w-[90px]">Онлайн</th>
-              {tests.map((t) => (
+              {enabledTests.map((t) => (
                 <th key={t.slug} className="border-b p-2 text-left">
                   {t.title}
                 </th>
@@ -583,21 +713,37 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
                   </div>
                 </td>
                 <td className="p-2">{m.online ? "🟢" : "⚪"}</td>
-                {tests.map((t) => {
-                  const p = byUserTest.get(`${m.user_id}:${t.slug}`);
-                  const done = !!p?.completed_at;
+                {enabledTests.map((t) => {
+                  const key = `${m.user_id}:${t.slug}`;
+                  const p = byUserTest.get(key);
+                  const cell = (cells as any)[key] as any;
+                  const status = cell?.status || (p?.completed_at ? "done" : p?.started_at && !p?.completed_at ? "started" : "none");
+                  const attemptId = cell?.attempt_id || p?.attempt_id;
+                  const mini = cell?.mini || "";
+                  const shared = !!cell?.shared;
+
                   return (
-                    <td key={t.slug} className="p-2">
-                      {done && p?.attempt_id ? (
+                    <td key={t.slug} className="p-2 align-top">
+                      {status === "done" && attemptId ? (
                         <button
                           className="rounded-lg border bg-zinc-50 px-2 py-1 text-xs font-medium hover:bg-zinc-100"
-                          onClick={() => openAttempt(p, m.display_name, t.title)}
+                          onClick={() => openAttempt(String(attemptId), m.display_name, t.title)}
                         >
                           ✅
                         </button>
+                      ) : status === "started" ? (
+                        <span className="text-zinc-500">⏳</span>
                       ) : (
                         <span className="text-zinc-400">—</span>
                       )}
+
+                      {status === "done" && mini ? (
+                        <div className="mt-1 text-[10px] leading-tight text-zinc-600">{mini}</div>
+                      ) : null}
+
+                      {status === "done" && shared ? (
+                        <div className="mt-0.5 text-[10px] leading-tight text-emerald-700">📤 отправлено</div>
+                      ) : null}
                     </td>
                   );
                 })}
@@ -605,7 +751,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
             ))}
             {participants.length === 0 ? (
               <tr>
-                <td colSpan={2 + tests.length} className="p-4 text-center text-zinc-500">
+                <td colSpan={2 + enabledTests.length} className="p-4 text-center text-zinc-500">
                   Пока нет участников.
                 </td>
               </tr>

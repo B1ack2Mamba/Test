@@ -98,6 +98,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
   const { session, user } = useSession();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [isEnabled, setIsEnabled] = useState(true);
 
   const [forced, setForced] = useState<string[]>(() => Array(test.questions?.length ?? 0).fill(""));
   const [leftPoints, setLeftPoints] = useState<(number | null)[]>(() => Array(test.questions?.length ?? 0).fill(null));
@@ -141,6 +142,24 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
       // ignore
     }
   }, [roomId, test?.slug]);
+
+  useEffect(() => {
+    if (!session || !roomId || !test?.slug) return;
+    (async () => {
+      try {
+        const r = await fetch(`/api/training/rooms/tests/get?room_id=${encodeURIComponent(roomId)}`, {
+          headers: { authorization: `Bearer ${session.access_token}` },
+        });
+        const j = await r.json();
+        if (!r.ok || !j?.ok) return;
+        const slugs = (j.room_tests || []).map((x: any) => String(x.test_slug));
+        setIsEnabled(slugs.includes(test.slug));
+      } catch {
+        // ignore
+      }
+    })();
+  }, [session?.access_token, roomId, test?.slug]);
+
 
   const totalAnswered = useMemo(() => {
     if (test.type === "color_types_v1") {
@@ -188,7 +207,9 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                 q5: [...colorDraft.q5],
                 q6: [...colorDraft.q6],
               }
-            : (leftPoints.map((v) => Number(v)) as number[]);
+            : test.type === "usk_v1"
+              ? (leftPoints.map((v) => (v === null ? 0 : Number(v))) as number[])
+              : (leftPoints.map((v) => Number(v)) as number[]);
 
       const r = await fetch("/api/training/attempts/submit", {
         method: "POST",
@@ -251,6 +272,25 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
     for (const q of (test.questions || []) as any[]) m.set(Number(q.order), q);
     return m;
   }, [test.questions]);
+
+  if (!isEnabled) {
+    return (
+      <Layout title={test.title}>
+        <div className="mb-4 rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+          Комната: <span className="font-medium">{roomId}</span>
+        </div>
+
+        <div className="rounded-2xl border bg-amber-50 p-4 text-sm text-amber-900">
+          Этот тест выключен для этой комнаты.
+          <div className="mt-3">
+            <Link href={`/training/rooms/${encodeURIComponent(roomId)}`} className="text-sm font-medium underline">
+              ← Назад в комнату
+            </Link>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title={test.title}>
@@ -419,6 +459,46 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                   >
                     {right.text ?? right.label ?? "Вариант B"}
                   </button>
+                </div>
+              </div>
+            );
+          }
+
+          if (test.type === "usk_v1") {
+            const v = leftPoints[idx];
+            const CHOICES: { val: number; label: string }[] = [
+              { val: -3, label: "Полностью не согласен" },
+              { val: -2, label: "Скорее не согласен" },
+              { val: -1, label: "Скорее не согласен, чем согласен" },
+              { val: 0, label: "Нет ответа" },
+              { val: 1, label: "Скорее согласен, чем нет" },
+              { val: 2, label: "Скорее согласен" },
+              { val: 3, label: "Полностью согласен" },
+            ];
+            return (
+              <div key={idx} className="rounded-2xl border bg-white p-4">
+                <div className="mb-3 text-sm font-medium text-zinc-700">
+                  {idx + 1}. {String((q as any)?.text || (q as any)?.prompt || "")}
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-7">
+                  {CHOICES.map((c) => (
+                    <button
+                      key={c.val}
+                      type="button"
+                      className={cls(v === c.val)}
+                      onClick={() => {
+                        const next = [...leftPoints];
+                        next[idx] = c.val;
+                        setLeftPoints(next);
+                      }}
+                    >
+                      <div className="text-xs font-semibold">{c.val}</div>
+                      <div className={`mt-0.5 text-[10px] leading-tight ${v === c.val ? "text-white/80" : "text-zinc-500"}`}>
+                        {c.label}
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
             );

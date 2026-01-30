@@ -20,6 +20,8 @@ export default function TrainingRoom({ tests }: Props) {
   const [room, setRoom] = useState<RoomInfo | null>(null);
   const [member, setMember] = useState<MemberInfo | null>(null);
   const [progress, setProgress] = useState<ProgressRow[]>([]);
+  // Room-specific test settings (enabled/order/etc.)
+  const [roomTests, setRoomTests] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -52,6 +54,15 @@ export default function TrainingRoom({ tests }: Props) {
       const pj = await pr.json();
       if (!pr.ok || !pj?.ok) throw new Error(pj?.error || "Не удалось загрузить прогресс");
       setProgress(pj.progress || []);
+
+      const tr = await fetch(`/api/training/rooms/tests/get?room_id=${encodeURIComponent(roomId)}`, {
+        headers: { authorization: `Bearer ${session.access_token}` },
+      });
+      const tj = await tr.json();
+      if (tr.ok && tj?.ok) {
+        setRoomTests(tj.room_tests || []);
+      }
+
     } catch (e: any) {
       setErr(e?.message || "Ошибка");
     } finally {
@@ -85,6 +96,21 @@ export default function TrainingRoom({ tests }: Props) {
     for (const row of progress) m.set(row.test_slug, row);
     return m;
   }, [progress]);
+
+  const testsBySlug = useMemo(() => {
+    const m = new Map<string, AnyTest>();
+    for (const t of tests) m.set(t.slug, t);
+    return m;
+  }, [tests]);
+
+  const enabledTests = useMemo(() => {
+    const base = Array.isArray(roomTests) && roomTests.length ? roomTests : tests.map((t, i) => ({ test_slug: t.slug, is_enabled: true, sort_order: i }));
+    const ordered = [...base].sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+    return ordered
+      .filter((r: any) => !!r.is_enabled)
+      .map((r: any) => testsBySlug.get(String(r.test_slug)))
+      .filter(Boolean) as AnyTest[];
+  }, [roomTests, testsBySlug, tests]);
 
   const join = async () => {
     if (!session) return;
@@ -198,7 +224,7 @@ export default function TrainingRoom({ tests }: Props) {
 
       {member ? (
         <div className="grid gap-3">
-          {tests.map((t) => {
+          {enabledTests.map((t) => {
             const pr = bySlug.get(t.slug);
             const done = !!pr?.completed_at;
             return (
