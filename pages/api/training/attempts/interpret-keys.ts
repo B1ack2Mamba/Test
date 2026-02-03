@@ -24,11 +24,15 @@ function classifyColorTypes(ranked: any[]) {
   // If ALL three colors are in 10–13 inclusive, treat as "balanced triad": all three dominate.
   const isTriad1013 = [red, green, blue].every((v) => v >= 10 && v <= 13);
 
-  const sorted: Array<{ tag: ColorTag; count: number }> = [
+  // NOTE: In some TS/Next build setups, calling `.sort()` inline can widen
+  // the literal tags ("red"/"green"/"blue") to `string`, which breaks ColorTag.
+  const baseSorted: Array<{ tag: ColorTag; count: number }> = [
     { tag: "red", count: red },
     { tag: "green", count: green },
     { tag: "blue", count: blue },
-  ].sort((a, b) => b.count - a.count);
+  ];
+
+  const sorted = [...baseSorted].sort((a, b) => b.count - a.count);
 
   // Base influence rule (outside the triad case): only colors >= 13 influence.
   const influencing = sorted.filter((x) => x.count >= 13);

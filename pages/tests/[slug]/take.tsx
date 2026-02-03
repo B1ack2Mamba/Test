@@ -3,8 +3,8 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import { getTestBySlug } from "@/lib/loadTests";
-import type { AnyTest, ForcedPairTestV1, PairSplitTestV1, ColorTypesTestV1, USKTestV1, Tag, ABC } from "@/lib/testTypes";
-import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK } from "@/lib/score";
+import type { AnyTest, ForcedPairTestV1, PairSplitTestV1, ColorTypesTestV1, USKTestV1, PF16TestV1, Tag, ABC } from "@/lib/testTypes";
+import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF } from "@/lib/score";
 import { useSession } from "@/lib/useSession";
 import { saveAttempt, updateAttempt } from "@/lib/localHistory";
 
@@ -1038,6 +1038,122 @@ function USKForm({ test }: { test: USKTestV1 }) {
   );
 }
 
+
+function PF16Form({ test }: { test: PF16TestV1 }) {
+  const router = useRouter();
+  const { user } = useSession();
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>("");
+
+  const [answers, setAnswers] = useState<(ABC | "")[]>(() => Array(test.questions.length).fill(""));
+
+  useEffect(() => {
+    const draft = getSessionDraft<(ABC | "")[]>(test.slug);
+    if (draft && Array.isArray(draft) && draft.length === test.questions.length) {
+      setAnswers(draft);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [test.slug, test.questions.length]);
+
+  const answeredCount = useMemo(() => answers.filter(Boolean).length, [answers]);
+  const canSubmit = answeredCount === test.questions.length;
+
+  const pick = (idx: number, v: ABC) => {
+    setAnswers((prev) => {
+      const next = [...prev];
+      next[idx] = v;
+      setSessionDraft(test.slug, next);
+      return next;
+    });
+  };
+
+  const submit = async () => {
+    if (!canSubmit || busy) return;
+    setBusy(true);
+    setError("");
+
+    try {
+      const res = score16PF(test, answers);
+
+      const userId = user?.id || "guest";
+      const attempt = typeof window !== "undefined" ? saveAttempt(userId, test.slug, res) : null;
+
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
+        window.sessionStorage.removeItem(authorKey(test.slug));
+        if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
+        window.sessionStorage.removeItem(storageKey(test.slug));
+      }
+
+      router.push(`/tests/${test.slug}/result`);
+    } catch (e: any) {
+      setError(e?.message ?? "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Layout title={test.title}>
+      <div className="mb-4 rounded-2xl border bg-white p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-zinc-900">Прогресс</div>
+            <div className="mt-1 text-sm text-zinc-600">
+              Отвечено: {answeredCount}/{test.questions.length} (вопрос 187 — контрольный, в результат не входит)
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!canSubmit || busy}
+            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {busy ? "Сохраняем…" : "Показать результат"}
+          </button>
+        </div>
+
+        <details className="mt-4 rounded-2xl border bg-zinc-50 p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-zinc-900">Инструкция</summary>
+          <div className="mt-2 space-y-2 text-sm text-zinc-700">
+            <p>В каждом вопросе выбери один вариант (A / B / C). Отвечай быстро, не «вычисляя правильный ответ».</p>
+            <p>Результат считается по 16 факторам. Оценка каждого фактора — 0–10 (округление).</p>
+            <p>Порог уровней: 0–4 — низкий, 5–7 — средний, 8–10 — высокий.</p>
+            <p>Вопрос №187 — контрольный, он не влияет на факторы (но оставлен в тесте).</p>
+          </div>
+        </details>
+      </div>
+
+      <div className="space-y-3">
+        {test.questions.map((q, i) => (
+          <div key={q.order} className="rounded-2xl border bg-white p-4">
+            <div className="text-sm font-semibold text-zinc-900">
+              {q.order}. {q.text}
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <button type="button" className={cls(answers[i] === "A")} onClick={() => pick(i, "A")}>
+                A — {(q as any).options?.A ?? ""}
+              </button>
+              <button type="button" className={cls(answers[i] === "B")} onClick={() => pick(i, "B")}>
+                B — {(q as any).options?.B ?? ""}
+              </button>
+              <button type="button" className={cls(answers[i] === "C")} onClick={() => pick(i, "C")}>
+                C — {(q as any).options?.C ?? ""}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {error ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
+    </Layout>
+  );
+}
+
+
 export default function TakeTest({ test }: { test: AnyTest }) {
   // В редких случаях хочется очистить черновик вручную (например, при смене теста)
   const router = useRouter();
@@ -1052,6 +1168,8 @@ export default function TakeTest({ test }: { test: AnyTest }) {
         <ColorTypesForm test={test as ColorTypesTestV1} />
       ) : test.type === "usk_v1" ? (
         <USKForm test={test as USKTestV1} />
+      ) : test.type === "16pf_v1" ? (
+        <PF16Form test={test as PF16TestV1} />
       ) : (
         <Layout title={test.title}>
           <div className="rounded-2xl border bg-white p-4">

@@ -247,6 +247,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       continue;
     }
 
+    // 16PF
+    if (type === "16pf_v1" || slug === "16pf") {
+      const factors = Array.isArray(t?.scoring?.factors)
+        ? (t.scoring.factors as string[])
+        : ["A","B","C","E","F","G","H","I","L","M","N","O","Q1","Q2","Q3","Q4"];
+      const factorToName = (t?.scoring?.factor_to_name || {}) as Record<string, string>;
+
+      const sub: ColDef[] = [];
+      for (const f of factors) {
+        sub.push({
+          key: `${slug}:${f}`,
+          header2: `${f}. ${factorToName[f] || f}`,
+          group: title,
+          test_slug: slug,
+          width: 18,
+          fromResult: (r) => r?.counts?.[f] ?? null,
+        });
+        sub.push({
+          key: `${slug}:${f}:level`,
+          header2: `${f} уровень`,
+          group: title,
+          test_slug: slug,
+          width: 16,
+          fromResult: (r) => {
+            const arr = Array.isArray(r?.ranked) ? (r.ranked as any[]) : [];
+            const row = arr.find((x) => String((x as any)?.tag) === String(f));
+            return (row as any)?.level ?? null;
+          },
+        });
+      }
+
+      pushGroup(title, sub);
+      continue;
+    }
+
     // Generic: expand by observed result keys (or fallback to 1 column)
     const observedKeys = new Set<string>();
     for (const m of participants) {

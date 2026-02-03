@@ -7,6 +7,8 @@ import type {
   Tag,
   MotivationFactor,
   ABC,
+  PF16TestV1,
+  PF16Factor,
 } from "@/lib/testTypes";
 
 export type ScoreRow = {
@@ -18,7 +20,7 @@ export type ScoreRow = {
 };
 
 export type ScoreResult = {
-  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1";
+  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1" | "16pf_v1";
   total: number;
   counts: Record<string, number>;
   percents: Record<string, number>;
@@ -332,6 +334,118 @@ export function scoreUSK(test: USKTestV1, answers: number[]): ScoreResult {
       rawByScale,
       stenByScale,
       note: "count=stens (1..10), percent=stens*10",
+    },
+  };
+}
+
+
+// ===================== 16PF =====================
+
+function normalizeABCtoKeyLetter(v: any): "a" | "b" | "c" | null {
+  const s = String(v || "").trim().toUpperCase();
+  if (s === "A") return "a";
+  if (s === "B") return "b";
+  if (s === "C") return "c";
+  // also allow raw key letters
+  const t = String(v || "").trim().toLowerCase();
+  if (t === "a" || t === "b" || t === "c") return t as any;
+  // Cyrillic support: "В" / "в" acts as "b", "С" / "с" acts as "c"
+  if (t === "в") return "b";
+  if (t === "с") return "c";
+  return null;
+}
+
+function levelFor010(score: number, lowMax: number, midMax: number) {
+  const x = Math.max(0, Math.min(10, Math.round(score)));
+  if (x <= lowMax) return "низкий";
+  if (x <= midMax) return "средний";
+  return "высокий";
+}
+
+/**
+ * 16PF scoring:
+ * - Each factor has a set of keyed items (question -> accepted answers).
+ * - Raw score = count of matches.
+ * - Final score is normalized to 0..10 (rounded).
+ * - Levels: 0..4 low, 5..7 medium, 8..10 high (configurable via thresholds_0_10).
+ * - Question 187 is allowed in UI but ignored by key by design.
+ */
+export function score16PF(test: PF16TestV1, answers: Array<ABC | "A" | "B" | "C" | string>): ScoreResult {
+  const factors = test.scoring.factors;
+  const keys = test.scoring.keys;
+
+  // Build quick lookup: q -> {factor, acceptSet}
+  const byQ: Record<number, { factor: PF16Factor; accept: Set<"a" | "b" | "c"> }> = {};
+  const maxByFactor: Record<string, number> = {};
+  for (const f of factors) {
+    const items = Array.isArray(keys[f]) ? keys[f] : [];
+    maxByFactor[f] = items.length;
+    for (const it of items) {
+      const q = Number((it as any)?.q);
+      const acceptArr = (it as any)?.accept as any[];
+      const accept = new Set<"a" | "b" | "c">(
+        (Array.isArray(acceptArr) ? acceptArr : []).map((x) => normalizeABCtoKeyLetter(x)).filter(Boolean) as any
+      );
+      if (!Number.isFinite(q) || q <= 0 || accept.size === 0) continue;
+      byQ[q] = { factor: f, accept };
+    }
+  }
+
+  const rawByFactor: Record<string, number> = {};
+  for (const f of factors) rawByFactor[f] = 0;
+
+  // Answers are 1-based by question order in JSON.
+  for (let i = 1; i <= test.questions.length; i++) {
+    const ans = answers[i - 1];
+    const letter = normalizeABCtoKeyLetter(ans);
+    if (!letter) continue;
+
+    const rule = byQ[i];
+    if (!rule) continue; // not keyed (e.g., 1,2,187)
+    if (rule.accept.has(letter)) {
+      rawByFactor[rule.factor] = (rawByFactor[rule.factor] ?? 0) + 1;
+    }
+  }
+
+  // Normalize to 0..10 per factor
+  const score10ByFactor: Record<string, number> = {};
+  const percentByFactor: Record<string, number> = {};
+  const counts: Record<string, number> = {};
+
+  for (const f of factors) {
+    const raw = rawByFactor[f] ?? 0;
+    const max = maxByFactor[f] ?? 0;
+    const norm = max > 0 ? (raw / max) * 10 : 0;
+    const score10 = Math.max(0, Math.min(10, Math.round(norm)));
+    score10ByFactor[f] = score10;
+    counts[f] = score10;
+    percentByFactor[f] = score10 * 10;
+  }
+
+  const lowMax = Number(test.scoring.thresholds_0_10?.low_max ?? 4);
+  const midMax = Number(test.scoring.thresholds_0_10?.mid_max ?? 7);
+
+  const ranked: ScoreRow[] = factors
+    .map((f) => ({
+      tag: f,
+      style: test.scoring.factor_to_name?.[f] ?? f,
+      count: counts[f],
+      percent: percentByFactor[f],
+      level: levelFor010(counts[f], lowMax, midMax),
+    }))
+    .sort((a, b) => b.percent - a.percent);
+
+  return {
+    kind: "16pf_v1",
+    total: 10,
+    counts,
+    percents: percentByFactor,
+    ranked,
+    meta: {
+      rawByFactor,
+      maxByFactor,
+      score10ByFactor,
+      note: "count=score0..10 (rounded from raw/max), percent=count*10; raw stored in meta.rawByFactor",
     },
   };
 }

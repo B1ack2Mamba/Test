@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import { getTestBySlug } from "@/lib/loadTests";
-import type { AnyTest, ColorTypesTestV1, ABC } from "@/lib/testTypes";
+import type { AnyTest, ABC } from "@/lib/testTypes";
 import { useSession } from "@/lib/useSession";
 
 function cls(active: boolean) {
@@ -113,6 +113,9 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
     q6: [],
   });
 
+  // 16PF draft (A/B/C answers per question)
+  const [pf16, setPf16] = useState<(ABC | "")[]>(() => Array(test.questions?.length ?? 0).fill(""));
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     // Wait for router to provide the real roomId before reading the draft.
@@ -138,10 +141,21 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
         q5: safePick(d?.q5),
         q6: safePick(d?.q6),
       });
+
+      // 16PF draft is stored as an array of "A"/"B"/"C" (or {pf16:[...]}).
+      if (test.type === "16pf_v1") {
+        const arr = Array.isArray(d) ? (d as any[]) : Array.isArray(d?.pf16) ? (d.pf16 as any[]) : null;
+        if (!arr) return;
+        const safe = arr.map((v) => safeABC(v)).slice(0, test.questions?.length ?? 0);
+        // Ensure the draft array length matches questions length.
+        const full = Array(test.questions?.length ?? 0).fill("") as (ABC | "")[];
+        for (let i = 0; i < safe.length; i++) full[i] = safe[i];
+        setPf16(full);
+      }
     } catch {
       // ignore
     }
-  }, [roomId, test?.slug]);
+  }, [roomId, test?.slug, test?.type, test?.questions?.length]);
 
   useEffect(() => {
     if (!session || !roomId || !test?.slug) return;
@@ -174,11 +188,14 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
       if (pickOk(colorDraft.q6)) n++;
       return n;
     }
+    if (test.type === "16pf_v1") {
+      return pf16.filter(Boolean).length;
+    }
     if (test.type === "forced_pair" || test.type === "forced_pair_v1") {
       return forced.filter(Boolean).length;
     }
     return leftPoints.filter((v) => v !== null).length;
-  }, [test.type, forced, leftPoints, colorDraft]);
+  }, [test.type, forced, leftPoints, colorDraft, pf16]);
 
   const submit = async () => {
     if (!session || !user) {
@@ -209,6 +226,8 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
               }
             : test.type === "usk_v1"
               ? (leftPoints.map((v) => (v === null ? 0 : Number(v))) as number[])
+              : test.type === "16pf_v1"
+                ? (pf16 as any)
               : (leftPoints.map((v) => Number(v)) as number[]);
 
       const r = await fetch("/api/training/attempts/submit", {
@@ -254,6 +273,16 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
 
   const patchColor = (p: Partial<ColorDraft>) => {
     saveColorDraft({ ...colorDraft, ...p });
+  };
+
+  const savePF16Draft = (next: (ABC | "")[]) => {
+    setPf16(next);
+    try {
+      if (typeof window !== "undefined") {
+        if (!roomId) return;
+        window.sessionStorage.setItem(`training:${roomId}:draft:${test.slug}`, JSON.stringify(next));
+      }
+    } catch {}
   };
 
   const togglePick = (key: "q5" | "q6", value: number) => {
@@ -408,6 +437,55 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                     ) : (
                       <>Выберите ровно 3 пункта (сейчас: {value.length}).</>
                     )}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        ) : test.type === "16pf_v1" ? (
+          <>
+            <details className="rounded-2xl border bg-white p-4">
+              <summary className="cursor-pointer text-sm font-medium text-zinc-800">
+                Инструкция (нажми, чтобы раскрыть)
+              </summary>
+              <div className="mt-3 space-y-2 text-sm text-zinc-700">
+                <p>
+                  Отвечай быстро и честно. Здесь нет «правильных» ответов.
+                </p>
+                <p>
+                  Формат: 187 вопросов, по 3 варианта (A/B/C). Вопрос <b>187</b> контрольный —
+                  <b> не влияет на результат</b>, но остаётся в тесте.
+                </p>
+                <p>
+                  Итог по 16 факторам в шкале <b>0–10</b>: 0–4 низкий, 5–7 средний, 8–10 высокий.
+                </p>
+              </div>
+            </details>
+
+            {(test.questions || []).map((q: any, idx: number) => {
+              const chosen = pf16[idx] || "";
+              const opts = (q?.options || {}) as Record<ABC, string>;
+              return (
+                <div key={idx} className="rounded-2xl border bg-white p-4">
+                  <div className="mb-3 text-sm font-medium text-zinc-700">
+                    {idx + 1}. {String(q?.text || q?.prompt || "")}
+                  </div>
+                  <div className="grid gap-2">
+                    {(["A", "B", "C"] as ABC[]).map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        className={cls(chosen === k)}
+                        onClick={() => {
+                          const next = [...pf16];
+                          next[idx] = k;
+                          savePF16Draft(next);
+                        }}
+                      >
+                        <div className="text-xs font-semibold text-zinc-600">Вариант {k}</div>
+                        <div className="mt-1 text-sm">{opts?.[k] || ""}</div>
+                      </button>
+                    ))}
                   </div>
                 </div>
               );

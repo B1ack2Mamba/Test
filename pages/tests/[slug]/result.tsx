@@ -262,11 +262,20 @@ export default function TestResult({ test }: { test: AnyTest }) {
                         return Number.isFinite(d) ? Number(d) : null;
                       }
                       if (result.kind === "usk_v1") return result.total || 10;
+                      if (result.kind === "16pf_v1") return 10;
                       return null;
                     })();
 
-                    const extraRaw =
-                      result.kind === "usk_v1" ? (result as any).meta?.raw?.[r.tag] : null;
+                    const extraRaw = (() => {
+                      if (result.kind === "usk_v1") return (result as any).meta?.raw?.[r.tag] ?? null;
+                      if (result.kind === "16pf_v1") {
+                        const raw = (result as any).meta?.rawByFactor?.[r.tag];
+                        const max = (result as any).meta?.maxByFactor?.[r.tag];
+                        if (Number.isFinite(raw) && Number.isFinite(max)) return `${raw}/${max}`;
+                        if (Number.isFinite(raw)) return String(raw);
+                      }
+                      return null;
+                    })();
 
                     return (
                       <tr key={r.tag} className="border-b align-top">

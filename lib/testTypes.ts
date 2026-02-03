@@ -180,4 +180,42 @@ export type USKTestV1 = {
   scoring: USKScoring;
 };
 
-export type AnyTest = ForcedPairTestV1 | PairSplitTestV1 | ColorTypesTestV1 | USKTestV1;
+
+
+// ===================== 16PF (Cattell) =====================
+
+export type PF16Factor = "A" | "B" | "C" | "E" | "F" | "G" | "H" | "I" | "L" | "M" | "N" | "O" | "Q1" | "Q2" | "Q3" | "Q4";
+
+export type PF16Question = {
+  order: number;
+  text: string;
+  options: Record<ABC, string>;
+};
+
+export type PF16Scoring = {
+  factors: PF16Factor[];
+  factor_to_name: Record<PF16Factor, string>;
+  // Key: for each factor, list of {q, accept} where q is 1-based question number and accept is in ["a","b","c"].
+  keys: Record<PF16Factor, { q: number; accept: Array<"a" | "b" | "c"> }[]>;
+  // Final scale is 0..10
+  thresholds_0_10: {
+    low_max: number; // 0..low_max => "низкий"
+    mid_max: number; // (low_max+1)..mid_max => "средний", else => "высокий"
+  };
+};
+
+export type PF16TestV1 = {
+  slug: string;
+  title: string;
+  description?: string;
+  type: "16pf_v1";
+  pricing?: {
+    interpretation_rub?: number;
+    details_rub?: number;
+  };
+  has_interpretation?: boolean;
+  questions: PF16Question[];
+  scoring: PF16Scoring;
+};
+
+export type AnyTest = ForcedPairTestV1 | PairSplitTestV1 | ColorTypesTestV1 | USKTestV1 | PF16TestV1;
