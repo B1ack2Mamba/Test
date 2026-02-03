@@ -8,21 +8,32 @@ export default function Home({ tests }: { tests: AnyTest[] }) {
     <Layout title="Каталог тестов">
       <div className="grid gap-3">
         {tests.map((t) => (
-          <Link
-            key={t.slug}
-            href={`/tests/${t.slug}`}
-            className="rounded-2xl border bg-white p-4 shadow-sm transition hover:shadow"
-          >
+          <div key={t.slug} className="rounded-2xl border bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-lg font-semibold">{t.title}</div>
+              <div className="min-w-0">
+                <Link
+                  href={`/tests/${t.slug}`}
+                  className="block text-lg font-semibold hover:underline"
+                  title="Открыть описание теста"
+                >
+                  {t.title}
+                </Link>
                 {t.description ? (
                   <div className="mt-1 text-sm text-zinc-600">{t.description}</div>
                 ) : null}
+                <div className="mt-2 text-xs text-zinc-500">{t.questions.length} вопросов</div>
               </div>
-              <div className="text-xs text-zinc-500">{t.questions.length} вопросов</div>
+
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                <Link
+                  href={`/tests/${t.slug}/take`}
+                  className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white"
+                >
+                  Начать
+                </Link>
+              </div>
             </div>
-          </Link>
+          </div>
         ))}
         {tests.length === 0 ? (
           <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
