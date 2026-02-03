@@ -47,12 +47,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const ownedIds = (attempts || []).map((a: any) => String(a.id));
   if (ownedIds.length === 0) return res.status(200).json({ ok: true, attempts: [] as SharedAttempt[] });
 
-  // 3) interpretation availability
+  // 3) interpretation availability (participant sees only client_text)
   const { data: keysRows, error: kErr } = await supabaseAdmin
     .from("training_attempt_interpretations")
     .select("attempt_id")
     .in("attempt_id", ownedIds)
-    .eq("kind", "keys_ai");
+    .eq("kind", "client_text");
   if (kErr) return res.status(500).json({ ok: false, error: kErr.message });
   const hasKeys = new Set((keysRows || []).map((r: any) => String(r.attempt_id)));
 

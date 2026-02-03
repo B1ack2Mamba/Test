@@ -17,6 +17,10 @@ export default function TrainingRoom({ tests }: Props) {
   const roomId = String(router.query.roomId || "");
   const { session, user } = useSession();
 
+  const NAME_KEY = "training_display_name_v1";
+  const NAME_EXP_KEY = "training_display_name_exp_v1";
+  const NAME_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
   const [room, setRoom] = useState<RoomInfo | null>(null);
   const [member, setMember] = useState<MemberInfo | null>(null);
   const [progress, setProgress] = useState<ProgressRow[]>([]);
@@ -31,9 +35,48 @@ export default function TrainingRoom({ tests }: Props) {
   const [joinBusy, setJoinBusy] = useState(false);
   const [joinError, setJoinError] = useState("");
 
+  // rename display name (after joined)
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameMsg, setRenameMsg] = useState("");
+
+  const saveNameLocal = (name: string) => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(NAME_KEY, name);
+      localStorage.setItem(NAME_EXP_KEY, String(Date.now() + NAME_TTL_MS));
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (joinName) return;
+    try {
+      const exp = Number(localStorage.getItem(NAME_EXP_KEY) || "0");
+      const val = String(localStorage.getItem(NAME_KEY) || "");
+      if (val && exp && exp > Date.now()) {
+        setJoinName(val);
+      } else {
+        localStorage.removeItem(NAME_KEY);
+        localStorage.removeItem(NAME_EXP_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, [roomId, joinName]);
+
   useEffect(() => {
     if (user?.email && !joinName) setJoinName(user.email.split("@")[0]);
   }, [user?.email, joinName]);
+
+  useEffect(() => {
+    if (member?.display_name) {
+      setRenameValue(member.display_name);
+    }
+  }, [member?.display_name]);
 
   const load = async () => {
     if (!session || !roomId) return;
@@ -125,12 +168,43 @@ export default function TrainingRoom({ tests }: Props) {
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось войти");
       setMember({ role: j.member.role, display_name: j.member.display_name });
+      saveNameLocal(String(j.member.display_name || joinName));
       setJoinPwd("");
       await load();
     } catch (e: any) {
       setJoinError(e?.message || "Ошибка");
     } finally {
       setJoinBusy(false);
+    }
+  };
+
+  const saveRename = async () => {
+    if (!session || !roomId) return;
+    const name = (renameValue || "").trim();
+    if (!name) {
+      setRenameMsg("Имя пустое");
+      setTimeout(() => setRenameMsg(""), 2500);
+      return;
+    }
+    setRenameBusy(true);
+    setRenameMsg("");
+    try {
+      const r = await fetch("/api/training/rooms/update-member-name", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ room_id: roomId, display_name: name }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось сохранить");
+      setMember((prev) => (prev ? { ...prev, display_name: name } : prev));
+      saveNameLocal(name);
+      setRenameOpen(false);
+      setRenameMsg("Сохранено ✅");
+      setTimeout(() => setRenameMsg(""), 2500);
+    } catch (e: any) {
+      setRenameMsg(e?.message || "Ошибка");
+    } finally {
+      setRenameBusy(false);
     }
   };
 
@@ -162,8 +236,41 @@ export default function TrainingRoom({ tests }: Props) {
             <div className="text-sm text-zinc-600">Комната</div>
             <div className="text-lg font-semibold">{room?.name || "…"}</div>
             <div className="mt-1 text-xs text-zinc-500">
-              {member ? `Вы вошли как: ${member.display_name}` : "Вы ещё не вошли в комнату"}
+              {member ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>
+                    Вы вошли как: <b className="text-zinc-800">{member.display_name}</b>
+                  </span>
+                  <button
+                    onClick={() => setRenameOpen((v) => !v)}
+                    className="rounded-md border bg-white px-2 py-0.5 text-[11px] font-medium hover:bg-zinc-50"
+                  >
+                    {renameOpen ? "Скрыть" : "Изменить имя"}
+                  </button>
+                </div>
+              ) : (
+                "Вы ещё не вошли в комнату"
+              )}
             </div>
+
+            {member && renameOpen ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  className="w-full max-w-[360px] rounded-xl border bg-white px-3 py-2 text-sm"
+                  placeholder="Ваше имя"
+                />
+                <button
+                  onClick={saveRename}
+                  disabled={renameBusy || !renameValue.trim()}
+                  className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {renameBusy ? "…" : "Сохранить"}
+                </button>
+                {renameMsg ? <div className="text-xs text-zinc-600">{renameMsg}</div> : null}
+              </div>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
 

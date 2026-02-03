@@ -21,14 +21,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!attempt) return res.status(404).json({ ok: false, error: "Попытка не найдена" });
   if (attempt.user_id !== user.id) return res.status(403).json({ ok: false, error: "Forbidden" });
 
+  // Participant should see ONLY the client-facing text that the specialist decided to send.
+  const { data: sharedRow } = await supabaseAdmin
+    .from("training_attempt_interpretations")
+    .select("attempt_id")
+    .eq("attempt_id", attemptId)
+    .eq("kind", "shared")
+    .maybeSingle();
+
+  if (!sharedRow) {
+    return res.status(200).json({ ok: true, text: "", attempt, shared: false });
+  }
+
   const { data: interp, error: iErr } = await supabaseAdmin
     .from("training_attempt_interpretations")
     .select("text")
     .eq("attempt_id", attemptId)
-    .eq("kind", "keys_ai")
+    .eq("kind", "client_text")
     .maybeSingle();
 
   if (iErr) return res.status(500).json({ ok: false, error: iErr.message });
 
-  return res.status(200).json({ ok: true, text: interp?.text || "", attempt });
+  return res.status(200).json({ ok: true, text: interp?.text || "", attempt, shared: true });
 }

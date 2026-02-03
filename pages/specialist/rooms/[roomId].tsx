@@ -86,6 +86,9 @@ export default function SpecialistRoom({ tests }: Props) {
   const [attempt, setAttempt] = useState<any>(null);
   const [interp, setInterp] = useState<string>("");
   const [busyInterp, setBusyInterp] = useState(false);
+  const [clientText, setClientText] = useState<string>("");
+  const [busySendClient, setBusySendClient] = useState(false);
+  const [clientMsg, setClientMsg] = useState<string>("");
   const [copyMsg, setCopyMsg] = useState<string>("");
   const [copied, setCopied] = useState<string>("");
   const [shareBusy, setShareBusy] = useState(false);
@@ -94,6 +97,12 @@ export default function SpecialistRoom({ tests }: Props) {
 
   const [shareRoomBusy, setShareRoomBusy] = useState(false);
   const [shareRoomMsg, setShareRoomMsg] = useState<string>("");
+
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportMsg, setExportMsg] = useState<string>("");
+
+  const [copyBusy, setCopyBusy] = useState(false);
+  const [copyMsg2, setCopyMsg2] = useState<string>("");
 
   const load = async () => {
     if (!session || !roomId) return;
@@ -319,6 +328,8 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
     setAttemptId(attemptId);
     setAttempt(null);
     setInterp("");
+    setClientText("");
+    setClientMsg("");
     setCopyMsg("");
     setShareMsg("");
     setShared(false);
@@ -331,6 +342,11 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
       setAttempt(j.attempt);
       const cached = (j.interpretations || []).find((x: any) => x.kind === "keys_ai")?.text || "";
       setInterp(cached);
+
+      const finalText = (j.interpretations || []).find((x: any) => x.kind === "client_text")?.text || "";
+      const draftText = (j.interpretations || []).find((x: any) => x.kind === "client_draft")?.text || "";
+      setClientText(finalText || draftText || "");
+
       const isShared = !!(j.interpretations || []).find((x: any) => x.kind === "shared");
       setShared(isShared);
     } catch (e: any) {
@@ -351,7 +367,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось отправить");
       setShared(true);
-      setShareMsg("Отправлено в ЛК ✅");
+      setShareMsg("Показано в ЛК ✅");
       setTimeout(() => setShareMsg(""), 2500);
     } catch (e: any) {
       setShareMsg(e?.message || "Ошибка");
@@ -416,11 +432,17 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
       const r = await fetch("/api/training/attempts/interpret-keys", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ attempt_id: attemptId }),
+        // If there is already an interpretation shown, the user expects a fresh regeneration.
+        body: JSON.stringify({ attempt_id: attemptId, force: Boolean(interp) }),
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось расшифровать");
-      setInterp(j.text || "");
+      setInterp(String(j.staff_text || j.text || ""));
+      setClientText((prev) => {
+        // If specialist already typed something, don't overwrite silently on background calls.
+        // But when user clicks "Сгенерировать/Пересчитать", we assume they want the fresh draft.
+        return String(j.client_text || "");
+      });
     } catch (e: any) {
       setInterp(`Ошибка: ${e?.message || "Не удалось расшифровать"}`);
     } finally {
@@ -531,7 +553,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
     }
   };
 
-const copyParticipantLink = async () => {
+  const copyParticipantLink = async () => {
     if (!attemptId || typeof window === "undefined") return;
     const url = `${window.location.origin}/training/results?attempt=${encodeURIComponent(attemptId)}`;
     try {
@@ -540,6 +562,148 @@ const copyParticipantLink = async () => {
       setTimeout(() => setCopyMsg(""), 2500);
     } catch {
       setCopyMsg(url);
+    }
+  };
+
+  const copyClientText = async () => {
+    if (typeof window === "undefined") return;
+    const text = (clientText || "").trim();
+    if (!text) {
+      setClientMsg("Текст пустой");
+      setTimeout(() => setClientMsg(""), 2500);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setClientMsg("Скопировано ✅");
+      setTimeout(() => setClientMsg(""), 2500);
+    } catch {
+      setClientMsg(text);
+    }
+  };
+
+  const sendClientText = async () => {
+    if (!session || !attemptId) return;
+    const text = (clientText || "").trim();
+    if (!text) {
+      setClientMsg("Текст пустой");
+      setTimeout(() => setClientMsg(""), 2500);
+      return;
+    }
+    setBusySendClient(true);
+    setClientMsg("");
+    try {
+      const r = await fetch("/api/training/attempts/send-client-text", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ attempt_id: attemptId, text }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось отправить");
+      setShared(true);
+      setClientMsg("Отправлено клиенту ✅");
+      setTimeout(() => setClientMsg(""), 2500);
+      // refresh matrix
+      load();
+    } catch (e: any) {
+      setClientMsg(e?.message || "Ошибка");
+    } finally {
+      setBusySendClient(false);
+    }
+  };
+
+  const exportExcel = async () => {
+    if (!session || !roomId) return;
+    setExportBusy(true);
+    setExportMsg("");
+    try {
+      const r = await fetch("/api/training/rooms/export-excel", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ room_id: roomId }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        throw new Error(j?.error || "Не удалось экспортировать");
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const safe = (roomName || "room").replace(/[\\/:*?"<>|]+/g, " ").trim() || "room";
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      a.href = url;
+      a.download = `${safe}-results-${y}-${m}-${dd}.xls`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setExportMsg("Файл скачан ✅");
+      setTimeout(() => setExportMsg(""), 2500);
+    } catch (e: any) {
+      setExportMsg(e?.message || "Ошибка");
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  // Quick alternative: copy the visible matrix (status + mini) as TSV.
+  // User can paste directly into Excel / Google Sheets.
+  const copyMatrixToExcel = async () => {
+    setCopyBusy(true);
+    setCopyMsg2("");
+    try {
+      const rows = members.filter((m) => m.role === "participant");
+      const cols = enabledTests;
+      if (!cols.length) throw new Error("Нет активных тестов");
+
+      const header = ["ФИО", ...cols.map((t) => String(t.title || t.slug))].join("\t");
+      const lines: string[] = [header];
+
+      for (const m of rows) {
+        const row: string[] = [String(m.display_name || "")];
+        for (const t of cols) {
+          const key = `${m.user_id}:${t.slug}`;
+          const c = (cells as any)?.[key];
+          if (!c) {
+            row.push("");
+            continue;
+          }
+          const status = String(c.status || "");
+          const mini = String(c.mini || "").trim();
+          const v = status === "done" ? (mini || "Готово") : status === "started" ? "В процессе" : "";
+          row.push(v);
+        }
+        lines.push(row.join("\t"));
+      }
+
+      const tsv = lines.join("\n");
+
+      // Clipboard (with fallback)
+      const canClipboard = typeof navigator !== "undefined" && !!navigator.clipboard?.writeText;
+      if (canClipboard) {
+        await navigator.clipboard.writeText(tsv);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = tsv;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        ta.style.top = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+
+      setCopyMsg2("Скопировано ✅ Теперь вставьте в Excel (Ctrl+V).");
+      setTimeout(() => setCopyMsg2(""), 3000);
+    } catch (e: any) {
+      setCopyMsg2(e?.message || "Ошибка");
+    } finally {
+      setCopyBusy(false);
     }
   };
 
@@ -615,7 +779,24 @@ const copyParticipantLink = async () => {
             >
               {shareRoomBusy ? "…" : "Отправить всем в ЛК"}
             </button>
+            <button
+              onClick={copyMatrixToExcel}
+              disabled={copyBusy}
+              className="rounded-xl border bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
+              title="Скопировать матрицу (статус + миниитог) в буфер обмена"
+            >
+              {copyBusy ? "…" : "Скопировать в Excel"}
+            </button>
+            <button
+              onClick={exportExcel}
+              disabled={exportBusy}
+              className="rounded-xl border bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {exportBusy ? "…" : "Экспорт Excel"}
+            </button>
             {shareRoomMsg ? <div className="text-xs text-zinc-600">{shareRoomMsg}</div> : null}
+            {copyMsg2 ? <div className="text-xs text-zinc-600">{copyMsg2}</div> : null}
+            {exportMsg ? <div className="text-xs text-zinc-600">{exportMsg}</div> : null}
           </div>
           <div className="mt-2 text-xs text-zinc-500">
             Это отправит в личный кабинет участникам все завершённые результаты (если расшифровка ещё не готова — они увидят статус ожидания).
@@ -786,7 +967,7 @@ const copyParticipantLink = async () => {
                       : "border bg-white hover:bg-zinc-50")
                   }
                 >
-                  {shareBusy ? "…" : shared ? "Отозвать" : "Отправить в ЛК"}
+                  {shareBusy ? "…" : shared ? "Отозвать" : "Показать в ЛК"}
                 </button>
                 <button onClick={() => setOpen(false)} className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50">
                   Закрыть
@@ -837,6 +1018,35 @@ const copyParticipantLink = async () => {
             <div className="mt-3 max-h-[45vh] overflow-auto rounded-2xl border bg-white p-3 text-sm whitespace-pre-wrap">
               {interp ? interp : <span className="text-zinc-500">Пока пусто. Нажмите «Сгенерировать».</span>}
             </div>
+
+            <div className="mt-5 flex items-center justify-between">
+              <div className="text-sm font-medium">Текст для клиента</div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={copyClientText}
+                  disabled={!clientText.trim()}
+                  className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Копировать
+                </button>
+                <button
+                  onClick={sendClientText}
+                  disabled={busySendClient || !clientText.trim() || !attemptId}
+                  className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  {busySendClient ? "…" : "Отправить"}
+                </button>
+              </div>
+            </div>
+            <div className="mt-1 text-xs text-zinc-500">Участник увидит только этот текст (без цифр). Можно редактировать и отправить частично.</div>
+            <textarea
+              value={clientText}
+              onChange={(e) => setClientText(e.target.value)}
+              placeholder="Сгенерируйте расшифровку по ключам и отредактируйте текст для клиента…"
+              className="mt-2 w-full rounded-2xl border bg-white p-3 text-sm"
+              rows={10}
+            />
+            {clientMsg ? <div className="mt-2 text-xs text-zinc-600">{clientMsg}</div> : null}
           </div>
         </div>
       ) : null}
