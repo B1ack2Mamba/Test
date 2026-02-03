@@ -1104,15 +1104,6 @@ function PF16Form({ test }: { test: PF16TestV1 }) {
               Отвечено: {answeredCount}/{test.questions.length} (вопрос 187 — контрольный, в результат не входит)
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!canSubmit || busy}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {busy ? "Сохраняем…" : "Показать результат"}
-          </button>
         </div>
 
         <details className="mt-4 rounded-2xl border bg-zinc-50 p-4">
@@ -1146,6 +1137,17 @@ function PF16Form({ test }: { test: PF16TestV1 }) {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-6 flex justify-end">
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!canSubmit || busy}
+          className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {busy ? "Сохраняем…" : "Показать результат"}
+        </button>
       </div>
 
       {error ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}

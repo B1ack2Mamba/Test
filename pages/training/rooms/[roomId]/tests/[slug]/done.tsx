@@ -27,6 +27,24 @@ function Digits({ result }: { result: ScoreResult }) {
     );
   }
 
+  if (kind === "16pf_v1" || kind === "usk_v1") {
+    return (
+      <div className="rounded-2xl border bg-white p-4">
+        <div className="mb-2 text-sm font-semibold">Ваши результаты (цифры)</div>
+        <div className="grid gap-2">
+          {result.ranked.map((r) => (
+            <div key={r.tag} className="flex items-center justify-between rounded-xl border bg-zinc-50 px-3 py-2">
+              <div className="text-sm font-medium">{r.style}</div>
+              <div className="text-sm text-zinc-700">
+                {r.count}/10 · {r.level}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   const maxByFactor = (result.meta as any)?.maxByFactor || {};
   return (
     <div className="rounded-2xl border bg-white p-4">

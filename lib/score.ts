@@ -69,6 +69,7 @@ export function scoreForcedPair(test: ForcedPairTestV1, chosenTags: Tag[]): Scor
     }))
     .sort((a, b) => b.percent - a.percent);
 
+
   return {
     kind: "forced_pair_v1",
     total: chosenTags.length,
@@ -133,7 +134,7 @@ export function scorePairSplit(test: PairSplitTestV1, answersLeftPoints: number[
         level: levelForNorm35(norm35),
       };
     })
-    .sort((a, b) => b.percent - a.percent);
+    ;
 
   const meta: Record<string, any> = {
     maxByFactor,
@@ -227,9 +228,12 @@ export function scoreColorTypes(test: ColorTypesTestV1, answers: ColorTypesAnswe
   const a = (c1.a ?? 0) + (c2.a ?? 0) + (c3.a ?? 0) + (c4.a ?? 0) + (c5.a ?? 0) + (c6.a ?? 0);
   const b = (c1.b ?? 0) + (c2.b ?? 0) + (c3.b ?? 0) + (c4.b ?? 0) + (c5.b ?? 0) + (c6.b ?? 0);
 
+  // Colors are derived from two axes (a and b).
+  // Verified against the reference case: choosing all first answers must yield
+  // Зеленый=15, Красный=12, Синий=9 (with base=12).
   const green = base + a;
-  const blue = base + b;
-  const red = base - a - b;
+  const red = base - a + b;
+  const blue = base - b;
 
   const total = green + red + blue;
   const denom = total || 1;
@@ -252,7 +256,7 @@ export function scoreColorTypes(test: ColorTypesTestV1, answers: ColorTypesAnswe
     { tag: "green", style: labels.green, count: green, percent: percents.green, level: levelForPercent(percents.green) },
     { tag: "red", style: labels.red, count: red, percent: percents.red, level: levelForPercent(percents.red) },
     { tag: "blue", style: labels.blue, count: blue, percent: percents.blue, level: levelForPercent(percents.blue) },
-  ].sort((x, y) => y.percent - x.percent);
+  ];
 
   return {
     kind: "color_types_v1",
@@ -322,7 +326,7 @@ export function scoreUSK(test: USKTestV1, answers: number[]): ScoreResult {
       percent: percentByScale[s],
       level: levelForSten(stenByScale[s]),
     }))
-    .sort((a, b) => b.percent - a.percent);
+    ;
 
   return {
     kind: "usk_v1",
@@ -433,7 +437,7 @@ export function score16PF(test: PF16TestV1, answers: Array<ABC | "A" | "B" | "C"
       percent: percentByFactor[f],
       level: levelFor010(counts[f], lowMax, midMax),
     }))
-    .sort((a, b) => b.percent - a.percent);
+    ;
 
   return {
     kind: "16pf_v1",

@@ -93,6 +93,11 @@ export default function TestResult({ test }: { test: AnyTest }) {
 
   const p = useMemo(() => priceRub(test), [test]);
 
+  const isNumericPrimary = useMemo(() => {
+    return result?.kind === "usk_v1" || result?.kind === "16pf_v1";
+  }, [result?.kind]);
+
+
   const buyDetails = async () => {
     setDetailError("");
 
@@ -246,7 +251,7 @@ export default function TestResult({ test }: { test: AnyTest }) {
                 <thead>
                   <tr className="border-b">
                     <th className="py-2 text-left font-medium text-zinc-700">Фактор</th>
-                    <th className="py-2 text-left font-medium text-zinc-700">Процент</th>
+                    <th className="py-2 text-left font-medium text-zinc-700">{isNumericPrimary ? "Баллы" : "Процент"}</th>
                     <th className="py-2 text-left font-medium text-zinc-700">Уровень</th>
                   </tr>
                 </thead>
@@ -267,7 +272,7 @@ export default function TestResult({ test }: { test: AnyTest }) {
                     })();
 
                     const extraRaw = (() => {
-                      if (result.kind === "usk_v1") return (result as any).meta?.raw?.[r.tag] ?? null;
+                      if (result.kind === "usk_v1") return (result as any).meta?.rawByScale?.[r.tag] ?? null;
                       if (result.kind === "16pf_v1") {
                         const raw = (result as any).meta?.rawByFactor?.[r.tag];
                         const max = (result as any).meta?.maxByFactor?.[r.tag];
@@ -285,10 +290,19 @@ export default function TestResult({ test }: { test: AnyTest }) {
                         </td>
                         <td className="py-3 pr-4 text-zinc-900">
                           <div>
-                            {r.percent}%{" "}
-                            <span className="text-xs text-zinc-600">
-                              ({typeof denom === "number" ? `${r.count}/${denom}` : String(r.count)})
-                            </span>
+                            {isNumericPrimary ? (
+                              <>
+                                <b>{r.count}</b>
+                                <span className="text-xs text-zinc-600">/10</span>
+                              </>
+                            ) : (
+                              <>
+                                {r.percent}%{" "}
+                                <span className="text-xs text-zinc-600">
+                                  ({typeof denom === "number" ? `${r.count}/${denom}` : String(r.count)})
+                                </span>
+                              </>
+                            )}
                           </div>
                           {extraRaw !== null && extraRaw !== undefined ? (
                             <div className="mt-1 text-[11px] text-zinc-500">Сырые баллы: {String(extraRaw)}</div>
