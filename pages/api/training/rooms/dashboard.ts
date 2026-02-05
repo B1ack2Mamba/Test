@@ -81,7 +81,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (membersErr) return res.status(500).json({ ok: false, error: membersErr.message });
 
     const now = Date.now();
-    const onlineWindowMs = 60_000;
+    const onlineWindowMs = 240_000; // 4 minutes (touch runs every 90s)
     const members = (membersData ?? []).map((m: any) => ({
       ...m,
       online: m.last_seen ? now - new Date(m.last_seen).getTime() < onlineWindowMs : false,

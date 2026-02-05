@@ -119,20 +119,40 @@ export default function TrainingRoom({ tests }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token, roomId]);
 
-  // presence ping
+  // presence ping (online status for the specialist dashboard)
   useEffect(() => {
     if (!session || !roomId || !member) return;
+
+    let alive = true;
+
     const tick = async () => {
+      if (!alive) return;
       await fetch("/api/training/rooms/touch", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ room_id: roomId }),
       }).catch(() => null);
     };
+
+    // initial ping
     tick();
-    const id = setInterval(tick, 15_000);
-    return () => clearInterval(id);
-  }, [session, roomId, member]);
+
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      tick();
+    }, 90_000);
+
+    const onVis = () => {
+      if (!document.hidden) tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      alive = false;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [session?.access_token, roomId, member]);
 
   const bySlug = useMemo(() => {
     const m = new Map<string, ProgressRow>();

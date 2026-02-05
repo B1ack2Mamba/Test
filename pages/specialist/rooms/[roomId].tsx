@@ -135,9 +135,37 @@ export default function SpecialistRoom({ tests }: Props) {
 
   useEffect(() => {
     if (!session || !roomId) return;
-    load();
-    const id = setInterval(load, 10_000);
-    return () => clearInterval(id);
+
+    let alive = true;
+    let inflight = false;
+
+    const safeLoad = async () => {
+      if (!alive || inflight) return;
+      inflight = true;
+      try {
+        await load();
+      } finally {
+        inflight = false;
+      }
+    };
+
+    safeLoad();
+
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      safeLoad();
+    }, 30_000);
+
+    const onVis = () => {
+      if (!document.hidden) safeLoad();
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      alive = false;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token, roomId]);
 
