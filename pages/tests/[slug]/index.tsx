@@ -25,10 +25,10 @@ export default function TestDetail({ test }: { test: AnyTest | null }) {
   if (!test) {
     return (
       <Layout title="Тест не найден">
-        <div className="rounded-2xl border bg-white p-4">
+        <div className="card">
           <div className="text-sm font-medium">Тест не найден</div>
           <div className="mt-3">
-            <Link href="/" className="rounded-xl border bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50">
+            <Link href="/" className="btn btn-secondary">
               На главную
             </Link>
           </div>
@@ -76,7 +76,7 @@ export default function TestDetail({ test }: { test: AnyTest | null }) {
 
   return (
     <Layout title={test?.title ?? "Тест"}>
-      <div className="rounded-2xl border bg-white p-4">
+      <div className="card">
         {!test ? (
           <div className="text-sm text-zinc-900">Тест не найден</div>
         ) : (
@@ -87,19 +87,19 @@ export default function TestDetail({ test }: { test: AnyTest | null }) {
           {test ? (
             <Link
               href={`/tests/${test.slug}/take`}
-              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="btn btn-primary"
             >
               Начать тест
             </Link>
           ) : null}
-          <Link href="/" className="rounded-xl border bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50">
+          <Link href="/" className="btn btn-secondary">
             На главную
           </Link>
         </div>
       </div>
 
       {attempts.length ? (
-        <div className="mt-4 rounded-2xl border bg-white p-4">
+        <div className="mt-4 card">
           <div className="text-sm font-medium">История</div>
           <div className="mt-3 grid gap-2">
             {attempts.map((a) => {
@@ -107,7 +107,7 @@ export default function TestDetail({ test }: { test: AnyTest | null }) {
                 ? [...a.result.ranked].sort((x, y) => (y?.percent ?? 0) - (x?.percent ?? 0))[0]
                 : null;
               return (
-                <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2">
+                <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/60 bg-white/50 px-3 py-2 backdrop-blur-sm">
                   <div>
                     <div className="text-xs text-zinc-600">{formatLocalDate(a.created_at)}</div>
                     {top ? (
@@ -118,7 +118,7 @@ export default function TestDetail({ test }: { test: AnyTest | null }) {
                   </div>
                   <button
                     onClick={() => openAttempt(a)}
-                    className="rounded-xl border bg-white px-3 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
+                    className="btn btn-secondary"
                   >
                     Открыть
                   </button>

@@ -81,8 +81,8 @@ export default function ImportPage() {
   if (!envOk) {
     return (
       <Layout title="Импорт теста (JSON)">
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
-          Supabase не настроен. Добавь переменные из <code className="rounded bg-zinc-100 px-1">.env.example</code>.
+        <div className="card text-sm text-zinc-600">
+          Supabase не настроен. Добавь переменные из <code className="rounded bg-white/60 px-1">.env.example</code>.
         </div>
       </Layout>
     );
@@ -91,7 +91,7 @@ export default function ImportPage() {
   if (loading) {
     return (
       <Layout title="Импорт теста (JSON)">
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">Загрузка…</div>
+        <div className="card text-sm text-zinc-600">Загрузка…</div>
       </Layout>
     );
   }
@@ -99,7 +99,7 @@ export default function ImportPage() {
   if (!user) {
     return (
       <Layout title="Импорт теста (JSON)">
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
+        <div className="card text-sm text-zinc-600">
           Нужен вход. Перейди в <a className="underline" href="/auth">/auth</a>.
         </div>
       </Layout>
@@ -118,10 +118,10 @@ export default function ImportPage() {
 
   return (
     <Layout title="Импорт теста (JSON)">
-      <div className="rounded-2xl border bg-white p-4">
+      <div className="card">
         <div className="text-sm text-zinc-600">
-          Вставь JSON теста (формат <code className="rounded bg-zinc-100 px-1">forced_pair_v1</code> или
-          <code className="ml-1 rounded bg-zinc-100 px-1">forced_pair</code>) и нажми “Проверить”.
+          Вставь JSON теста (формат <code className="rounded bg-white/60 px-1">forced_pair_v1</code> или
+          <code className="ml-1 rounded bg-white/60 px-1">forced_pair</code>) и нажми “Проверить”.
           <div className="mt-2">
             Загрузи через кнопку ниже (доступ только для админа по email).
           </div>
@@ -131,13 +131,13 @@ export default function ImportPage() {
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
           placeholder='{"slug":"my-test","title":"...","type":"forced_pair_v1",...}'
-          className="mt-3 h-64 w-full rounded-xl border bg-white p-3 font-mono text-xs outline-none focus:border-zinc-900"
+          className="mt-3 h-64 textarea font-mono text-xs"
         />
 
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={parse}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            className="btn btn-primary"
           >
             Проверить
           </button>
@@ -172,7 +172,7 @@ export default function ImportPage() {
               };
               downloadJson("template-test.json", template);
             }}
-            className="rounded-xl border bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
+            className="btn btn-secondary"
           >
             Скачать шаблон
           </button>
@@ -186,7 +186,7 @@ export default function ImportPage() {
                 delete publicTest.pricing;
                 downloadJson(`${test.slug}.json`, publicTest);
               }}
-              className="rounded-xl border bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
+              className="btn btn-secondary"
             >
               Скачать {test.slug}.json
             </button>
@@ -198,7 +198,7 @@ export default function ImportPage() {
         ) : null}
 
         {test && stats ? (
-          <div className="mt-4 rounded-xl border bg-zinc-50 p-3 text-sm">
+          <div className="mt-4 card-soft p-3 text-sm">
             <div className="font-medium">✅ Валидно</div>
             <div className="mt-1 text-zinc-700">
               slug: <span className="font-mono">{test.slug}</span>
@@ -206,18 +206,18 @@ export default function ImportPage() {
             <div className="text-zinc-700">вопросов: {stats.questions}</div>
             <div className="text-zinc-700">используемые теги: {stats.tagsUsed}</div>
 
-            <div className="mt-4 rounded-xl border bg-white p-3">
+            <div className="mt-4 card-soft p-3">
               <div className="text-sm font-medium">Загрузить в Supabase</div>
               <div className="mt-1 text-xs text-zinc-600">
                 Доступ только администратору (по email). На сервере должен быть прописан
-                <code className="ml-1 rounded bg-zinc-100 px-1">SUPABASE_SERVICE_ROLE_KEY</code>.
+                <code className="ml-1 rounded bg-white/60 px-1">SUPABASE_SERVICE_ROLE_KEY</code>.
               </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button
                   disabled={!user || !isAdminEmail(user.email)}
                   onClick={uploadToSupabase}
-                  className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                  className="btn btn-primary disabled:opacity-50"
                 >
                   Загрузить
                 </button>

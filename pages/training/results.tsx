@@ -10,8 +10,8 @@ function levelColor(level: string) {
   const l = String(level || "").toLowerCase();
   if (l.includes("выс")) return "bg-emerald-50 text-emerald-700";
   if (l.includes("сред")) return "bg-amber-50 text-amber-700";
-  if (l.includes("низ")) return "bg-zinc-100 text-zinc-700";
-  return "bg-zinc-100 text-zinc-700";
+  if (l.includes("низ")) return "bg-white/60 text-zinc-700";
+  return "bg-white/60 text-zinc-700";
 }
 
 export default function TrainingResults() {
@@ -64,15 +64,15 @@ export default function TrainingResults() {
       </div>
 
       {!attemptId ? (
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">Нет attempt_id.</div>
+        <div className="card text-sm text-zinc-700">Нет attempt_id.</div>
       ) : null}
 
-      {err ? <div className="mb-3 rounded-2xl border bg-white p-4 text-sm text-red-600">{err}</div> : null}
+      {err ? <div className="mb-3 card text-sm text-red-600">{err}</div> : null}
 
       {attemptId ? (
         <div className="grid gap-4">
           {reveal && result ? (
-            <div className="rounded-2xl border bg-white p-4">
+            <div className="card">
               <div className="text-sm font-semibold">Ваши результаты</div>
               {meta ? <div className="mt-1 text-xs text-zinc-500">test: {meta.test_slug}</div> : null}
 
@@ -118,7 +118,7 @@ export default function TrainingResults() {
                         return null;
                       })();
 
-                      const stripe = idx % 2 === 0 ? "bg-white" : "bg-zinc-50";
+                      const stripe = idx % 2 === 0 ? "bg-white/55" : "bg-white/35";
 
                       return (
                         <tr key={r.tag} className={["border-b align-top", stripe].join(" ")}>
@@ -167,7 +167,7 @@ export default function TrainingResults() {
             </div>
           ) : null}
 
-          <div className="rounded-2xl border bg-white p-4">
+          <div className="card">
             <div className="text-sm font-semibold">Ваша расшифровка</div>
             {meta ? <div className="mt-1 text-xs text-zinc-500">test: {meta.test_slug}</div> : null}
 

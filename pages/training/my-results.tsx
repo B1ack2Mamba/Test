@@ -62,10 +62,10 @@ export default function MyTrainingResults({ tests }: Props) {
   if (!session || !user) {
     return (
       <Layout title="Мои результаты">
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+        <div className="card text-sm text-zinc-700">
           Нужно войти.
           <div className="mt-3">
-            <Link href="/auth?next=%2Ftraining%2Fmy-results" className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50">
+            <Link href="/auth?next=%2Ftraining%2Fmy-results" className="btn btn-secondary btn-sm">
               Вход / регистрация
             </Link>
           </div>
@@ -83,21 +83,21 @@ export default function MyTrainingResults({ tests }: Props) {
         <button
           onClick={load}
           disabled={loading}
-          className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+          className="btn btn-secondary btn-sm"
         >
           {loading ? "…" : "Обновить"}
         </button>
       </div>
 
-      {err ? <div className="mb-3 rounded-2xl border bg-white p-4 text-sm text-red-600">{err}</div> : null}
+      {err ? <div className="mb-3 card text-sm text-red-600">{err}</div> : null}
 
-      <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+      <div className="card text-sm text-zinc-700">
         Здесь отображаются результаты, которые специалист отправил вам в личный кабинет.
       </div>
 
       <div className="mt-3 grid gap-3">
         {rows.map((r) => (
-          <div key={r.attempt_id} className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div key={r.attempt_id} className="card">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold">{titleBySlug.get(r.test_slug) || r.test_slug}</div>
@@ -106,7 +106,7 @@ export default function MyTrainingResults({ tests }: Props) {
               </div>
               <Link
                 href={`/training/results?attempt=${encodeURIComponent(r.attempt_id)}`}
-                className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white"
+                className="btn btn-primary"
               >
                 Открыть
               </Link>
@@ -119,7 +119,7 @@ export default function MyTrainingResults({ tests }: Props) {
         ))}
 
         {rows.length === 0 && !loading ? (
-          <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
+          <div className="card text-sm text-zinc-600">
             Пока нет отправленных результатов.
           </div>
         ) : null}

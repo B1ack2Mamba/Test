@@ -12,14 +12,14 @@ export function AuthNav() {
   }, [user]);
 
   if (!envOk) {
-    return <span className="text-xs text-zinc-500">Supabase не настроен</span>;
+    return <span className="text-xs text-slate-500">Supabase не настроен</span>;
   }
 
   if (!session || !user) {
     return (
       <Link
         href="/auth"
-        className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-50"
+        className="btn btn-secondary btn-sm"
       >
         Вход
       </Link>
@@ -28,7 +28,7 @@ export function AuthNav() {
 
   return (
     <div className="flex items-center gap-2">
-      <span className="hidden max-w-40 truncate text-xs text-zinc-500 sm:inline">
+      <span className="hidden max-w-40 truncate text-xs text-slate-500 sm:inline">
         {email || user.id}
       </span>
       <button
@@ -43,7 +43,7 @@ export function AuthNav() {
             setBusy(false);
           }
         }}
-        className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-50 disabled:opacity-50"
+        className="btn btn-secondary btn-sm"
       >
         Выйти
       </button>

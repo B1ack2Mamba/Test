@@ -72,10 +72,10 @@ export default function TrainingHome() {
   if (!session || !user) {
     return (
       <Layout title="Тренинг">
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+        <div className="card text-sm text-zinc-700">
           Для участия в тренинге нужно войти.
           <div className="mt-3">
-            <Link href="/auth?next=%2Ftraining" className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50">
+            <Link href="/auth?next=%2Ftraining" className="btn btn-secondary btn-sm">
               Вход / регистрация
             </Link>
           </div>
@@ -86,13 +86,13 @@ export default function TrainingHome() {
 
   return (
     <Layout title="Тренинг">
-      <div className="mb-4 rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+      <div className="mb-4 card text-sm text-zinc-700">
         Выберите комнату и войдите по паролю тренера. После входа появится список тестов.
       </div>
 
       <div className="grid gap-3">
         {err ? (
-          <div className="rounded-2xl border bg-white p-4 text-sm text-red-600">{err}</div>
+          <div className="card text-sm text-red-600">{err}</div>
         ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -101,7 +101,7 @@ export default function TrainingHome() {
             <button
               onClick={loadRooms}
               disabled={loading}
-              className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+              className="btn btn-secondary btn-sm"
             >
               Обновить
             </button>
@@ -109,8 +109,8 @@ export default function TrainingHome() {
         </div>
 
         {rooms.map((room) => (
-          <div key={room.id} className="rounded-2xl border bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
+          <div key={room.id} className="card">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="text-lg font-semibold">{room.name}</div>
                 <div className="mt-1 text-xs text-zinc-500">
@@ -118,10 +118,10 @@ export default function TrainingHome() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <Link
                   href="/training/my-results"
-                  className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50"
+                  className="btn btn-secondary btn-sm w-full sm:w-auto"
                 >
                   Мои результаты
                 </Link>
@@ -131,7 +131,7 @@ export default function TrainingHome() {
                     setJoinPwd("");
                     setJoinError("");
                   }}
-                  className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50"
+                  className="btn btn-secondary btn-sm w-full sm:w-auto"
                 >
                   Войти
                 </button>
@@ -139,37 +139,23 @@ export default function TrainingHome() {
             </div>
 
             {joinRoomId === room.id ? (
-              <div className="mt-3 grid gap-2 rounded-xl border bg-zinc-50 p-3">
+              <div className="mt-3 grid gap-2 card-soft p-3">
                 <div className="grid gap-1">
                   <div className="text-xs font-medium text-zinc-700">Ваше имя в комнате</div>
-                  <input
-                    value={joinName}
-                    onChange={(e) => setJoinName(e.target.value)}
-                    className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
-                    placeholder="Например: Алекс"
-                  />
+                  <input value={joinName} onChange={(e) => setJoinName(e.target.value)} className="input" placeholder="Например: Алекс" />
                 </div>
                 <div className="grid gap-1">
                   <div className="text-xs font-medium text-zinc-700">Пароль комнаты</div>
-                  <input
-                    value={joinPwd}
-                    onChange={(e) => setJoinPwd(e.target.value)}
-                    className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
-                    placeholder="Пароль от тренера"
-                  />
+                  <input value={joinPwd} onChange={(e) => setJoinPwd(e.target.value)} className="input" placeholder="Пароль от тренера" />
                 </div>
                 {joinError ? <div className="text-sm text-red-600">{joinError}</div> : null}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={join}
-                    disabled={joinBusy || !joinPwd || !joinName}
-                    className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-                  >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <button onClick={join} disabled={joinBusy || !joinPwd || !joinName} className="btn btn-primary w-full sm:w-auto">
                     {joinBusy ? "Входим…" : "Войти"}
                   </button>
                   <button
                     onClick={() => setJoinRoomId("")}
-                    className="rounded-lg border bg-white px-3 py-2 text-sm font-medium hover:bg-zinc-50"
+                    className="btn btn-secondary w-full sm:w-auto"
                   >
                     Отмена
                   </button>
@@ -180,7 +166,7 @@ export default function TrainingHome() {
         ))}
 
         {rooms.length === 0 && !loading ? (
-          <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
+          <div className="card text-sm text-zinc-600">
             Пока нет активных комнат.
           </div>
         ) : null}

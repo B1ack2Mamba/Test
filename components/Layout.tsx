@@ -12,7 +12,7 @@ const SpecialistNavNoSSR = dynamic(
 
 const AuthNavNoSSR = dynamic(
   () => import("@/components/AuthNav").then((m) => m.AuthNav),
-  { ssr: false, loading: () => <span className="text-xs text-zinc-500">…</span> }
+  { ssr: false, loading: () => <span className="text-xs text-slate-500">…</span> }
 );
 
 export function Layout({
@@ -23,27 +23,27 @@ export function Layout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+    <div className="min-h-screen bg-app text-slate-900">
+      <header className="border-b border-white/60 bg-white/55 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-4xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="font-semibold tracking-tight">Авторские тесты</div>
-          <nav className="flex items-center gap-2 text-sm">
+          <nav className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
             <Link
               href="/"
-              className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-50"
+              className="btn btn-secondary btn-sm"
             >
               Тесты
             </Link>
             <Link
               href="/training"
-              className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-50"
+              className="btn btn-secondary btn-sm"
             >
               Тренинги
             </Link>
             {PAYMENTS_UI_ENABLED ? (
               <Link
                 href="/wallet"
-                className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-50"
+                className="btn btn-secondary btn-sm"
               >
                 Кошелёк
               </Link>
@@ -56,12 +56,12 @@ export function Layout({
       </header>
 
       <main className="mx-auto max-w-4xl px-4 py-6">
-        {title ? <h1 className="mb-4 text-2xl font-semibold">{title}</h1> : null}
+        {title ? <h1 className="mb-4 text-2xl font-semibold tracking-tight">{title}</h1> : null}
         {children}
       </main>
 
-      <footer className="border-t bg-white">
-        <div className="mx-auto max-w-4xl px-4 py-5 text-xs text-zinc-500">&nbsp;</div>
+      <footer className="border-t border-white/60 bg-white/45 backdrop-blur-sm">
+        <div className="mx-auto max-w-4xl px-4 py-5 text-xs text-slate-500">&nbsp;</div>
       </footer>
     </div>
   );

@@ -8,8 +8,8 @@ import { useSession } from "@/lib/useSession";
 
 function cls(active: boolean) {
   return active
-    ? "rounded-xl border bg-zinc-900 px-3 py-2 text-left text-sm font-medium leading-tight text-white"
-    : "rounded-xl border bg-white px-3 py-2 text-left text-sm font-medium leading-tight text-zinc-900 hover:bg-zinc-50";
+    ? "rounded-xl border border-indigo-300/80 bg-indigo-200/70 px-4 py-3 text-left text-[15px] font-medium leading-snug text-indigo-950"
+    : "rounded-xl border border-white/70 bg-white/55 px-4 py-3 text-left text-[15px] font-medium leading-snug text-slate-900 hover:bg-white/75";
 }
 
 function cap(s: string) {
@@ -71,7 +71,7 @@ function SplitScale({
         {leftItems.map((n) => (
           <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
             <div>{labelFor(n)}</div>
-            <div className={`mt-0.5 text-[10px] ${value === n ? "text-white/80" : "text-zinc-500"}`}>
+            <div className={`mt-0.5 text-[10px] ${value === n ? "text-white/80" : "text-slate-500"}`}>
               {L} {n} / {R} {max - n}
             </div>
           </button>
@@ -82,7 +82,7 @@ function SplitScale({
         {rightItems.map((n) => (
           <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
             <div>{labelFor(n)}</div>
-            <div className={`mt-0.5 text-[10px] ${value === n ? "text-white/80" : "text-zinc-500"}`}>
+            <div className={`mt-0.5 text-[10px] ${value === n ? "text-white/80" : "text-slate-500"}`}>
               {L} {n} / {R} {max - n}
             </div>
           </button>
@@ -305,7 +305,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
   if (!isEnabled) {
     return (
       <Layout title={test.title}>
-        <div className="mb-4 rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+        <div className="mb-4 card text-sm text-slate-700">
           Комната: <span className="font-medium">{roomId}</span>
         </div>
 
@@ -323,9 +323,9 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
 
   return (
     <Layout title={test.title}>
-      <div className="mb-4 rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+      <div className="mb-4 card text-sm text-slate-700">
         Комната: <span className="font-medium">{roomId}</span>
-        <div className="mt-1 text-xs text-zinc-500">
+        <div className="mt-1 text-xs text-slate-500">
           Результаты в цифрах будут доступны специалисту. Вы увидите только статус «завершено».
         </div>
       </div>
@@ -337,8 +337,8 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
               const q = qByOrder.get(order) || {};
               const value = (colorDraft as any)[`q${order}`] as ABC | "";
               return (
-                <div key={order} className="rounded-2xl border bg-white p-4">
-                  <div className="mb-3 text-sm font-medium text-zinc-700">{order}. {q.prompt || "Выберите вариант"}</div>
+                <div key={order} className="card">
+                  <div className="mb-3 text-sm font-medium text-slate-700">{order}. {q.prompt || "Выберите вариант"}</div>
                   <div className="grid gap-2">
                     {(Object.keys(q.options || {}) as ABC[]).map((k) => (
                       <button
@@ -347,7 +347,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                         className={cls(value === k)}
                         onClick={() => patchColor({ [`q${order}`]: k } as any)}
                       >
-                        <div className="text-xs font-semibold text-zinc-600">Вариант {k}</div>
+                        <div className="text-xs font-semibold text-slate-600">Вариант {k}</div>
                         <div className="mt-1 text-sm">{q.options?.[k]}</div>
                       </button>
                     ))}
@@ -372,14 +372,14 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
               };
               const ok = value.filter(Boolean).length === 3 && new Set(value.filter(Boolean)).size === 3;
               return (
-                <div key={order} className="rounded-2xl border bg-white p-4">
-                  <div className="mb-3 text-sm font-medium text-zinc-700">{order}. {q.prompt || "Ранжирование"}</div>
+                <div key={order} className="card">
+                  <div className="mb-3 text-sm font-medium text-slate-700">{order}. {q.prompt || "Ранжирование"}</div>
                   <div className="grid gap-2 sm:grid-cols-3">
                     {[0, 1, 2].map((i) => (
-                      <div key={i} className="rounded-xl border bg-zinc-50 p-3">
-                        <div className="text-xs font-semibold text-zinc-600">Место {i + 1}</div>
+                      <div key={i} className="card-soft p-3">
+                        <div className="text-xs font-semibold text-slate-600">Место {i + 1}</div>
                         <select
-                          className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                          className="mt-2 input"
                           value={value?.[i] || ""}
                           onChange={(e) => setAt(i, (e.target.value as any) || "")}
                         >
@@ -400,9 +400,9 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                   </div>
 
                   {/* Keep a stable block height to avoid small layout shifts */}
-                  <div className="mt-3 min-h-[22px] text-xs text-zinc-600">
+                  <div className="mt-3 min-h-[22px] text-xs text-slate-600">
                     {ok ? (
-                      <>Выбрано: <b className="text-zinc-900">{(value.filter(Boolean) as string[]).join(" → ")}</b></>
+                      <>Выбрано: <b className="text-slate-900">{(value.filter(Boolean) as string[]).join(" → ")}</b></>
                     ) : (
                       <>Нужно выбрать все 3 места без повторов.</>
                     )}
@@ -417,23 +417,23 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
               const value = (colorDraft as any)[key] as number[];
               const ok = value.length === 3 && new Set(value).size === 3;
               return (
-                <div key={order} className="rounded-2xl border bg-white p-4">
-                  <div className="mb-3 text-sm font-medium text-zinc-700">{order}. {q.prompt || "Выберите 3"}</div>
+                <div key={order} className="card">
+                  <div className="mb-3 text-sm font-medium text-slate-700">{order}. {q.prompt || "Выберите 3"}</div>
                   <div className="grid gap-2">
                     {(Object.keys(q.options || {}) as string[]).map((k) => {
                       const n = Number(k);
                       const active = value.includes(n);
                       return (
                         <button key={k} type="button" className={cls(active)} onClick={() => togglePick(key, n)}>
-                          <div className="text-xs font-semibold text-zinc-600">{k}</div>
+                          <div className="text-xs font-semibold text-slate-600">{k}</div>
                           <div className="mt-1 text-sm">{q.options?.[k]}</div>
                         </button>
                       );
                     })}
                   </div>
-                  <div className="mt-3 text-xs text-zinc-600">
+                  <div className="mt-3 text-xs text-slate-600">
                     {ok ? (
-                      <>Выбрано: <b className="text-zinc-900">{value.slice().sort((a, b) => a - b).join(", ")}</b></>
+                      <>Выбрано: <b className="text-slate-900">{value.slice().sort((a, b) => a - b).join(", ")}</b></>
                     ) : (
                       <>Выберите ровно 3 пункта (сейчас: {value.length}).</>
                     )}
@@ -444,11 +444,11 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
           </>
         ) : test.type === "16pf_v1" ? (
           <>
-            <details className="rounded-2xl border bg-white p-4">
+            <details className="card">
               <summary className="cursor-pointer text-sm font-medium text-zinc-800">
                 Инструкция (нажми, чтобы раскрыть)
               </summary>
-              <div className="mt-3 space-y-2 text-sm text-zinc-700">
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
                 <p>
                   Отвечай быстро и честно. Здесь нет «правильных» ответов.
                 </p>
@@ -466,8 +466,8 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
               const chosen = pf16[idx] || "";
               const opts = (q?.options || {}) as Record<ABC, string>;
               return (
-                <div key={idx} className="rounded-2xl border bg-white p-4">
-                  <div className="mb-3 text-sm font-medium text-zinc-700">
+                <div key={idx} className="card">
+                  <div className="mb-3 text-sm font-medium text-slate-700">
                     {idx + 1}. {String(q?.text || q?.prompt || "")}
                   </div>
                   <div className="grid gap-2">
@@ -482,7 +482,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                           savePF16Draft(next);
                         }}
                       >
-                        <div className="text-xs font-semibold text-zinc-600">Вариант {k}</div>
+                        <div className="text-xs font-semibold text-slate-600">Вариант {k}</div>
                         <div className="mt-1 text-sm">{opts?.[k] || ""}</div>
                       </button>
                     ))}
@@ -501,7 +501,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
 
             if (!left || !right) {
               return (
-                <div key={idx} className="rounded-2xl border bg-white p-4 text-sm text-red-600">
+                <div key={idx} className="card text-sm text-red-600">
                   Ошибка конфигурации вопроса #{idx + 1}: отсутствуют варианты ответа.
                 </div>
               );
@@ -510,8 +510,8 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
             const leftTag = String(left.tag ?? "left");
             const rightTag = String(right.tag ?? "right");
             return (
-              <div key={idx} className="rounded-2xl border bg-white p-4">
-                <div className="mb-3 text-sm font-medium text-zinc-700">
+              <div key={idx} className="card">
+                <div className="mb-3 text-sm font-medium text-slate-700">
                   {idx + 1}. {q.prompt || "Выберите вариант"}
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -554,8 +554,8 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
               { val: 3, label: "Полностью согласен" },
             ];
             return (
-              <div key={idx} className="rounded-2xl border bg-white p-4">
-                <div className="mb-3 text-sm font-medium text-zinc-700">
+              <div key={idx} className="card">
+                <div className="mb-3 text-sm font-medium text-slate-700">
                   {idx + 1}. {String((q as any)?.text || (q as any)?.prompt || "")}
                 </div>
 
@@ -572,7 +572,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                       }}
                     >
                       <div className="text-xs font-semibold">{c.val}</div>
-                      <div className={`mt-0.5 text-[10px] leading-tight ${v === c.val ? "text-white/80" : "text-zinc-500"}`}>
+                      <div className={`mt-0.5 text-[10px] leading-tight ${v === c.val ? "text-white/80" : "text-slate-500"}`}>
                         {c.label}
                       </div>
                     </button>
@@ -591,16 +591,16 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
           const leftText = String((q as any)?.left?.text ?? (q as any)?.left?.label ?? "").trim();
           const rightText = String((q as any)?.right?.text ?? (q as any)?.right?.label ?? "").trim();
           return (
-            <div key={idx} className="rounded-2xl border bg-white p-4">
-              <div className="mb-3 text-sm font-medium text-zinc-700">{idx + 1}. Распределите {max} баллов</div>
+            <div key={idx} className="card">
+              <div className="mb-3 text-sm font-medium text-slate-700">{idx + 1}. Распределите {max} баллов</div>
 
               <div className="grid gap-2 sm:grid-cols-2">
-                <div className="rounded-xl border bg-zinc-50 p-3">
-                  <div className="text-xs font-semibold text-zinc-600">Утверждение 1{leftFactor ? ` (${leftFactor})` : ""}</div>
+                <div className="card-soft p-3">
+                  <div className="text-xs font-semibold text-slate-600">Утверждение 1{leftFactor ? ` (${leftFactor})` : ""}</div>
                   <div className="mt-1 text-sm text-zinc-800">{leftText || "—"}</div>
                 </div>
-                <div className="rounded-xl border bg-zinc-50 p-3">
-                  <div className="text-xs font-semibold text-zinc-600">Утверждение 2{rightFactor ? ` (${rightFactor})` : ""}</div>
+                <div className="card-soft p-3">
+                  <div className="text-xs font-semibold text-slate-600">Утверждение 2{rightFactor ? ` (${rightFactor})` : ""}</div>
                   <div className="mt-1 text-sm text-zinc-800">{rightText || "—"}</div>
                 </div>
               </div>
@@ -620,7 +620,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
               </div>
 
               {v !== null ? (
-                <div className="mt-2 text-xs text-zinc-500">
+                <div className="mt-2 text-xs text-slate-500">
                   Выбрано: <span className="font-medium">{leftFactor || "A"} {v}</span> /{" "}
                   <span className="font-medium">{rightFactor || "B"} {max - v}</span>
                 </div>
@@ -631,19 +631,19 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
         )}
       </div>
 
-      {err ? <div className="mt-4 rounded-2xl border bg-white p-4 text-sm text-red-600">{err}</div> : null}
+      {err ? <div className="mt-4 card text-sm text-red-600">{err}</div> : null}
 
       <div className="mt-6 flex items-center gap-2">
         <button
           onClick={submit}
           disabled={busy}
-          className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="btn btn-primary disabled:opacity-50"
         >
           {busy ? "Сохраняем…" : `Завершить (${totalAnswered}/${test.type === "color_types_v1" ? 6 : (test.questions?.length ?? 0)})`}
         </button>
         <Link
           href={`/training/rooms/${encodeURIComponent(roomId)}`}
-          className="rounded-xl border bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50"
+          className="btn btn-secondary"
         >
           Назад
         </Link>

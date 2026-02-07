@@ -11,14 +11,14 @@ export default function WalletPage() {
   if (!PAYMENTS_UI_ENABLED) {
     return (
       <Layout title="Кошелёк">
-        <div className="rounded-2xl border bg-white p-4">
+        <div className="card">
           <div className="text-sm font-semibold">Раздел временно скрыт</div>
-          <div className="mt-1 text-sm text-zinc-700">Сейчас доступна только работа с тестами и тренинг-комнатами.</div>
+          <div className="mt-1 text-sm text-slate-700">Сейчас доступна только работа с тестами и тренинг-комнатами.</div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link href="/" className="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-zinc-50">
+            <Link href="/" className="btn btn-secondary">
               На главную
             </Link>
-            <Link href="/training" className="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-zinc-50">
+            <Link href="/training" className="btn btn-secondary">
               Тренинги
             </Link>
           </div>

@@ -97,38 +97,32 @@ export default function AuthPage() {
 
   return (
     <Layout title="Вход">
-      <div className="rounded-2xl border bg-white p-4">
+      <div className="card">
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => setMode("login")}
-            className={`rounded-xl px-3 py-1.5 text-sm ${
-              mode === "login" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-800 hover:bg-zinc-200"
-            }`}
+            className={`btn btn-sm ${mode === "login" ? "btn-primary" : "btn-secondary"}`}
           >
             Вход
           </button>
           <button
             type="button"
             onClick={() => setMode("signup")}
-            className={`rounded-xl px-3 py-1.5 text-sm ${
-              mode === "signup" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-800 hover:bg-zinc-200"
-            }`}
+            className={`btn btn-sm ${mode === "signup" ? "btn-primary" : "btn-secondary"}`}
           >
             Регистрация
           </button>
           <button
             type="button"
             onClick={() => setMode("otp")}
-            className={`rounded-xl px-3 py-1.5 text-sm ${
-              mode === "otp" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-800 hover:bg-zinc-200"
-            }`}
+            className={`btn btn-sm ${mode === "otp" ? "btn-primary" : "btn-secondary"}`}
           >
             Ссылка на почту
           </button>
         </div>
 
-        <div className="mt-3 text-xs text-zinc-600">
+        <div className="mt-3 text-xs text-slate-600">
           {mode === "login" ? "Вход по email и паролю." : null}
           {mode === "signup"
             ? "Создайте аккаунт по email и паролю. Если вы специалист — включите переключатель и введите общий код."
@@ -138,33 +132,33 @@ export default function AuthPage() {
 
         <form onSubmit={onSubmit} className="mt-4 grid gap-3">
           <label className="grid gap-1">
-            <span className="text-xs text-zinc-600">Email</span>
+            <span className="text-xs text-slate-600">Email</span>
             <input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               type="email"
               placeholder="you@example.com"
-              className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+              className="input"
               required
             />
           </label>
 
           {mode !== "otp" ? (
             <label className="grid gap-1">
-              <span className="text-xs text-zinc-600">Пароль</span>
+              <span className="text-xs text-slate-600">Пароль</span>
               <input
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 type="password"
                 placeholder="••••••••"
-                className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+                className="input"
                 required
               />
             </label>
           ) : null}
 
           {mode === "signup" ? (
-            <div className="rounded-2xl border bg-zinc-50 p-3">
+            <div className="card-soft p-3">
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -176,21 +170,21 @@ export default function AuthPage() {
 
               {isSpecialist ? (
                 <label className="mt-2 grid gap-1">
-                  <span className="text-xs text-zinc-600">Код специалиста</span>
+                  <span className="text-xs text-slate-600">Код специалиста</span>
                   <input
                     value={specialistCode}
                     onChange={(e) => setSpecialistCode(e.target.value)}
                     type="password"
                     placeholder="SPECIALIST_SIGNUP_CODE"
-                    className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+                    className="input"
                     required
                   />
-                  <div className="text-[11px] text-zinc-500">
+                  <div className="text-[11px] text-slate-500">
                     Код общий для всех специалистов. Хранится в ENV как <b>SPECIALIST_SIGNUP_CODE</b>.
                   </div>
                 </label>
               ) : (
-                <div className="mt-2 text-[11px] text-zinc-500">
+                <div className="mt-2 text-[11px] text-slate-500">
                   Если вы участник тренинга — просто регистрируйтесь как обычный пользователь.
                 </div>
               )}
@@ -198,12 +192,12 @@ export default function AuthPage() {
           ) : null}
 
           {error ? <div className="text-sm text-red-600">{error}</div> : null}
-          {info ? <div className="text-sm text-zinc-700">{info}</div> : null}
+          {info ? <div className="text-sm text-slate-700">{info}</div> : null}
 
           <button
             disabled={loading}
             type="submit"
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+            className="btn btn-primary w-full"
           >
             {loading
               ? "..."
@@ -215,8 +209,8 @@ export default function AuthPage() {
           </button>
         </form>
 
-        <div className="mt-4 text-xs text-zinc-600">
-          <Link href="/" className="hover:text-zinc-900">
+        <div className="mt-4 text-xs text-slate-600">
+          <Link href="/" className="link">
             ← На главную
           </Link>
         </div>

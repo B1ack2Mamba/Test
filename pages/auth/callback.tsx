@@ -37,7 +37,7 @@ export default function AuthCallbackPage() {
 
   return (
     <Layout title="Вход">
-      <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">{msg}</div>
+      <div className="card text-sm text-zinc-700">{msg}</div>
     </Layout>
   );
 }

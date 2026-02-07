@@ -20,8 +20,8 @@ function levelColor(level: string) {
   const l = level.toLowerCase();
   if (l.includes("выс")) return "bg-emerald-50 text-emerald-700";
   if (l.includes("сред")) return "bg-amber-50 text-amber-700";
-  if (l.includes("низ")) return "bg-zinc-100 text-zinc-700";
-  return "bg-zinc-100 text-zinc-700";
+  if (l.includes("низ")) return "bg-slate-100 text-slate-700";
+  return "bg-slate-100 text-slate-700";
 }
 
 export default function TestResult({ test }: { test: AnyTest }) {
@@ -61,14 +61,14 @@ export default function TestResult({ test }: { test: AnyTest }) {
   return (
     <Layout title={`${test.title} — результат`}>
       {!result ? (
-        <div className="rounded-2xl border bg-white p-4">
+        <div className="card">
           <div className="text-sm text-zinc-900">Результат не найден.</div>
           <div className="mt-2 text-sm text-zinc-600">Открой результат заново из истории.</div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link href={`/tests/${test.slug}`} className="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-zinc-50">
+            <Link href={`/tests/${test.slug}`} className="btn btn-secondary">
               ← К тесту
             </Link>
-            <Link href="/" className="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-zinc-50">
+            <Link href="/" className="btn btn-secondary">
               На главную
             </Link>
           </div>
@@ -76,13 +76,13 @@ export default function TestResult({ test }: { test: AnyTest }) {
       ) : (
         <>
           {chartData.length ? (
-            <div className="mb-4 rounded-2xl border bg-white p-4">
+            <div className="mb-4 card">
               <div className="mb-3 text-sm font-medium text-zinc-900">Профиль</div>
               <LineChart data={chartData} />
             </div>
           ) : null}
 
-          <div className="rounded-2xl border bg-white p-4">
+          <div className="card">
             <div className="mb-3 text-sm font-medium text-zinc-900">Таблица</div>
 
             <div className="overflow-x-auto">
@@ -120,7 +120,7 @@ export default function TestResult({ test }: { test: AnyTest }) {
                       return null;
                     })();
 
-                    const stripe = idx % 2 === 0 ? "bg-white" : "bg-zinc-50";
+                    const stripe = idx % 2 === 0 ? "bg-white/55" : "bg-white/35";
 
                     return (
                       <tr key={r.tag} className={["border-b align-top", stripe].join(" ")}>
@@ -168,10 +168,10 @@ export default function TestResult({ test }: { test: AnyTest }) {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link href={`/tests/${test.slug}`} className="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-zinc-50">
+              <Link href={`/tests/${test.slug}`} className="btn btn-secondary">
                 ← К тесту
               </Link>
-              <Link href="/" className="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-zinc-50">
+              <Link href="/" className="btn btn-secondary">
                 На главную
               </Link>
             </div>

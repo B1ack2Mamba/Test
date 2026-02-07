@@ -54,13 +54,13 @@ export default function CreditPage() {
   return (
     <Layout title="Админ: начисление в кошелёк">
       {!envOk ? (
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
-          Supabase не настроен. Добавь переменные из <code className="rounded bg-zinc-100 px-1">.env.example</code>.
+        <div className="card text-sm text-zinc-600">
+          Supabase не настроен. Добавь переменные из <code className="rounded bg-white/60 px-1">.env.example</code>.
         </div>
       ) : loading ? (
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">Загрузка…</div>
+        <div className="card text-sm text-zinc-600">Загрузка…</div>
       ) : !user ? (
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
+        <div className="card text-sm text-zinc-600">
           Нужен вход. Перейди в <a className="underline" href="/auth">/auth</a>.
         </div>
       ) : !isAdminEmail(user.email) ? (
@@ -68,12 +68,12 @@ export default function CreditPage() {
           Доступ запрещён. Админ: <span className="font-mono">{ADMIN_EMAIL}</span>
         </div>
       ) : (
-      <div className="rounded-2xl border bg-white p-4">
+      <div className="card">
         <div className="text-sm text-zinc-700">
           Служебная страница для ручного пополнения (на время тестов). Доступ — только администратору.
         </div>
 
-        <div className="mt-3 rounded-xl border bg-zinc-50 p-3 text-sm">
+        <div className="mt-3 card-soft p-3 text-sm">
           <div>
             user_id: <span className="font-mono">{uid || "(не авторизован)"}</span>
           </div>
@@ -89,12 +89,12 @@ export default function CreditPage() {
             value={amountRub}
             onChange={(e) => setAmountRub(e.target.value)}
             placeholder="Сумма (RUB)"
-            className="w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
+            className="input"
           />
           <button
             disabled={!canSend}
             onClick={credit}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white enabled:hover:bg-zinc-800 disabled:opacity-50"
+            className="btn btn-primary"
           >
             Начислить
           </button>

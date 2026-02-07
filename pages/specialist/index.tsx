@@ -67,10 +67,10 @@ export default function SpecialistHome() {
   if (!session || !user) {
     return (
       <Layout title="Специалист">
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+        <div className="card text-sm text-zinc-700">
           Войдите, чтобы открыть кабинет специалиста.
           <div className="mt-3">
-            <Link href="/auth?next=%2Fspecialist" className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50">
+            <Link href="/auth?next=%2Fspecialist" className="btn btn-secondary btn-sm">
               Вход / регистрация
             </Link>
           </div>
@@ -82,7 +82,7 @@ export default function SpecialistHome() {
   if (!isSpecialistUser(user)) {
     return (
       <Layout title="Специалист">
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+        <div className="card text-sm text-zinc-700">
           Этот раздел доступен только специалисту.
         </div>
       </Layout>
@@ -91,27 +91,27 @@ export default function SpecialistHome() {
 
   return (
     <Layout title="Кабинет специалиста">
-      <div className="mb-4 rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+      <div className="mb-4 card text-sm text-zinc-700">
         Здесь вы создаёте комнаты тренинга, наблюдаете участников и открываете результаты в цифрах.
       </div>
 
-      <div className="mb-6 rounded-2xl border bg-white p-4">
+      <div className="mb-6 card">
         <div className="text-sm font-semibold">Создать комнату</div>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <div className="grid gap-1">
             <div className="text-xs font-medium text-zinc-700">Название</div>
-            <input value={name} onChange={(e) => setName(e.target.value)} className="rounded-lg border bg-white px-3 py-2 text-sm" />
+            <input value={name} onChange={(e) => setName(e.target.value)} className="input" />
           </div>
           <div className="grid gap-1">
             <div className="text-xs font-medium text-zinc-700">Пароль</div>
-            <input value={pwd} onChange={(e) => setPwd(e.target.value)} className="rounded-lg border bg-white px-3 py-2 text-sm" />
+            <input value={pwd} onChange={(e) => setPwd(e.target.value)} className="input" />
           </div>
         </div>
         {createErr ? <div className="mt-2 text-sm text-red-600">{createErr}</div> : null}
         <button
           onClick={create}
           disabled={busy || !name.trim() || pwd.trim().length < 4}
-          className="mt-3 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="mt-3 btn btn-primary disabled:opacity-50"
         >
           {busy ? "…" : "Создать"}
         </button>
@@ -119,19 +119,19 @@ export default function SpecialistHome() {
 
       <div className="flex items-center justify-between">
         <div className="text-sm text-zinc-600">{loading ? "Загрузка…" : `Мои комнаты: ${rooms.length}`}</div>
-        <button onClick={load} disabled={loading} className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50">
+        <button onClick={load} disabled={loading} className="btn btn-secondary btn-sm">
           Обновить
         </button>
       </div>
 
-      {err ? <div className="mt-3 rounded-2xl border bg-white p-4 text-sm text-red-600">{err}</div> : null}
+      {err ? <div className="mt-3 card text-sm text-red-600">{err}</div> : null}
 
       <div className="mt-3 grid gap-3">
         {rooms.map((r) => (
           <Link
             key={r.id}
             href={`/specialist/rooms/${encodeURIComponent(r.id)}`}
-            className="rounded-2xl border bg-white p-4 shadow-sm hover:shadow"
+            className="card hover:shadow"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -145,7 +145,7 @@ export default function SpecialistHome() {
           </Link>
         ))}
         {rooms.length === 0 && !loading ? (
-          <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">Пока нет комнат.</div>
+          <div className="card text-sm text-zinc-600">Пока нет комнат.</div>
         ) : null}
       </div>
     </Layout>

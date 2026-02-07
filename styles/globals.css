@@ -11,3 +11,90 @@ html, body {
 body {
   margin: 0;
 }
+
+/*
+  Minimal pastel theme
+  - soft gradient background
+  - glassy surfaces
+  - pastel primary actions
+*/
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    /* Slightly larger base text for better readability on phones */
+    @apply text-slate-900 text-[15px] sm:text-base;
+  }
+
+  /* Match focus outline across the app */
+  :focus-visible {
+    outline: none;
+  }
+}
+
+@layer utilities {
+  .bg-app {
+    @apply bg-gradient-to-b from-indigo-50 via-sky-50 to-rose-50;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-white/60 bg-white/75 p-4 shadow-sm backdrop-blur-sm;
+  }
+
+  .card-plain {
+    @apply rounded-2xl border border-white/60 bg-white/75 backdrop-blur-sm;
+  }
+
+  .card-soft {
+    @apply rounded-xl border border-white/60 bg-white/55 backdrop-blur-sm;
+  }
+
+  .btn {
+    /*
+      Mobile-friendly tap target + a bit larger text.
+      (We keep this minimalistic; layout-level responsiveness is handled per page.)
+    */
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[15px] font-medium leading-snug transition
+      whitespace-nowrap focus-visible:ring-2 focus-visible:ring-indigo-200/70 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-sm {
+    @apply min-h-[34px] rounded-lg px-3 py-1.5 text-[13px];
+  }
+
+  .btn-pill {
+    @apply rounded-full px-3 py-1 text-xs;
+  }
+
+  .btn-primary {
+    @apply bg-indigo-200 text-indigo-950 hover:bg-indigo-300;
+  }
+
+  .btn-secondary {
+    @apply border border-white/70 bg-white/55 text-slate-900 hover:bg-white/75;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-slate-700 hover:bg-white/60;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-white/70 bg-white/55 px-3 py-2.5 text-[15px] outline-none
+      placeholder:text-slate-400 focus:border-indigo-300/80 focus:ring-2 focus:ring-indigo-200/60;
+  }
+
+  .textarea {
+    @apply w-full rounded-2xl border border-white/60 bg-white/55 p-3 text-[15px] text-slate-900 placeholder:text-slate-400 shadow-sm;
+    @apply focus:border-indigo-300/80 focus:ring-2 focus:ring-indigo-200/60;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .link {
+    @apply text-indigo-800 hover:text-indigo-950;
+  }
+}

@@ -38,7 +38,7 @@ function Digits({ result }: { result: ScoreResult }) {
             key={r.tag}
             className={[
               "flex items-center justify-between rounded-xl border px-3 py-2",
-              idx % 2 === 0 ? "bg-white" : "bg-zinc-50",
+              idx % 2 === 0 ? "bg-white/55" : "bg-white/35",
             ].join(" ")}
           >
             <div className="text-sm font-medium">
@@ -63,7 +63,7 @@ function Digits({ result }: { result: ScoreResult }) {
           key={r.tag}
           className={[
             "flex items-center justify-between rounded-xl border px-3 py-2",
-            idx % 2 === 0 ? "bg-white" : "bg-zinc-50",
+            idx % 2 === 0 ? "bg-white/55" : "bg-white/35",
           ].join(" ")}
         >
           <div>
@@ -753,10 +753,10 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
   if (!session || !user) {
     return (
       <Layout title="Специалист">
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+        <div className="card text-sm text-zinc-700">
           Нужно войти.
           <div className="mt-3">
-            <Link href={`/auth?next=${encodeURIComponent(`/specialist/rooms/${roomId}`)}`} className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50">
+            <Link href={`/auth?next=${encodeURIComponent(`/specialist/rooms/${roomId}`)}`} className="btn btn-secondary btn-sm">
               Вход / регистрация
             </Link>
           </div>
@@ -768,7 +768,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
   if (!isSpecialistUser(user)) {
     return (
       <Layout title="Специалист">
-        <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">Нет доступа.</div>
+        <div className="card text-sm text-zinc-700">Нет доступа.</div>
       </Layout>
     );
   }
@@ -779,14 +779,14 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
         <Link href="/specialist" className="text-sm font-medium text-zinc-900 underline">
           ← К комнатам
         </Link>
-        <button onClick={load} disabled={loading} className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50">
+        <button onClick={load} disabled={loading} className="btn btn-secondary btn-sm">
           {loading ? "…" : "Обновить"}
         </button>
       </div>
 
-      {err ? <div className="mb-3 rounded-2xl border bg-white p-4 text-sm text-red-600">{err}</div> : null}
+      {err ? <div className="mb-3 card text-sm text-red-600">{err}</div> : null}
 
-      <div className="mb-4 rounded-2xl border bg-white p-4">
+      <div className="mb-4 card">
         <div className="text-sm font-semibold">Настройки комнаты</div>
         <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
           <input
@@ -798,14 +798,14 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
           <button
             onClick={saveRoomName}
             disabled={savingRoom || !editRoomName.trim()}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="btn btn-primary disabled:opacity-50"
           >
             {savingRoom ? "…" : "Сохранить"}
           </button>
           <button
             onClick={deleteRoom}
             disabled={deletingRoom}
-            className="rounded-xl border bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-zinc-50 disabled:opacity-50"
+            className="rounded-xl border bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-white/75 disabled:opacity-50"
           >
             {deletingRoom ? "…" : "Удалить"}
           </button>
@@ -818,14 +818,14 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
             <button
               onClick={shareAllInRoom}
               disabled={shareRoomBusy}
-              className="rounded-xl border bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
+              className="btn btn-secondary disabled:opacity-50"
             >
               {shareRoomBusy ? "…" : "Отправить всем в ЛК"}
             </button>
             <button
               onClick={copyMatrixToExcel}
               disabled={copyBusy}
-              className="rounded-xl border bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
+              className="btn btn-secondary disabled:opacity-50"
               title="Скопировать матрицу (статус + миниитог) в буфер обмена"
             >
               {copyBusy ? "…" : "Скопировать в Excel"}
@@ -833,7 +833,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
             <button
               onClick={exportExcel}
               disabled={exportBusy}
-              className="rounded-xl border bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
+              className="btn btn-secondary disabled:opacity-50"
             >
               {exportBusy ? "…" : "Экспорт Excel"}
             </button>
@@ -847,7 +847,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
         </div>
       </div>
 
-      <div className="mb-4 rounded-2xl border bg-white p-4">
+      <div className="mb-4 card">
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="text-sm font-semibold">Тесты комнаты</div>
@@ -856,7 +856,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
           <button
             onClick={saveRoomTests}
             disabled={savingRoomTests}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="btn btn-primary disabled:opacity-50"
           >
             {savingRoomTests ? "…" : "Сохранить"}
           </button>
@@ -888,14 +888,14 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
                     <button
                       onClick={() => moveRoomTest(String(rt.test_slug), -1)}
                       disabled={idx === 0}
-                      className="rounded-lg border bg-zinc-50 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:opacity-40"
+                      className="rounded-lg border bg-white/55 px-2 py-1 text-xs font-medium hover:bg-white/70 disabled:opacity-40"
                     >
                       ↑
                     </button>
                     <button
                       onClick={() => moveRoomTest(String(rt.test_slug), 1)}
                       disabled={idx === (roomTestsDraft?.length ? roomTestsDraft.length - 1 : roomTests.length - 1)}
-                      className="rounded-lg border bg-zinc-50 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:opacity-40"
+                      className="rounded-lg border bg-white/55 px-2 py-1 text-xs font-medium hover:bg-white/70 disabled:opacity-40"
                     >
                       ↓
                     </button>
@@ -907,7 +907,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
         </div>
       </div>
 
-      <div className="mb-4 rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+      <div className="mb-4 card text-sm text-zinc-700">
         Участники (онлайн обновляется раз в ~10 сек). Нажмите на ✅ в таблице, чтобы открыть результаты в цифрах и сделать
         расшифровку по ключам.
       </div>
@@ -932,7 +932,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
                   <div className="flex items-center gap-2">
                     <span>{m.display_name}</span>
                     {m.role === "specialist" ? (
-                      <span className="rounded-md border bg-zinc-50 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600">спец</span>
+                      <span className="rounded-md border bg-white/55 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600">спец</span>
                     ) : null}
                   </div>
                 </td>
@@ -950,7 +950,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
                     <td key={t.slug} className="p-2 align-top">
                       {status === "done" && attemptId ? (
                         <button
-                          className="rounded-lg border bg-zinc-50 px-2 py-1 text-xs font-medium hover:bg-zinc-100"
+                          className="rounded-lg border bg-white/55 px-2 py-1 text-xs font-medium hover:bg-white/70"
                           onClick={() => openAttempt(String(attemptId), m.display_name, t.title)}
                         >
                           ✅
@@ -986,7 +986,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
 
       {open ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-3">
-          <div className="mx-auto my-6 w-full max-w-2xl rounded-2xl border bg-white p-4 shadow-xl">
+          <div className="mx-auto my-6 w-full max-w-2xl card shadow-xl">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-lg font-semibold">{modalTitle}</div>
@@ -996,7 +996,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
                 <button
                   onClick={copyParticipantLink}
                   disabled={!attemptId}
-                  className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+                  className="btn btn-secondary btn-sm"
                 >
                   Ссылка участнику
                 </button>
@@ -1007,12 +1007,12 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
                     "rounded-lg px-3 py-1.5 text-xs font-medium " +
                     (shared
                       ? "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                      : "border bg-white hover:bg-zinc-50")
+                      : "border bg-white hover:bg-white/75")
                   }
                 >
                   {shareBusy ? "…" : shared ? "Отозвать" : "Показать в ЛК"}
                 </button>
-                <button onClick={() => setOpen(false)} className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50">
+                <button onClick={() => setOpen(false)} className="btn btn-secondary btn-sm">
                   Закрыть
                 </button>
               </div>
@@ -1040,7 +1040,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
               {attempt?.result ? (
                 <Digits result={attempt.result as ScoreResult} />
               ) : (
-                <div className="rounded-xl border bg-zinc-50 p-3 text-sm text-zinc-600">Загрузка…</div>
+                <div className="rounded-xl border bg-white/55 p-3 text-sm text-zinc-600">Загрузка…</div>
               )}
             </div>
 
@@ -1050,7 +1050,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
                 {answersView?.length ? (
                   <div className="grid gap-3">
                     {answersView.map((x: any, i: number) => (
-                      <div key={i} className="rounded-xl border bg-zinc-50 p-3">
+                      <div key={i} className="rounded-xl border bg-white/55 p-3">
                         <div className="text-xs font-semibold text-zinc-600">{x.title}</div>
                         <div className="mt-1 whitespace-pre-wrap text-sm text-zinc-800">{x.answer}</div>
                       </div>
@@ -1067,7 +1067,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
               <button
                 onClick={generate}
                 disabled={busyInterp || !attempt?.result}
-                className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="btn btn-primary disabled:opacity-50"
               >
                 {busyInterp ? "…" : interp ? "Пересчитать" : "Сгенерировать"}
               </button>
@@ -1083,14 +1083,14 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
                 <button
                   onClick={copyClientText}
                   disabled={!clientText.trim()}
-                  className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+                  className="btn btn-secondary btn-sm"
                 >
                   Копировать
                 </button>
                 <button
                   onClick={sendClientText}
                   disabled={busySendClient || !clientText.trim() || !attemptId}
-                  className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                  className="btn btn-primary btn-sm"
                 >
                   {busySendClient ? "…" : "Отправить"}
                 </button>
@@ -1105,7 +1105,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
               value={clientText}
               onChange={(e) => setClientText(e.target.value)}
               placeholder="Сгенерируйте расшифровку по ключам и отредактируйте текст для клиента…"
-              className="mt-2 w-full rounded-2xl border bg-white p-3 text-sm"
+              className="mt-2 textarea"
               rows={10}
             />
             {clientMsg ? <div className="mt-2 text-xs text-zinc-600">{clientMsg}</div> : null}

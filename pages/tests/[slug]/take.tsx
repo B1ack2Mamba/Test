@@ -42,8 +42,8 @@ function ensureProgress(total: number, answered: number) {
 
 function cls(active: boolean) {
   return active
-    ? "rounded-xl border bg-zinc-900 px-3 py-2 text-left text-sm font-medium leading-tight text-white"
-    : "rounded-xl border bg-white px-3 py-2 text-left text-sm font-medium leading-tight text-zinc-900 hover:bg-zinc-50";
+    ? "rounded-xl border border-indigo-300/80 bg-indigo-200/70 px-4 py-3 text-left text-[15px] font-medium leading-snug text-indigo-950"
+    : "rounded-xl border border-white/70 bg-white/55 px-4 py-3 text-left text-[15px] font-medium leading-snug text-slate-900 hover:bg-white/75";
 }
 
 function cap(s: string) {
@@ -86,7 +86,7 @@ function SplitScale({
         {leftItems.map((n) => (
           <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
             <div>{labelFor(n)}</div>
-            <div className={`mt-0.5 text-[10px] ${value === n ? "text-white/80" : "text-zinc-500"}`}>
+            <div className={`mt-0.5 text-[10px] ${value === n ? "text-indigo-950/70" : "text-slate-500"}`}>
               {L} {n} / {R} {max - n}
             </div>
           </button>
@@ -97,7 +97,7 @@ function SplitScale({
         {rightItems.map((n) => (
           <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
             <div>{labelFor(n)}</div>
-            <div className={`mt-0.5 text-[10px] ${value === n ? "text-white/80" : "text-zinc-500"}`}>
+            <div className={`mt-0.5 text-[10px] ${value === n ? "text-indigo-950/70" : "text-slate-500"}`}>
               {L} {n} / {R} {max - n}
             </div>
           </button>
@@ -248,19 +248,19 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
 
   return (
     <Layout title={test.title}>
-      <div className="mb-4 rounded-2xl border bg-white p-4">
+      <div className="mb-4 card">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">
-            Прогресс: <span className="font-medium text-zinc-900">{answeredCount}/{test.questions.length}</span>
+          <div className="text-sm text-slate-600">
+            Прогресс: <span className="font-medium text-slate-900">{answeredCount}/{test.questions.length}</span>
           </div>
-          <Link href={`/tests/${test.slug}`} className="text-sm text-zinc-600 hover:text-zinc-900">
+          <Link href={`/tests/${test.slug}`} className="text-sm text-slate-600 hover:text-slate-900">
             ← к описанию
           </Link>
         </div>
 
-        <div className="mt-3 h-2 w-full rounded-full bg-zinc-100">
+        <div className="mt-3 h-2 w-full rounded-full bg-white/60">
           <div
-            className="h-2 rounded-full bg-zinc-900 transition-all"
+            className="h-2 rounded-full bg-indigo-300 transition-all"
             style={{ width: `${ensureProgress(test.questions.length, answeredCount)}%` }}
           />
         </div>
@@ -271,18 +271,18 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
           const chosen = answers[idx];
           const [o1, o2] = q.options;
           return (
-            <div key={q.order} className="rounded-2xl border bg-white p-4">
-              <div className="mb-3 text-sm font-medium text-zinc-900">Пара {q.order}</div>
+            <div key={q.order} className="card">
+              <div className="mb-3 text-sm font-medium text-slate-900">Пара {q.order}</div>
               <div className="grid gap-2 md:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => pick(idx, o1.tag)}
                   className={[
-                    "rounded-xl border p-3 text-left text-sm transition",
-                    chosen === o1.tag ? "border-zinc-900 bg-zinc-50" : "hover:bg-zinc-50",
+                    "rounded-xl border border-white/70 bg-white/55 p-3 text-left text-sm transition backdrop-blur-sm",
+                    chosen === o1.tag ? "border-indigo-300/80 bg-indigo-100/70" : "hover:bg-white/75",
                   ].join(" ")}
                 >
-                  <div className="text-xs text-zinc-500">({o1.tag})</div>
+                  <div className="text-xs text-slate-500">({o1.tag})</div>
                   <div className="mt-1">{o1.text}</div>
                 </button>
 
@@ -290,11 +290,11 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
                   type="button"
                   onClick={() => pick(idx, o2.tag)}
                   className={[
-                    "rounded-xl border p-3 text-left text-sm transition",
-                    chosen === o2.tag ? "border-zinc-900 bg-zinc-50" : "hover:bg-zinc-50",
+                    "rounded-xl border border-white/70 bg-white/55 p-3 text-left text-sm transition backdrop-blur-sm",
+                    chosen === o2.tag ? "border-indigo-300/80 bg-indigo-100/70" : "hover:bg-white/75",
                   ].join(" ")}
                 >
-                  <div className="text-xs text-zinc-500">({o2.tag})</div>
+                  <div className="text-xs text-slate-500">({o2.tag})</div>
                   <div className="mt-1">{o2.text}</div>
                 </button>
               </div>
@@ -303,18 +303,15 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
         })}
       </div>
 
-      <div className="mt-6 rounded-2xl border bg-white p-4">
+      <div className="mt-6 card">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">Ответь на все пары.</div>
+          <div className="text-sm text-slate-600">Ответь на все пары.</div>
 
           <button
             type="button"
             disabled={!canSubmit || busy}
             onClick={submit}
-            className={[
-              "rounded-xl px-4 py-2 text-sm font-medium text-white",
-              canSubmit && !busy ? "bg-zinc-900 hover:bg-zinc-800" : "cursor-not-allowed bg-zinc-300",
-            ].join(" ")}
+            className={["btn", canSubmit && !busy ? "btn-primary" : "btn-secondary"].join(" ")}
           >
             {busy ? "Обрабатываем…" : buttonLabel(test)}
           </button>
@@ -414,24 +411,24 @@ function PairSplitForm({ test }: { test: PairSplitTestV1 }) {
 
   return (
     <Layout title={test.title}>
-      <div className="mb-4 rounded-2xl border bg-white p-4">
+      <div className="mb-4 card">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">
-            Прогресс: <span className="font-medium text-zinc-900">{answeredCount}/{test.questions.length}</span>
+          <div className="text-sm text-slate-600">
+            Прогресс: <span className="font-medium text-slate-900">{answeredCount}/{test.questions.length}</span>
           </div>
-          <Link href={`/tests/${test.slug}`} className="text-sm text-zinc-600 hover:text-zinc-900">
+          <Link href={`/tests/${test.slug}`} className="text-sm text-slate-600 hover:text-slate-900">
             ← к описанию
           </Link>
         </div>
 
-        <div className="mt-3 h-2 w-full rounded-full bg-zinc-100">
+        <div className="mt-3 h-2 w-full rounded-full bg-white/60">
           <div
-            className="h-2 rounded-full bg-zinc-900 transition-all"
+            className="h-2 rounded-full bg-indigo-300 transition-all"
             style={{ width: `${ensureProgress(test.questions.length, answeredCount)}%` }}
           />
         </div>
 
-        <div className="mt-3 text-xs text-zinc-600">
+        <div className="mt-3 text-xs text-slate-600">
           В каждой паре выберите степень согласия с одним из утверждений (это эквивалент распределения <b>5</b> баллов).
         </div>
       </div>
@@ -447,18 +444,18 @@ function PairSplitForm({ test }: { test: PairSplitTestV1 }) {
           const rightFactor = (q as any)?.right?.factor ? String((q as any).right.factor) : "B";
 
           return (
-            <div key={q.order} className="rounded-2xl border bg-white p-4">
-              <div className="mb-3 text-sm font-medium text-zinc-900">Пара {q.order}</div>
+            <div key={q.order} className="card">
+              <div className="mb-3 text-sm font-medium text-slate-900">Пара {q.order}</div>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-xl border p-3">
-                  <div className="text-xs font-semibold text-zinc-600">Вариант {leftFactor}</div>
-                  <div className="mt-1 text-sm text-zinc-900">{q.left.text}</div>
+                  <div className="text-xs font-semibold text-slate-600">Вариант {leftFactor}</div>
+                  <div className="mt-1 text-sm text-slate-900">{q.left.text}</div>
                 </div>
 
                 <div className="rounded-xl border p-3">
-                  <div className="text-xs font-semibold text-zinc-600">Вариант {rightFactor}</div>
-                  <div className="mt-1 text-sm text-zinc-900">{q.right.text}</div>
+                  <div className="text-xs font-semibold text-slate-600">Вариант {rightFactor}</div>
+                  <div className="mt-1 text-sm text-slate-900">{q.right.text}</div>
                 </div>
               </div>
 
@@ -473,7 +470,7 @@ function PairSplitForm({ test }: { test: PairSplitTestV1 }) {
               </div>
 
               {left !== null ? (
-                <div className="mt-2 text-xs text-zinc-500">
+                <div className="mt-2 text-xs text-slate-500">
                   Выбрано: <span className="font-medium">{leftFactor} {left}</span> /{" "}
                   <span className="font-medium">{rightFactor} {right}</span>
                 </div>
@@ -483,17 +480,17 @@ function PairSplitForm({ test }: { test: PairSplitTestV1 }) {
         })}
       </div>
 
-      <div className="mt-6 rounded-2xl border bg-white p-4">
+      <div className="mt-6 card">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">Ответь на все пары.</div>
+          <div className="text-sm text-slate-600">Ответь на все пары.</div>
 
           <button
             type="button"
             disabled={!canSubmit || busy}
             onClick={submit}
             className={[
-              "rounded-xl px-4 py-2 text-sm font-medium text-white",
-              canSubmit && !busy ? "bg-zinc-900 hover:bg-zinc-800" : "cursor-not-allowed bg-zinc-300",
+              "btn",
+              canSubmit && !busy ? "btn-primary" : "btn-secondary",
             ].join(" ")}
           >
             {busy ? "Обрабатываем…" : buttonLabel(test)}
@@ -667,8 +664,8 @@ function ColorTypesForm({ test }: { test: ColorTypesTestV1 }) {
     const value = (draft as any)[`q${order}`] as ABC | null;
     const set = (v: ABC) => patch({ [`q${order}`]: v } as any);
     return (
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="mb-2 text-sm font-medium text-zinc-900">{order}. {q.prompt}</div>
+      <div className="card">
+        <div className="mb-2 text-sm font-medium text-slate-900">{order}. {q.prompt}</div>
         <div className="grid gap-2">
           {(Object.keys(q.options || {}) as ABC[]).map((k) => (
             <button
@@ -678,7 +675,7 @@ function ColorTypesForm({ test }: { test: ColorTypesTestV1 }) {
               className={cls(value === k)}
               onClick={() => set(k)}
             >
-              <div className="text-xs font-semibold text-zinc-600">Вариант {k}</div>
+              <div className="text-xs font-semibold text-slate-600">Вариант {k}</div>
               <div className="mt-1 text-sm">{q.options[k]}</div>
             </button>
           ))}
@@ -708,14 +705,14 @@ function ColorTypesForm({ test }: { test: ColorTypesTestV1 }) {
     const ok = isRankOk(value || []);
 
     return (
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="mb-2 text-sm font-medium text-zinc-900">{order}. {q.prompt}</div>
+      <div className="card">
+        <div className="mb-2 text-sm font-medium text-slate-900">{order}. {q.prompt}</div>
         <div className="grid gap-2 sm:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="rounded-xl border bg-zinc-50 p-3">
-              <div className="text-xs font-semibold text-zinc-600">Место {i + 1}</div>
+            <div key={i} className="card-soft p-3">
+              <div className="text-xs font-semibold text-slate-600">Место {i + 1}</div>
               <select
-                className="mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                className="mt-2 input"
                 value={value?.[i] ?? ""}
                 onMouseDown={captureScroll}
                 onFocus={captureScroll}
@@ -740,16 +737,16 @@ function ColorTypesForm({ test }: { test: ColorTypesTestV1 }) {
         <div className="mt-3 grid gap-2">
           {(Object.keys(q.options || {}) as ABC[]).map((k) => (
             <div key={k} className="rounded-xl border bg-white p-3 text-sm">
-              <div className="text-xs font-semibold text-zinc-600">{k}</div>
-              <div className="mt-1 text-zinc-800">{q.options[k]}</div>
+              <div className="text-xs font-semibold text-slate-600">{k}</div>
+              <div className="mt-1 text-slate-800">{q.options[k]}</div>
             </div>
           ))}
         </div>
 
         {/* Keep a stable block height to avoid small layout shifts ("jitter") when the hint text changes */}
-        <div className="mt-3 min-h-[22px] text-xs text-zinc-600">
+        <div className="mt-3 min-h-[22px] text-xs text-slate-600">
           {ok ? (
-            <>Выбрано: <b className="text-zinc-900">{chosen.join(" → ")}</b></>
+            <>Выбрано: <b className="text-slate-900">{chosen.join(" → ")}</b></>
           ) : (
             <>Нужно выбрать все 3 места без повторов.</>
           )}
@@ -765,8 +762,8 @@ function ColorTypesForm({ test }: { test: ColorTypesTestV1 }) {
     const value = (draft as any)[key] as number[];
     const ok = isPickOk(value || []);
     return (
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="mb-2 text-sm font-medium text-zinc-900">{order}. {q.prompt}</div>
+      <div className="card">
+        <div className="mb-2 text-sm font-medium text-slate-900">{order}. {q.prompt}</div>
         <div className="grid gap-2">
           {(Object.keys(q.options || {}) as string[]).map((k) => {
             const n = Number(k);
@@ -779,16 +776,16 @@ function ColorTypesForm({ test }: { test: ColorTypesTestV1 }) {
                 onClick={() => togglePick(key, n)}
                 className={cls(active)}
               >
-                <div className="text-xs font-semibold text-zinc-600">{k}</div>
+                <div className="text-xs font-semibold text-slate-600">{k}</div>
                 <div className="mt-1 text-sm">{q.options[k]}</div>
               </button>
             );
           })}
         </div>
         {/* Keep a stable block height to avoid small layout shifts ("jitter") when the hint text changes */}
-        <div className="mt-3 min-h-[22px] text-xs text-zinc-600">
+        <div className="mt-3 min-h-[22px] text-xs text-slate-600">
           {ok ? (
-            <>Выбрано: <b className="text-zinc-900">{(value || []).slice().sort((a, b) => a - b).join(", ")}</b></>
+            <>Выбрано: <b className="text-slate-900">{(value || []).slice().sort((a, b) => a - b).join(", ")}</b></>
           ) : (
             <>Выберите ровно 3 пункта (сейчас: {(value || []).length}).</>
           )}
@@ -799,21 +796,21 @@ function ColorTypesForm({ test }: { test: ColorTypesTestV1 }) {
 
   return (
     <Layout title={test.title}>
-      <div className="mb-4 rounded-2xl border bg-white p-4">
+      <div className="mb-4 card">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">
-            Прогресс: <span className="font-medium text-zinc-900">{answeredCount}/6</span>
+          <div className="text-sm text-slate-600">
+            Прогресс: <span className="font-medium text-slate-900">{answeredCount}/6</span>
           </div>
-          <Link href={`/tests/${test.slug}`} className="text-sm text-zinc-600 hover:text-zinc-900">
+          <Link href={`/tests/${test.slug}`} className="text-sm text-slate-600 hover:text-slate-900">
             ← к описанию
           </Link>
         </div>
 
-        <div className="mt-3 h-2 w-full rounded-full bg-zinc-100">
-          <div className="h-2 rounded-full bg-zinc-900 transition-all" style={{ width: `${ensureProgress(6, answeredCount)}%` }} />
+        <div className="mt-3 h-2 w-full rounded-full bg-white/60">
+          <div className="h-2 rounded-full bg-indigo-300 transition-all" style={{ width: `${ensureProgress(6, answeredCount)}%` }} />
         </div>
 
-        <div className="mt-3 text-xs text-zinc-600">Отвечайте честно — тест считает три показателя: зелёный, красный и синий.</div>
+        <div className="mt-3 text-xs text-slate-600">Отвечайте честно — тест считает три показателя: зелёный, красный и синий.</div>
       </div>
 
       <div className="grid gap-3">
@@ -825,16 +822,16 @@ function ColorTypesForm({ test }: { test: ColorTypesTestV1 }) {
         <Pick3 order={6} />
       </div>
 
-      <div className="mt-6 rounded-2xl border bg-white p-4">
+      <div className="mt-6 card">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">Ответьте на все 6 ситуаций, чтобы увидеть результат.</div>
+          <div className="text-sm text-slate-600">Ответьте на все 6 ситуаций, чтобы увидеть результат.</div>
           <button
             type="button"
             disabled={!canSubmit || busy}
             onClick={submit}
             className={[
-              "rounded-xl px-4 py-2 text-sm font-medium text-white",
-              canSubmit && !busy ? "bg-zinc-900 hover:bg-zinc-800" : "cursor-not-allowed bg-zinc-300",
+              "btn",
+              canSubmit && !busy ? "btn-primary" : "btn-secondary",
             ].join(" ")}
           >
             {busy ? "Обрабатываем…" : "Показать результат"}
@@ -943,32 +940,32 @@ function USKForm({ test }: { test: USKTestV1 }) {
 
   return (
     <Layout title={test.title}>
-      <div className="mb-4 rounded-2xl border bg-white p-4">
+      <div className="mb-4 card">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">
-            Прогресс: <span className="font-medium text-zinc-900">{answeredCount}/{test.questions.length}</span>
+          <div className="text-sm text-slate-600">
+            Прогресс: <span className="font-medium text-slate-900">{answeredCount}/{test.questions.length}</span>
           </div>
-          <Link href={`/tests/${test.slug}`} className="text-sm text-zinc-600 hover:text-zinc-900">
+          <Link href={`/tests/${test.slug}`} className="text-sm text-slate-600 hover:text-slate-900">
             ← к описанию
           </Link>
         </div>
 
-        <div className="mt-3 h-2 w-full rounded-full bg-zinc-100">
+        <div className="mt-3 h-2 w-full rounded-full bg-white/60">
           <div
-            className="h-2 rounded-full bg-zinc-900 transition-all"
+            className="h-2 rounded-full bg-indigo-300 transition-all"
             style={{ width: `${ensureProgress(test.questions.length, answeredCount)}%` }}
           />
         </div>
 
-        <div className="mt-3 text-xs text-zinc-600">
+        <div className="mt-3 text-xs text-slate-600">
           Шкала ответов: −3…3 (можно выбрать «Нет ответа», это 0 баллов).
         </div>
       </div>
 
       <div className="grid gap-3">
         {test.questions.map((q, idx) => (
-          <div key={q.order} className="rounded-2xl border bg-white p-4">
-            <div className="text-sm font-semibold text-zinc-900">{q.order}. {q.text}</div>
+          <div key={q.order} className="card">
+            <div className="text-sm font-semibold text-slate-900">{q.order}. {q.text}</div>
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-7">
               {CHOICES.map((c) => (
                 <button
@@ -978,7 +975,7 @@ function USKForm({ test }: { test: USKTestV1 }) {
                   className={cls(answers[idx] === c.v)}
                 >
                   <div className="text-xs font-semibold">{c.v}</div>
-                  <div className={`mt-1 text-[10px] leading-tight ${answers[idx] === c.v ? "text-white/80" : "text-zinc-500"}`}>
+                  <div className={`mt-1 text-[10px] leading-tight ${answers[idx] === c.v ? "text-indigo-950/70" : "text-slate-500"}`}>
                     {c.label}
                   </div>
                 </button>
@@ -988,16 +985,16 @@ function USKForm({ test }: { test: USKTestV1 }) {
         ))}
       </div>
 
-      <div className="mt-6 rounded-2xl border bg-white p-4">
+      <div className="mt-6 card">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">Ответьте на все утверждения, чтобы увидеть результат.</div>
+          <div className="text-sm text-slate-600">Ответьте на все утверждения, чтобы увидеть результат.</div>
           <button
             type="button"
             disabled={!canSubmit || busy}
             onClick={submit}
             className={[
-              "rounded-xl px-4 py-2 text-sm font-medium text-white",
-              canSubmit && !busy ? "bg-zinc-900 hover:bg-zinc-800" : "cursor-not-allowed bg-zinc-300",
+              "btn",
+              canSubmit && !busy ? "btn-primary" : "btn-secondary",
             ].join(" ")}
           >
             {busy ? "Обрабатываем…" : buttonLabel(test)}
@@ -1067,19 +1064,19 @@ function PF16Form({ test }: { test: PF16TestV1 }) {
 
   return (
     <Layout title={test.title}>
-      <div className="mb-4 rounded-2xl border bg-white p-4">
+      <div className="mb-4 card">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-zinc-900">Прогресс</div>
-            <div className="mt-1 text-sm text-zinc-600">
+            <div className="text-sm font-semibold text-slate-900">Прогресс</div>
+            <div className="mt-1 text-sm text-slate-600">
               Отвечено: {answeredCount}/{test.questions.length} (вопрос 187 — контрольный, в результат не входит)
             </div>
           </div>
         </div>
 
-        <details className="mt-4 rounded-2xl border bg-zinc-50 p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-zinc-900">Инструкция</summary>
-          <div className="mt-2 space-y-2 text-sm text-zinc-700">
+        <details className="mt-4 card-soft p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-900">Инструкция</summary>
+          <div className="mt-2 space-y-2 text-sm text-slate-700">
             <p>В каждом вопросе выбери один вариант (A / B / C). Отвечай быстро, не «вычисляя правильный ответ».</p>
             <p>Результат считается по 16 факторам. Оценка каждого фактора — 0–10 (округление).</p>
             <p>Порог уровней: 0–4 — низкий, 5–7 — средний, 8–10 — высокий.</p>
@@ -1090,8 +1087,8 @@ function PF16Form({ test }: { test: PF16TestV1 }) {
 
       <div className="space-y-3">
         {test.questions.map((q, i) => (
-          <div key={q.order} className="rounded-2xl border bg-white p-4">
-            <div className="text-sm font-semibold text-zinc-900">
+          <div key={q.order} className="card">
+            <div className="text-sm font-semibold text-slate-900">
               {q.order}. {q.text}
             </div>
 
@@ -1115,7 +1112,7 @@ function PF16Form({ test }: { test: PF16TestV1 }) {
           type="button"
           onClick={submit}
           disabled={!canSubmit || busy}
-          className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="btn btn-primary"
         >
           {busy ? "Сохраняем…" : "Показать результат"}
         </button>
@@ -1145,16 +1142,16 @@ export default function TakeTest({ test }: { test: AnyTest }) {
         <PF16Form test={test as PF16TestV1} />
       ) : (
         <Layout title={test.title}>
-          <div className="rounded-2xl border bg-white p-4">
-            <div className="text-sm text-zinc-900">Неизвестный тип теста: {String(test.type)}</div>
-            <div className="mt-3 text-sm text-zinc-600">
+          <div className="card">
+            <div className="text-sm text-slate-900">Неизвестный тип теста: {String(test.type)}</div>
+            <div className="mt-3 text-sm text-slate-600">
               <button
                 type="button"
                 onClick={() => {
                   clearSession(test.slug);
                   router.replace(`/tests/${test.slug}`);
                 }}
-                className="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50"
+                className="rounded-xl border px-3 py-2 text-sm hover:bg-white/75"
               >
                 Сбросить локальные данные
               </button>
