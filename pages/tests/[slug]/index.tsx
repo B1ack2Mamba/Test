@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import type { AnyTest } from "@/lib/testTypes";
+import { getTestBySlug } from "@/lib/loadTests";
 import { useSession } from "@/lib/useSession";
 import { formatLocalDate, getAttempt, loadAttempts, type LocalAttempt } from "@/lib/localHistory";
 
@@ -16,9 +17,25 @@ function attemptIdKey(slug: string) {
   return `attempt:${slug}:id`;
 }
 
-export default function TestDetail({ test }: { test: AnyTest }) {
+export default function TestDetail({ test }: { test: AnyTest | null }) {
   const router = useRouter();
   const { user } = useSession();
+
+  // Safety guard: should never happen (SSR provides test), but prevents build/runtime crashes.
+  if (!test) {
+    return (
+      <Layout title="Тест не найден">
+        <div className="rounded-2xl border bg-white p-4">
+          <div className="text-sm font-medium">Тест не найден</div>
+          <div className="mt-3">
+            <Link href="/" className="rounded-xl border bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50">
+              На главную
+            </Link>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   const [attempts, setAttempts] = useState<LocalAttempt[]>([]);
 
@@ -58,17 +75,23 @@ export default function TestDetail({ test }: { test: AnyTest }) {
   };
 
   return (
-    <Layout title={test.title}>
+    <Layout title={test?.title ?? "Тест"}>
       <div className="rounded-2xl border bg-white p-4">
-        <div className="text-sm text-zinc-600">Вопросов: {test.questions.length}</div>
+        {!test ? (
+          <div className="text-sm text-zinc-900">Тест не найден</div>
+        ) : (
+          <div className="text-sm text-zinc-600">Вопросов: {test.questions.length}</div>
+        )}
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <Link
-            href={`/tests/${test.slug}/take`}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-          >
-            Начать тест
-          </Link>
+          {test ? (
+            <Link
+              href={`/tests/${test.slug}/take`}
+              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Начать тест
+            </Link>
+          ) : null}
           <Link href="/" className="rounded-xl border bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50">
             На главную
           </Link>
@@ -80,7 +103,9 @@ export default function TestDetail({ test }: { test: AnyTest }) {
           <div className="text-sm font-medium">История</div>
           <div className="mt-3 grid gap-2">
             {attempts.map((a) => {
-              const top = a.result.ranked?.[0];
+              const top = a.result.ranked
+                ? [...a.result.ranked].sort((x, y) => (y?.percent ?? 0) - (x?.percent ?? 0))[0]
+                : null;
               return (
                 <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2">
                   <div>
@@ -105,4 +130,12 @@ export default function TestDetail({ test }: { test: AnyTest }) {
       ) : null}
     </Layout>
   );
+}
+
+export async function getServerSideProps({ params }: { params: { slug?: string } }) {
+  const slug = params?.slug;
+  if (!slug || typeof slug !== "string") return { notFound: true };
+  const test = await getTestBySlug(slug);
+  if (!test) return { notFound: true };
+  return { props: { test } };
 }
