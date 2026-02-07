@@ -1,10 +1,15 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
+import { TRAINING_SELF_REVEAL_ENABLED } from "@/lib/payments";
 
-const DEFAULT_PRICE_RUB = 5000;
+const DEFAULT_PRICE_RUB = 0;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
+
+  if (!TRAINING_SELF_REVEAL_ENABLED) {
+    return res.status(403).json({ ok: false, error: "Личные результаты участнику временно отключены" });
+  }
 
   const auth = await requireUser(req, res);
   if (!auth) return;
@@ -35,7 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ ok: true, already: true, result: attempt.result });
   }
 
-  const priceRub = Number(process.env.TRAINING_SELF_REVEAL_PRICE_RUB || DEFAULT_PRICE_RUB);
+  const priceRub = Number(process.env.TRAINING_SELF_REVEAL_PRICE_RUB || String(DEFAULT_PRICE_RUB));
   const priceKopeks = Math.round(priceRub * 100);
 
   const ref = `training_self_unlock:${attempt.test_slug}:${attemptId}:${Date.now()}`;

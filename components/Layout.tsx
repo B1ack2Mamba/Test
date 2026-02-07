@@ -1,6 +1,7 @@
 import Link from "next/link";
 import React from "react";
 import dynamic from "next/dynamic";
+import { PAYMENTS_UI_ENABLED } from "@/lib/payments";
 
 // Auth UI depends on browser-only session state.
 // Render client-side only to avoid SSR hydration mismatches.
@@ -11,10 +12,7 @@ const SpecialistNavNoSSR = dynamic(
 
 const AuthNavNoSSR = dynamic(
   () => import("@/components/AuthNav").then((m) => m.AuthNav),
-  {
-    ssr: false,
-    loading: () => <span className="text-xs text-zinc-500">…</span>,
-  }
+  { ssr: false, loading: () => <span className="text-xs text-zinc-500">…</span> }
 );
 
 export function Layout({
@@ -42,13 +40,16 @@ export function Layout({
             >
               Тренинги
             </Link>
+            {PAYMENTS_UI_ENABLED ? (
+              <Link
+                href="/wallet"
+                className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-50"
+              >
+                Кошелёк
+              </Link>
+            ) : null}
+
             <SpecialistNavNoSSR />
-            <Link
-              href="/wallet"
-              className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-50"
-            >
-              Кошелёк
-            </Link>
             <AuthNavNoSSR />
           </nav>
         </div>
@@ -60,9 +61,7 @@ export function Layout({
       </main>
 
       <footer className="border-t bg-white">
-        <div className="mx-auto max-w-4xl px-4 py-5 text-xs text-zinc-500">
-          MVP: тесты + Supabase + внутренний баланс + тренинг-комнаты.
-        </div>
+        <div className="mx-auto max-w-4xl px-4 py-5 text-xs text-zinc-500">&nbsp;</div>
       </footer>
     </div>
   );

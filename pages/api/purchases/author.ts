@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
+import { PAYMENTS_ENABLED } from "@/lib/payments";
 
 type Body = {
   test_slug?: string;
@@ -36,24 +37,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   }
 
   const priceRub = Number(testRow.price_rub ?? 0);
-  if (!Number.isFinite(priceRub) || priceRub <= 0) {
-    return res.status(400).json({ ok: false, error: "This test does not require payment" });
+  const priceKopeks = Number.isFinite(priceRub) ? Math.max(0, Math.round(priceRub * 100)) : 0;
+
+  let balanceKopeks = 0;
+  let chargedKopeks = 0;
+
+  if (PAYMENTS_ENABLED && priceKopeks > 0) {
+    const { data: debitData, error: debitErr } = await auth.supabaseAdmin.rpc("debit_wallet", {
+      p_user_id: auth.user.id,
+      p_amount_kopeks: priceKopeks,
+      p_reason: "author_interpretation",
+      p_ref: ref,
+    });
+
+    if (debitErr) {
+      return res.status(400).json({ ok: false, error: debitErr.message || "Failed to charge wallet" });
+    }
+
+    balanceKopeks = Number(debitData?.balance_kopeks ?? 0);
+    chargedKopeks = Number(debitData?.charged_kopeks ?? priceKopeks);
+  } else {
+    // Payments disabled or free test: just read current wallet balance (if any)
+    const { data: w } = await auth.supabaseAdmin
+      .from("wallets")
+      .select("balance_kopeks")
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
+    balanceKopeks = Number(w?.balance_kopeks ?? 0);
   }
-  const priceKopeks = Math.round(priceRub * 100);
 
-  // Charge wallet
-  const { data: debitData, error: debitErr } = await auth.supabaseAdmin.rpc("debit_wallet", {
-    p_user_id: auth.user.id,
-    p_amount_kopeks: priceKopeks,
-    p_reason: "author_interpretation",
-    p_ref: ref,
-  });
-
-  if (debitErr) {
-    return res.status(400).json({ ok: false, error: debitErr.message || "Failed to charge wallet" });
-  }
-
-  // Fetch protected interpretation content (server-side)
+  // Fetch interpretation content (server-side)
   const { data: row, error: selErr } = await auth.supabaseAdmin
     .from("test_interpretations")
     .select("content")
@@ -64,7 +77,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     return res.status(404).json({ ok: false, error: selErr?.message || "Interpretation not found" });
   }
 
-  const balance = Number(debitData?.balance_kopeks ?? 0);
-  const charged = Number(debitData?.charged_kopeks ?? priceKopeks);
-  return res.status(200).json({ ok: true, content: row.content, balance_kopeks: balance, charged_kopeks: charged });
+  return res.status(200).json({ ok: true, content: row.content, balance_kopeks: balanceKopeks, charged_kopeks: chargedKopeks });
 }

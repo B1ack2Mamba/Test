@@ -367,10 +367,11 @@ function levelFor010(score: number, lowMax: number, midMax: number) {
 }
 
 /**
- * 16PF scoring:
- * - Each factor has a set of keyed items (question -> accepted answers).
- * - Raw score = count of matches.
- * - Final score is normalized to 0..10 (rounded).
+ * 16PF (Cattell, forms A/B - 187 items) scoring used in many Russian hand-scoring guides:
+ * - Each keyed item: if the respondent answer matches the key,
+ *   then answers "a" and "c" are counted as 2 points, answer "b" as 1 point.
+ * - Exception: Factor B counts any keyed match as 1 point.
+ * - We normalize each factor to 0..10 (rounded) using max possible points derived from the key.
  * - Levels: 0..4 low, 5..7 medium, 8..10 high (configurable via thresholds_0_10).
  * - Question 187 is allowed in UI but ignored by key by design.
  */
@@ -383,7 +384,7 @@ export function score16PF(test: PF16TestV1, answers: Array<ABC | "A" | "B" | "C"
   const maxByFactor: Record<string, number> = {};
   for (const f of factors) {
     const items = Array.isArray(keys[f]) ? keys[f] : [];
-    maxByFactor[f] = items.length;
+    maxByFactor[f] = 0;
     for (const it of items) {
       const q = Number((it as any)?.q);
       const acceptArr = (it as any)?.accept as any[];
@@ -392,6 +393,16 @@ export function score16PF(test: PF16TestV1, answers: Array<ABC | "A" | "B" | "C"
       );
       if (!Number.isFinite(q) || q <= 0 || accept.size === 0) continue;
       byQ[q] = { factor: f, accept };
+
+      // Max possible points for this item (used for normalization)
+      if (f === "B") {
+        maxByFactor[f] += 1;
+      } else {
+        // If multiple answers are accepted (rare), take the maximum weight among them
+        let itemMax = 0;
+        for (const a of accept) itemMax = Math.max(itemMax, a === "b" ? 1 : 2);
+        maxByFactor[f] += itemMax || 0;
+      }
     }
   }
 
@@ -407,7 +418,8 @@ export function score16PF(test: PF16TestV1, answers: Array<ABC | "A" | "B" | "C"
     const rule = byQ[i];
     if (!rule) continue; // not keyed (e.g., 1,2,187)
     if (rule.accept.has(letter)) {
-      rawByFactor[rule.factor] = (rawByFactor[rule.factor] ?? 0) + 1;
+      const w = rule.factor === "B" ? 1 : letter === "b" ? 1 : 2;
+      rawByFactor[rule.factor] = (rawByFactor[rule.factor] ?? 0) + w;
     }
   }
 

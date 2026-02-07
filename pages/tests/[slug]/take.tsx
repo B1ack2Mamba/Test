@@ -6,6 +6,7 @@ import { getTestBySlug } from "@/lib/loadTests";
 import type { AnyTest, ForcedPairTestV1, PairSplitTestV1, ColorTypesTestV1, USKTestV1, PF16TestV1, Tag, ABC } from "@/lib/testTypes";
 import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF } from "@/lib/score";
 import { useSession } from "@/lib/useSession";
+import { PAYMENTS_UI_ENABLED } from "@/lib/payments";
 import { saveAttempt, updateAttempt } from "@/lib/localHistory";
 
 function storageKey(slug: string) {
@@ -25,7 +26,7 @@ function attemptIdKey(slug: string) {
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 function priceRub(test: AnyTest) {
-  return test.pricing?.interpretation_rub ?? 0;
+  return PAYMENTS_UI_ENABLED ? (test.pricing?.interpretation_rub ?? 0) : 0;
 }
 
 function buttonLabel(test: AnyTest) {
@@ -148,7 +149,7 @@ async function buyAndAttachAuthor({
   });
   const json = await resp.json();
   if (!resp.ok || !json?.ok) {
-    throw new Error(json?.error || "Ошибка оплаты авторской расшифровки");
+    throw new Error(json?.error || "Ошибка получения авторской расшифровки");
   }
   return json.content ?? null;
 }
@@ -304,17 +305,7 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
 
       <div className="mt-6 rounded-2xl border bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">
-            Ответь на все пары.
-            {test.has_interpretation && p > 0 ? (
-              <>
-                <span className="text-zinc-500"> </span>
-                <span className="text-zinc-900">Первый показ результата этой попытки списывает </span>
-                <b className="text-zinc-900">{p} ₽</b>
-                <span className="text-zinc-900"> (авторская расшифровка включена).</span>
-              </>
-            ) : null}
-          </div>
+          <div className="text-sm text-zinc-600">Ответь на все пары.</div>
 
           <button
             type="button"
@@ -330,11 +321,6 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
         </div>
 
         {error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
-
-        <div className="mt-3 text-xs text-zinc-600">
-          Нужно пополнить баланс?{" "}
-          <Link href="/wallet" className="underline hover:text-zinc-900">Кошелёк</Link>
-        </div>
       </div>
     </Layout>
   );
@@ -499,17 +485,7 @@ function PairSplitForm({ test }: { test: PairSplitTestV1 }) {
 
       <div className="mt-6 rounded-2xl border bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">
-            Ответь на все пары.
-            {test.has_interpretation && p > 0 ? (
-              <>
-                <span className="text-zinc-500"> </span>
-                <span className="text-zinc-900">Первый показ результата этой попытки списывает </span>
-                <b className="text-zinc-900">{p} ₽</b>
-                <span className="text-zinc-900"> (авторская расшифровка включена).</span>
-              </>
-            ) : null}
-          </div>
+          <div className="text-sm text-zinc-600">Ответь на все пары.</div>
 
           <button
             type="button"
@@ -525,11 +501,6 @@ function PairSplitForm({ test }: { test: PairSplitTestV1 }) {
         </div>
 
         {error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
-
-        <div className="mt-3 text-xs text-zinc-600">
-          Нужно пополнить баланс?{" "}
-          <Link href="/wallet" className="underline hover:text-zinc-900">Кошелёк</Link>
-        </div>
       </div>
     </Layout>
   );

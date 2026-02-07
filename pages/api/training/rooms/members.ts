@@ -23,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (error) return res.status(500).json({ ok: false, error: error.message });
 
   const now = Date.now();
-  const onlineWindowMs = 240_000; // 4 minutes (touch runs every 90s)
+  const onlineWindowMs = 60_000;
 
   return res.status(200).json({
     ok: true,
