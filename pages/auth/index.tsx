@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
 
-type Mode = "login" | "signup" | "otp";
+type Mode = "login" | "signup";
 
 export default function AuthPage() {
   const { supabase, user, session } = useSession();
@@ -28,13 +28,6 @@ export default function AuthPage() {
       router.replace(next);
     }
   }, [user, session, next, router]);
-
-  const emailRedirectTo = useMemo(() => {
-    // Works both locally and on Vercel.
-    if (typeof window === "undefined") return undefined;
-    const base = window.location.origin;
-    return `${base}/auth/callback?next=${encodeURIComponent(next)}`;
-  }, [next]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,23 +64,14 @@ export default function AuthPage() {
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: emailRedirectTo ? { emailRedirectTo } : undefined,
         });
         if (error) throw error;
         setInfo(
-          "Регистрация отправлена. Если подтверждение email включено в Supabase — проверь почту. Если подтверждение выключено — можно сразу входить."
+          "Аккаунт создан. Если в Supabase включено подтверждение email — потребуется подтвердить почту. Если подтверждение выключено — можно сразу входить."
         );
         setMode("login");
         return;
       }
-
-      // OTP / magic link
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: emailRedirectTo ? { emailRedirectTo } : undefined,
-      });
-      if (error) throw error;
-      setInfo("Ссылка для входа отправлена на почту (если почтовый провайдер настроен в Supabase). ");
     } catch (err: any) {
       setError(err?.message ?? "Ошибка");
     } finally {
@@ -113,13 +97,6 @@ export default function AuthPage() {
           >
             Регистрация
           </button>
-          <button
-            type="button"
-            onClick={() => setMode("otp")}
-            className={`btn btn-sm ${mode === "otp" ? "btn-primary" : "btn-secondary"}`}
-          >
-            Ссылка на почту
-          </button>
         </div>
 
         <div className="mt-3 text-xs text-slate-600">
@@ -127,7 +104,6 @@ export default function AuthPage() {
           {mode === "signup"
             ? "Создайте аккаунт по email и паролю. Если вы специалист — включите переключатель и введите общий код."
             : null}
-          {mode === "otp" ? "Вход по ссылке (magic link). Требует настроенный SMTP в Supabase." : null}
         </div>
 
         <form onSubmit={onSubmit} className="mt-4 grid gap-3">
@@ -143,19 +119,17 @@ export default function AuthPage() {
             />
           </label>
 
-          {mode !== "otp" ? (
-            <label className="grid gap-1">
-              <span className="text-xs text-slate-600">Пароль</span>
-              <input
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                type="password"
-                placeholder="••••••••"
-                className="input"
-                required
-              />
-            </label>
-          ) : null}
+          <label className="grid gap-1">
+            <span className="text-xs text-slate-600">Пароль</span>
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              placeholder="••••••••"
+              className="input"
+              required
+            />
+          </label>
 
           {mode === "signup" ? (
             <div className="card-soft p-3">
@@ -205,7 +179,7 @@ export default function AuthPage() {
               ? "Войти"
               : mode === "signup"
               ? "Зарегистрироваться"
-              : "Отправить ссылку"}
+              : "Продолжить"}
           </button>
         </form>
 
