@@ -43,7 +43,7 @@ function ensureProgress(total: number, answered: number) {
 function cls(active: boolean) {
   return active
     ? "rounded-xl border border-indigo-300/80 bg-indigo-200/70 px-4 py-3 text-left text-[15px] font-medium leading-snug text-indigo-950"
-    : "rounded-xl border border-white/70 bg-white/55 px-4 py-3 text-left text-[15px] font-medium leading-snug text-slate-900 hover:bg-white/75";
+    : "rounded-xl border border-indigo-100/90 bg-white/85 px-4 py-3 text-left text-[15px] font-medium leading-snug text-slate-900 shadow-sm hover:bg-white/95";
 }
 
 function cap(s: string) {
@@ -258,7 +258,7 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
           </Link>
         </div>
 
-        <div className="mt-3 h-2 w-full rounded-full bg-white/60">
+        <div className="mt-3 h-2 w-full rounded-full bg-indigo-100/70">
           <div
             className="h-2 rounded-full bg-indigo-300 transition-all"
             style={{ width: `${ensureProgress(test.questions.length, answeredCount)}%` }}
@@ -278,8 +278,8 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
                   type="button"
                   onClick={() => pick(idx, o1.tag)}
                   className={[
-                    "rounded-xl border border-white/70 bg-white/55 p-3 text-left text-sm transition backdrop-blur-sm",
-                    chosen === o1.tag ? "border-indigo-300/80 bg-indigo-100/70" : "hover:bg-white/75",
+                    "rounded-xl border border-indigo-100/90 bg-white/85 p-3 text-left text-sm transition shadow-sm backdrop-blur-sm",
+                    chosen === o1.tag ? "border-indigo-300/80 bg-indigo-100/70" : "hover:bg-white/95",
                   ].join(" ")}
                 >
                   <div className="text-xs text-slate-500">({o1.tag})</div>
@@ -290,8 +290,8 @@ function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
                   type="button"
                   onClick={() => pick(idx, o2.tag)}
                   className={[
-                    "rounded-xl border border-white/70 bg-white/55 p-3 text-left text-sm transition backdrop-blur-sm",
-                    chosen === o2.tag ? "border-indigo-300/80 bg-indigo-100/70" : "hover:bg-white/75",
+                    "rounded-xl border border-indigo-100/90 bg-white/85 p-3 text-left text-sm transition shadow-sm backdrop-blur-sm",
+                    chosen === o2.tag ? "border-indigo-300/80 bg-indigo-100/70" : "hover:bg-white/95",
                   ].join(" ")}
                 >
                   <div className="text-xs text-slate-500">({o2.tag})</div>
@@ -421,7 +421,7 @@ function PairSplitForm({ test }: { test: PairSplitTestV1 }) {
           </Link>
         </div>
 
-        <div className="mt-3 h-2 w-full rounded-full bg-white/60">
+        <div className="mt-3 h-2 w-full rounded-full bg-indigo-100/70">
           <div
             className="h-2 rounded-full bg-indigo-300 transition-all"
             style={{ width: `${ensureProgress(test.questions.length, answeredCount)}%` }}
@@ -806,7 +806,7 @@ function ColorTypesForm({ test }: { test: ColorTypesTestV1 }) {
           </Link>
         </div>
 
-        <div className="mt-3 h-2 w-full rounded-full bg-white/60">
+        <div className="mt-3 h-2 w-full rounded-full bg-indigo-100/70">
           <div className="h-2 rounded-full bg-indigo-300 transition-all" style={{ width: `${ensureProgress(6, answeredCount)}%` }} />
         </div>
 
@@ -950,7 +950,7 @@ function USKForm({ test }: { test: USKTestV1 }) {
           </Link>
         </div>
 
-        <div className="mt-3 h-2 w-full rounded-full bg-white/60">
+        <div className="mt-3 h-2 w-full rounded-full bg-indigo-100/70">
           <div
             className="h-2 rounded-full bg-indigo-300 transition-all"
             style={{ width: `${ensureProgress(test.questions.length, answeredCount)}%` }}
@@ -1151,7 +1151,7 @@ export default function TakeTest({ test }: { test: AnyTest }) {
                   clearSession(test.slug);
                   router.replace(`/tests/${test.slug}`);
                 }}
-                className="rounded-xl border px-3 py-2 text-sm hover:bg-white/75"
+                className="rounded-xl border border-indigo-100/90 bg-white/85 px-3 py-2 text-sm shadow-sm hover:bg-white/95"
               >
                 Сбросить локальные данные
               </button>

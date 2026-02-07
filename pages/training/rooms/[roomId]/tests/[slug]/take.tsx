@@ -9,7 +9,7 @@ import { useSession } from "@/lib/useSession";
 function cls(active: boolean) {
   return active
     ? "rounded-xl border border-indigo-300/80 bg-indigo-200/70 px-4 py-3 text-left text-[15px] font-medium leading-snug text-indigo-950"
-    : "rounded-xl border border-white/70 bg-white/55 px-4 py-3 text-left text-[15px] font-medium leading-snug text-slate-900 hover:bg-white/75";
+    : "rounded-xl border border-indigo-100/90 bg-white/85 px-4 py-3 text-left text-[15px] font-medium leading-snug text-slate-900 shadow-sm hover:bg-white/95";
 }
 
 function cap(s: string) {

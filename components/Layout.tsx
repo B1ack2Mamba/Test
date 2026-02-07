@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import React from "react";
 import dynamic from "next/dynamic";
 import { PAYMENTS_UI_ENABLED } from "@/lib/payments";
@@ -24,9 +25,28 @@ export function Layout({
 }) {
   return (
     <div className="min-h-screen bg-app text-slate-900">
-      <header className="border-b border-white/60 bg-white/55 backdrop-blur-sm">
+      <header className="border-b border-indigo-100/90 bg-white/70 backdrop-blur-sm shadow-sm">
         <div className="mx-auto flex max-w-4xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="font-semibold tracking-tight">Авторские тесты</div>
+          <Link href="/" className="flex items-center gap-3 font-semibold tracking-tight">
+            {/* Mobile: compact mark + label. Desktop: full logo. */}
+            <Image
+              src="/krost-mark.png"
+              alt="Логотип"
+              width={28}
+              height={28}
+              className="block sm:hidden"
+              priority
+            />
+            <Image
+              src="/krost-logo.png"
+              alt="КРОСТ"
+              width={170}
+              height={44}
+              className="hidden sm:block"
+              priority
+            />
+            <span className="sm:hidden text-slate-900">Тесты</span>
+          </Link>
           <nav className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
             <Link
               href="/"
@@ -60,7 +80,7 @@ export function Layout({
         {children}
       </main>
 
-      <footer className="border-t border-white/60 bg-white/45 backdrop-blur-sm">
+      <footer className="border-t border-indigo-100/90 bg-white/60 backdrop-blur-sm">
         <div className="mx-auto max-w-4xl px-4 py-5 text-xs text-slate-500">&nbsp;</div>
       </footer>
     </div>

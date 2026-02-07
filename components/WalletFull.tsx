@@ -142,7 +142,7 @@ export default function WalletPage() {
                 </thead>
                 <tbody>
                   {ledger.map((row) => (
-                    <tr key={row.id} className="border-t border-white/60">
+                    <tr key={row.id} className="border-t border-indigo-100/90">
                       <td className="py-2 text-xs text-slate-600">
                         {new Date(row.created_at).toLocaleString()}
                       </td>

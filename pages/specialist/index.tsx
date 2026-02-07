@@ -17,6 +17,7 @@ export default function SpecialistHome() {
   const [pwd, setPwd] = useState("");
   const [busy, setBusy] = useState(false);
   const [createErr, setCreateErr] = useState("");
+  const [deletingId, setDeletingId] = useState<string>("");
 
   const load = async () => {
     if (!session) return;
@@ -61,6 +62,30 @@ export default function SpecialistHome() {
       setCreateErr(e?.message || "Ошибка");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const removeRoom = async (roomId: string, roomName?: string) => {
+    if (!session) return;
+    const ok = window.confirm(
+      `Удалить комнату${roomName ? ` "${roomName}"` : ""}?\n\nЭто удалит комнату, участников и результаты.`
+    );
+    if (!ok) return;
+    setDeletingId(roomId);
+    setErr("");
+    try {
+      const r = await fetch("/api/training/rooms/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ room_id: roomId }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось удалить комнату");
+      await load();
+    } catch (e: any) {
+      setErr(e?.message || "Ошибка");
+    } finally {
+      setDeletingId("");
     }
   };
 
@@ -128,21 +153,31 @@ export default function SpecialistHome() {
 
       <div className="mt-3 grid gap-3">
         {rooms.map((r) => (
-          <Link
-            key={r.id}
-            href={`/specialist/rooms/${encodeURIComponent(r.id)}`}
-            className="card hover:shadow"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-lg font-semibold">{r.name}</div>
-                <div className="mt-1 text-xs text-zinc-500">
-                  {r.is_active ? "Активна" : "Не активна"} · {new Date(r.created_at).toLocaleString()}
+          <div key={r.id} className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <Link
+              href={`/specialist/rooms/${encodeURIComponent(r.id)}`}
+              className="card flex-1 hover:shadow"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-lg font-semibold">{r.name}</div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    {r.is_active ? "Активна" : "Не активна"} · {new Date(r.created_at).toLocaleString()}
+                  </div>
                 </div>
+                <div className="text-xs text-zinc-500">Открыть</div>
               </div>
-              <div className="text-xs text-zinc-500">Открыть</div>
-            </div>
-          </Link>
+            </Link>
+
+            <button
+              onClick={() => removeRoom(r.id, r.name)}
+              disabled={!!deletingId}
+              className="btn btn-secondary w-full text-red-600 hover:text-red-700 sm:w-auto sm:min-h-[34px] sm:rounded-lg sm:px-3 sm:py-1.5 sm:text-[13px]"
+              title="Удалить комнату"
+            >
+              {deletingId === r.id ? "…" : "Удалить"}
+            </button>
+          </div>
         ))}
         {rooms.length === 0 && !loading ? (
           <div className="card text-sm text-zinc-600">Пока нет комнат.</div>

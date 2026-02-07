@@ -107,7 +107,7 @@ export default function TestDetail({ test }: { test: AnyTest | null }) {
                 ? [...a.result.ranked].sort((x, y) => (y?.percent ?? 0) - (x?.percent ?? 0))[0]
                 : null;
               return (
-                <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/60 bg-white/50 px-3 py-2 backdrop-blur-sm">
+                <div key={a.id} className="row flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="text-xs text-zinc-600">{formatLocalDate(a.created_at)}</div>
                     {top ? (
