@@ -33,9 +33,20 @@ function Digits({ result }: { result: ScoreResult }) {
     const total = result.total || 0;
     return (
       <div className="grid gap-2">
-        {result.ranked.map((r) => (
-          <div key={r.tag} className="flex items-center justify-between rounded-xl border bg-zinc-50 px-3 py-2">
-            <div className="text-sm font-medium">{r.style}</div>
+        {result.ranked.map((r, idx) => (
+          <div
+            key={r.tag}
+            className={[
+              "flex items-center justify-between rounded-xl border px-3 py-2",
+              idx % 2 === 0 ? "bg-white" : "bg-zinc-50",
+            ].join(" ")}
+          >
+            <div className="text-sm font-medium">
+              <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-md border bg-white text-[11px] text-zinc-700">
+                {String(r.tag)}
+              </span>
+              {r.style}
+            </div>
             <div className="text-sm text-zinc-700">
               {r.count}/{total} · {r.level}
             </div>
@@ -47,9 +58,29 @@ function Digits({ result }: { result: ScoreResult }) {
   const maxByFactor = (result.meta as any)?.maxByFactor || {};
   return (
     <div className="grid gap-2">
-      {result.ranked.map((r) => (
-        <div key={r.tag} className="flex items-center justify-between rounded-xl border bg-zinc-50 px-3 py-2">
-          <div className="text-sm font-medium">{r.style}</div>
+      {result.ranked.map((r, idx) => (
+        <div
+          key={r.tag}
+          className={[
+            "flex items-center justify-between rounded-xl border px-3 py-2",
+            idx % 2 === 0 ? "bg-white" : "bg-zinc-50",
+          ].join(" ")}
+        >
+          <div>
+            {kind === "pair_sum5_v1" ? (
+              <>
+                <div className="text-sm font-medium">Фактор "{r.tag}"</div>
+                <div className="mt-0.5 text-xs text-zinc-600">{r.style}</div>
+              </>
+            ) : (
+              <div className="text-sm font-medium">
+                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-md border bg-white text-[11px] text-zinc-700">
+                  {String(r.tag)}
+                </span>
+                {r.style}
+              </div>
+            )}
+          </div>
           <div className="text-sm text-zinc-700">
             {r.count}/{maxByFactor[r.tag] ?? "?"} · {r.level}
           </div>
@@ -94,6 +125,7 @@ export default function SpecialistRoom({ tests }: Props) {
   const [shareBusy, setShareBusy] = useState(false);
   const [shared, setShared] = useState(false);
   const [shareMsg, setShareMsg] = useState<string>("");
+  const [shareRevealResults, setShareRevealResults] = useState(false);
 
   const [shareRoomBusy, setShareRoomBusy] = useState(false);
   const [shareRoomMsg, setShareRoomMsg] = useState<string>("");
@@ -333,6 +365,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
     setCopyMsg("");
     setShareMsg("");
     setShared(false);
+    setShareRevealResults(false);
     try {
       const r = await fetch(`/api/training/attempts/get?attempt_id=${encodeURIComponent(attemptId)}`, {
         headers: { authorization: `Bearer ${session.access_token}` },
@@ -347,14 +380,24 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
       const draftText = (j.interpretations || []).find((x: any) => x.kind === "client_draft")?.text || "";
       setClientText(finalText || draftText || "");
 
-      const isShared = !!(j.interpretations || []).find((x: any) => x.kind === "shared");
+      const sharedRow = (j.interpretations || []).find((x: any) => x.kind === "shared");
+      const isShared = !!sharedRow;
       setShared(isShared);
+      // shared row may contain JSON with visibility flags
+      if (sharedRow?.text && typeof sharedRow.text === "string") {
+        try {
+          const meta = JSON.parse(sharedRow.text);
+          setShareRevealResults(Boolean(meta?.reveal_results));
+        } catch {
+          setShareRevealResults(false);
+        }
+      }
     } catch (e: any) {
       setInterp(`Ошибка: ${e?.message || "Не удалось загрузить"}`);
     }
   };
 
-  const shareToLK = async () => {
+  const shareToLK = async (revealOverride?: boolean) => {
     if (!session || !attemptId) return;
     setShareBusy(true);
     setShareMsg("");
@@ -362,7 +405,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
       const r = await fetch("/api/training/attempts/share", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ attempt_id: attemptId }),
+        body: JSON.stringify({ attempt_id: attemptId, reveal_results: typeof revealOverride === "boolean" ? revealOverride : shareRevealResults }),
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось отправить");
@@ -596,7 +639,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
       const r = await fetch("/api/training/attempts/send-client-text", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ attempt_id: attemptId, text }),
+        body: JSON.stringify({ attempt_id: attemptId, text, reveal_results: shareRevealResults }),
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось отправить");
@@ -958,7 +1001,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
                   Ссылка участнику
                 </button>
                 <button
-                  onClick={shared ? unshareFromLK : shareToLK}
+                  onClick={() => (shared ? unshareFromLK() : shareToLK(shareRevealResults))}
                   disabled={!attemptId || shareBusy}
                   className={
                     "rounded-lg px-3 py-1.5 text-xs font-medium " +
@@ -977,6 +1020,21 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
 
             {copyMsg ? <div className="mt-2 text-xs text-zinc-600">{copyMsg}</div> : null}
             {shareMsg ? <div className="mt-2 text-xs text-zinc-600">{shareMsg}</div> : null}
+
+            <div className="mt-3 flex items-center gap-2">
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-700">
+                <input
+                  type="checkbox"
+                  checked={shareRevealResults}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setShareRevealResults(next);
+                    if (shared) shareToLK(next);
+                  }}
+                />
+                Показывать клиенту результаты (цифры)
+              </label>
+            </div>
 
             <div className="mt-4">
               {attempt?.result ? (
@@ -1038,7 +1096,11 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
                 </button>
               </div>
             </div>
-            <div className="mt-1 text-xs text-zinc-500">Участник увидит только этот текст (без цифр). Можно редактировать и отправить частично.</div>
+            <div className="mt-1 text-xs text-zinc-500">
+              {shareRevealResults
+                ? "Участник увидит этот текст и таблицу результатов (цифры). Можно редактировать и отправить частично."
+                : "Участник увидит только этот текст (без цифр). Можно редактировать и отправить частично."}
+            </div>
             <textarea
               value={clientText}
               onChange={(e) => setClientText(e.target.value)}

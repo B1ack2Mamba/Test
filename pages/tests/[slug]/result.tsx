@@ -95,7 +95,7 @@ export default function TestResult({ test }: { test: AnyTest }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.ranked.map((r) => {
+                  {result.ranked.map((r, idx) => {
                     const denom = (() => {
                       if (result.kind === "forced_pair_v1") return result.total;
                       if (result.kind === "color_types_v1") return result.total;
@@ -120,10 +120,24 @@ export default function TestResult({ test }: { test: AnyTest }) {
                       return null;
                     })();
 
+                    const stripe = idx % 2 === 0 ? "bg-white" : "bg-zinc-50";
+
                     return (
-                      <tr key={r.tag} className="border-b align-top">
+                      <tr key={r.tag} className={["border-b align-top", stripe].join(" ")}>
                         <td className="py-3 pr-4">
-                          <div className="font-medium text-zinc-900">{r.style}</div>
+                          {result.kind === "pair_sum5_v1" ? (
+                            <>
+                              <div className="font-medium text-zinc-900">Фактор "{r.tag}"</div>
+                              <div className="mt-0.5 text-xs text-zinc-600">{r.style}</div>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-2 font-medium text-zinc-900">
+                              <span className="inline-flex min-w-6 items-center justify-center rounded-md border bg-white px-1.5 py-0.5 text-[11px] text-zinc-700">
+                                {String(r.tag)}
+                              </span>
+                              <span>{r.style}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 pr-4 text-zinc-900">
                           <div>

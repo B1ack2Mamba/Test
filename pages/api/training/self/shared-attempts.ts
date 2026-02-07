@@ -9,7 +9,17 @@ type SharedAttempt = {
   created_at: string;
   shared_at: string;
   has_interpretation: boolean;
+  reveal_results: boolean;
 };
+
+function safeJson(s: any): any {
+  if (!s || typeof s !== "string") return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * List attempts that a specialist has "shared" with the participant.
@@ -25,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // 1) shared markers
   const { data: sharedRows, error: sErr } = await supabaseAdmin
     .from("training_attempt_interpretations")
-    .select("attempt_id,created_at")
+    .select("attempt_id,created_at,text")
     .eq("kind", "shared")
     .order("created_at", { ascending: false });
 
@@ -57,12 +67,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const hasKeys = new Set((keysRows || []).map((r: any) => String(r.attempt_id)));
 
   const sharedAtMap = new Map<string, string>();
+  const revealMap = new Map<string, boolean>();
   for (const r of sharedRows || []) {
     const id = String((r as any).attempt_id);
     if (!sharedAtMap.has(id)) sharedAtMap.set(id, String((r as any).created_at));
+    if (!revealMap.has(id)) {
+      const meta = safeJson((r as any).text);
+      revealMap.set(id, Boolean(meta?.reveal_results));
+    }
   }
 
-  const out: SharedAttempt[] = (attempts || []).map((a: any) => ({
+  const outAll: SharedAttempt[] = (attempts || []).map((a: any) => ({
     attempt_id: String(a.id),
     test_slug: String(a.test_slug),
     room_id: String(a.room_id),
@@ -70,7 +85,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     created_at: String(a.created_at),
     shared_at: sharedAtMap.get(String(a.id)) || String(a.created_at),
     has_interpretation: hasKeys.has(String(a.id)),
+    reveal_results: revealMap.get(String(a.id)) || false,
   }));
+
+  // Hide "dangling" items that will never be visible to the participant:
+  // if there is neither a client_text interpretation, nor an explicit permission to show numeric results.
+  const out: SharedAttempt[] = outAll.filter((x) => x.has_interpretation || x.reveal_results);
 
   // Room names (nice UX in LK)
   const roomIds = Array.from(new Set(out.map((x) => x.room_id))).filter(Boolean);

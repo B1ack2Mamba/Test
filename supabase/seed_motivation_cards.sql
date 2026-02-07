@@ -365,13 +365,13 @@ values (
   "scoring": {
     "factors": [
       "A",
+      "D",
+      "I",
       "B",
       "C",
-      "D",
       "E",
       "F",
-      "H",
-      "I"
+      "H"
     ],
     "factor_to_name": {
       "A": "Заработная плата",

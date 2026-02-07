@@ -12,6 +12,7 @@ type Row = {
   created_at: string;
   shared_at: string;
   has_interpretation: boolean;
+  reveal_results: boolean;
 };
 
 function fmt(ts: string) {
@@ -112,7 +113,7 @@ export default function MyTrainingResults({ tests }: Props) {
             </div>
 
             <div className="mt-2 text-xs text-zinc-600">
-              {r.has_interpretation ? "✅ Расшифровка готова" : "⏳ Ожидает расшифровки специалиста"}
+              {r.reveal_results ? "✅ Результаты доступны" : r.has_interpretation ? "✅ Расшифровка готова" : "⏳ Ожидает расшифровки специалиста"}
             </div>
           </div>
         ))}

@@ -15,7 +15,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!isSpecialistUser(user)) return res.status(403).json({ ok: false, error: "Forbidden" });
 
-  const { attempt_id, text } = (req.body || {}) as any;
+  const { attempt_id, text, reveal_results } = (req.body || {}) as any;
   const attemptId = String(attempt_id || "").trim();
   const payloadText = String(text || "").trim();
   if (!attemptId) return res.status(400).json({ ok: false, error: "attempt_id is required" });
@@ -51,7 +51,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (tErr) return res.status(500).json({ ok: false, error: tErr.message });
 
   // 2) Mark as shared
-  const payload = { shared_by: user.email, shared_at: new Date().toISOString() };
+  // `reveal_results` allows the specialist to optionally show numeric results to the participant.
+  const payload = {
+    shared_by: user.email,
+    shared_at: new Date().toISOString(),
+    reveal_results: Boolean(reveal_results),
+  };
   const { error: sErr } = await supabaseAdmin
     .from("training_attempt_interpretations")
     .upsert(

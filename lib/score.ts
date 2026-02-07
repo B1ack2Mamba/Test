@@ -31,7 +31,10 @@ export type ScoreResult = {
 // ===================== Negotiation test (forced pair) =====================
 
 export function scoreForcedPair(test: ForcedPairTestV1, chosenTags: Tag[]): ScoreResult {
-  const tags = test.scoring.tags;
+  // Display/order requirement: A → B → C → D → E (not by priority)
+  const baseTags = test.scoring.tags;
+  const preferred: Tag[] = ["A", "B", "C", "D", "E"];
+  const tags: Tag[] = preferred.filter((t) => baseTags.includes(t));
   const counts = Object.fromEntries(tags.map((t) => [t, 0])) as Record<Tag, number>;
 
   for (const t of chosenTags) {
@@ -66,8 +69,7 @@ export function scoreForcedPair(test: ForcedPairTestV1, chosenTags: Tag[]): Scor
       count: counts[t],
       percent: percents[t],
       level: levelForTagCount(t, counts[t]),
-    }))
-    .sort((a, b) => b.percent - a.percent);
+    }));
 
 
   return {
@@ -86,9 +88,23 @@ export function scoreForcedPair(test: ForcedPairTestV1, chosenTags: Tag[]): Scor
  * Правому автоматически начисляется maxPoints - left.
  */
 export function scorePairSplit(test: PairSplitTestV1, answersLeftPoints: number[]): ScoreResult {
-  const factors = test.scoring.factors;
-  const counts: Record<MotivationFactor, number> = Object.fromEntries(factors.map((f) => [f, 0])) as any;
-  const maxByFactor: Record<MotivationFactor, number> = Object.fromEntries(factors.map((f) => [f, 0])) as any;
+  // Preferred display order for the classic 8-factor motivation cards:
+  // A, D, I, B, C, E, F, H (as in the original key/table).
+  const baseFactors = test.scoring.factors as MotivationFactor[];
+  const preferred: MotivationFactor[] = ["A", "D", "I", "B", "C", "E", "F", "H"];
+
+  const hasAllPreferred = preferred.every((f) => baseFactors.includes(f));
+  const factors: MotivationFactor[] = hasAllPreferred
+    ? [...preferred, ...baseFactors.filter((f) => !preferred.includes(f))]
+    : baseFactors;
+
+  const counts: Record<MotivationFactor, number> = Object.fromEntries(
+    factors.map((f) => [f, 0] as const)
+  ) as Record<MotivationFactor, number>;
+
+  const maxByFactor: Record<MotivationFactor, number> = Object.fromEntries(
+    factors.map((f) => [f, 0] as const)
+  ) as Record<MotivationFactor, number>;
 
   for (let i = 0; i < test.questions.length; i++) {
     const q = test.questions[i];

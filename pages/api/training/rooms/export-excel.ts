@@ -172,7 +172,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const sub: ColDef[] = ordered.map((f) => ({
         key: `${slug}:${f}`,
-        header2: `${f}. ${factorToName[f] || f}`,
+        // Match the original key/table header style.
+        header2: `Фактор "${f}"\n${factorToName[f] || f}`,
         group: title,
         test_slug: slug,
         width: 18,
@@ -217,7 +218,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Negotiation style (forced pair)
     if (type === "forced_pair" || type === "forced_pair_v1") {
-      const tags = Array.isArray(t?.scoring?.tags) ? (t.scoring.tags as string[]) : [];
+      const baseTags = Array.isArray(t?.scoring?.tags) ? (t.scoring.tags as string[]) : [];
+      const preferred = ["A", "B", "C", "D", "E"];
+      const tags = preferred.filter((x) => baseTags.includes(x));
       const tagToStyle = (t?.scoring?.tag_to_style || {}) as Record<string, string>;
       const sub: ColDef[] = tags.map((tag) => ({
         key: `${slug}:${tag}`,
@@ -319,6 +322,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     keyToColLetter[c.key] = colToLetter(idx + 1); // 1-based
   });
 
+  // Visual separators: make it easier to read when there are many scales/columns.
+  // - Thick vertical border after the "ФИО" column
+  // - Thick vertical border after each grouped test block
+  const sepCols = new Set<number>([2, ...groupRanges.map((g) => g.endCol)]);
+
+  const styleFor = (
+    base: "sHeader" | "sCell" | "sName",
+    colIndex: number,
+    altRow: boolean
+  ) => {
+    const sep = sepCols.has(colIndex);
+    if (base === "sHeader") return sep ? "sHeaderSep" : "sHeader";
+    if (base === "sName") {
+      if (altRow) return sep ? "sNameAltSep" : "sNameAlt";
+      return sep ? "sNameSep" : "sName";
+    }
+    // sCell
+    if (altRow) return sep ? "sCellAltSep" : "sCellAlt";
+    return sep ? "sCellSep" : "sCell";
+  };
+
   // ===== Excel export without external deps (SpreadsheetML 2003) =====
   const xmlEscape = (v: string) =>
     v
@@ -366,18 +390,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const buildMurmanskSheetXml = (name: string, rowsArr: any[], freezeRows = 2, freezeCols = 2) => {
     // Header row1 (groups with merges)
     const r1: string[] = [];
-    r1.push(cellXml("", "sHeader", { index: 1, type: "String" }));
-    r1.push(cellXml("", "sHeader", { index: 2, type: "String" }));
+    r1.push(cellXml("", styleFor("sHeader", 1, false), { index: 1, type: "String" }));
+    r1.push(cellXml("", styleFor("sHeader", 2, false), { index: 2, type: "String" }));
 
     for (const g of groupRanges) {
       const mergeAcross = Math.max(0, g.endCol - g.startCol);
-      r1.push(cellXml(g.title, "sHeader", { index: g.startCol, mergeAcross, type: "String" }));
+      // Use the group's end column to decide whether we need a thick separator border.
+      r1.push(cellXml(g.title, styleFor("sHeader", g.endCol, false), { index: g.startCol, mergeAcross, type: "String" }));
     }
 
     // Header row2 (col names)
     const r2: string[] = [];
     for (let i = 0; i < cols.length; i++) {
-      r2.push(cellXml(cols[i].header2, "sHeader", { type: "String" }));
+      const colIndex = i + 1;
+      r2.push(cellXml(cols[i].header2, styleFor("sHeader", colIndex, false), { type: "String" }));
     }
 
     // Data rows
@@ -385,15 +411,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let idx = 0;
     for (const r of rowsArr) {
       idx++;
+      const altRow = idx % 2 === 0;
       const rowCells: string[] = [];
-      rowCells.push(cellXml(r.idx ?? idx, "sCell", { type: "Number" }));
-      rowCells.push(cellXml(r.name || "", "sName", { type: "String" }));
+      rowCells.push(cellXml(r.idx ?? idx, styleFor("sCell", 1, altRow), { type: "Number" }));
+      rowCells.push(cellXml(r.name || "", styleFor("sName", 2, altRow), { type: "String" }));
 
       for (let c = 3; c <= cols.length; c++) {
         const def = cols[c - 1];
         const result = def.test_slug ? resultByUserSlug.get(`${r.user_id}:${def.test_slug}`) : null;
         const v = def.fromResult ? def.fromResult(result) : null;
-        rowCells.push(cellXml(v, "sCell"));
+        rowCells.push(cellXml(v, styleFor("sCell", c, altRow)));
       }
 
       dataRows.push(rowXml(rowCells));
@@ -510,6 +537,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
       </Borders>
     </Style>
+    <Style ss:ID="sHeaderSep">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+      <Font ss:Bold="1"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
     <Style ss:ID="sCell">
       <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
       <Borders>
@@ -519,12 +556,70 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
       </Borders>
     </Style>
+    <Style ss:ID="sCellSep">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="sCellAlt">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+      <Interior ss:Color="#F7F7F7" ss:Pattern="Solid"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="sCellAltSep">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+      <Interior ss:Color="#F7F7F7" ss:Pattern="Solid"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
     <Style ss:ID="sName">
       <Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/>
       <Borders>
         <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
         <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
         <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="sNameSep">
+      <Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="sNameAlt">
+      <Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/>
+      <Interior ss:Color="#F7F7F7" ss:Pattern="Solid"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="sNameAltSep">
+      <Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/>
+      <Interior ss:Color="#F7F7F7" ss:Pattern="Solid"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2"/>
         <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
       </Borders>
     </Style>

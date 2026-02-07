@@ -15,7 +15,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!isSpecialistUser(user)) return res.status(403).json({ ok: false, error: "Forbidden" });
 
-  const { attempt_id } = (req.body || {}) as any;
+  const { attempt_id, reveal_results } = (req.body || {}) as any;
   const attemptId = String(attempt_id || "").trim();
   if (!attemptId) return res.status(400).json({ ok: false, error: "attempt_id is required" });
 
@@ -43,6 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const payload = {
     shared_by: user.email,
     shared_at: new Date().toISOString(),
+    reveal_results: Boolean(reveal_results),
   };
 
   const { error: uErr } = await supabaseAdmin

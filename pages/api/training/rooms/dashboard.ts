@@ -7,16 +7,19 @@ import type { ScoreResult } from "@/lib/score";
 function miniFromResult(result: any): string {
   const r = result as ScoreResult;
   if (!r || typeof r !== "object") return "";
+
+  const sorted = Array.isArray(r.ranked) ? [...r.ranked].sort((a: any, b: any) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0)) : [];
+
   if (r.kind === "color_types_v1") {
     const g = r.counts?.green ?? 0;
     const red = r.counts?.red ?? 0;
     const b = r.counts?.blue ?? 0;
-    const top = Array.isArray(r.ranked) && r.ranked[0] ? r.ranked[0].style : "";
+    const top = sorted[0]?.style ? String(sorted[0].style) : "";
     return `З${g} К${red} С${b}${top ? ` · ${top}` : ""}`;
   }
-  if (Array.isArray(r.ranked) && r.ranked.length) {
-    const a = r.ranked[0];
-    const b = r.ranked[1];
+  if (sorted.length) {
+    const a = sorted[0];
+    const b = sorted[1];
     const denomFor = (row: any) => {
       if (!row) return null;
       if (r.kind === "forced_pair_v1" || r.kind === "color_types_v1" || r.kind === "usk_v1") return r.total;
