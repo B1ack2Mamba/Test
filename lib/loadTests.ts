@@ -78,8 +78,8 @@ export async function getAllTests(): Promise<AnyTest[]> {
           has_interpretation: price > 0,
         } as AnyTest;
       })
-      .filter(Boolean)
-      .filter((t: AnyTest) => t.slug !== "16pf") as AnyTest[];
+      .filter((t): t is AnyTest => Boolean(t))
+      .filter((t) => t.slug !== "16pf") as AnyTest[];
 
     // Production behavior: DB is source of truth.
     if (!isDev) {
