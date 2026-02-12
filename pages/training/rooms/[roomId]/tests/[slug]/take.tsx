@@ -96,6 +96,14 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
   const router = useRouter();
   const roomId = String(router.query.roomId || "");
   const { session, user } = useSession();
+
+  // Dev helper buttons are hidden by default.
+  // Enable them with ?dev=1 (or ?debug=1) in the URL.
+  const showDevTools = useMemo(() => {
+    const raw = (router.query.dev ?? router.query.debug) as string | string[] | undefined;
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    return v === "1" || v === "true";
+  }, [router.query.dev, router.query.debug]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [isEnabled, setIsEnabled] = useState(true);
@@ -115,6 +123,8 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
 
   // 16PF draft (A/B/C answers per question)
   const [pf16, setPf16] = useState<(ABC | "")[]>(() => Array(test.questions?.length ?? 0).fill(""));
+  const [pf16Gender, setPf16Gender] = useState<"male" | "female" | null>(null);
+  const [pf16Age, setPf16Age] = useState<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -151,6 +161,10 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
         const full = Array(test.questions?.length ?? 0).fill("") as (ABC | "")[];
         for (let i = 0; i < safe.length; i++) full[i] = safe[i];
         setPf16(full);
+        const g = d?.gender === "male" || d?.gender === "female" ? d.gender : null;
+        const a = typeof d?.age === "number" && Number.isFinite(d.age) ? d.age : null;
+        setPf16Gender(g);
+        setPf16Age(a);
       }
     } catch {
       // ignore
@@ -197,6 +211,11 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
     return leftPoints.filter((v) => v !== null).length;
   }, [test.type, forced, leftPoints, colorDraft, pf16]);
 
+  const totalRequired = test.type === "color_types_v1" ? 6 : (test.questions?.length ?? 0);
+  const pf16AgeOk = typeof pf16Age === "number" && Number.isFinite(pf16Age) && pf16Age >= 16 && pf16Age <= 70;
+  const pf16DemoOk = test.type !== "16pf_v1" ? true : ((pf16Gender === "male" || pf16Gender === "female") && pf16AgeOk);
+  const canFinish = totalAnswered === totalRequired && pf16DemoOk;
+
   const submit = async () => {
     if (!session || !user) {
       router.push(`/auth?next=${encodeURIComponent(router.asPath)}`);
@@ -204,10 +223,16 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
     }
     setErr("");
 
-    const total = test.type === "color_types_v1" ? 6 : (test.questions?.length ?? 0);
-    if (totalAnswered < total) {
-      setErr("Ответьте на все вопросы.");
-      return;
+    const total = totalRequired;
+    if (test.type === "16pf_v1") {
+      if (pf16Gender !== "male" && pf16Gender !== "female") {
+        setErr("Укажите пол (мужчина/женщина). ");
+        return;
+      }
+      if (typeof pf16Age !== "number" || !Number.isFinite(pf16Age) || pf16Age < 16 || pf16Age > 70) {
+        setErr("Укажите возраст (16–70 лет). ");
+        return;
+      }
     }
 
     setBusy(true);
@@ -227,7 +252,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
             : test.type === "usk_v1"
               ? (leftPoints.map((v) => (v === null ? 0 : Number(v))) as number[])
               : test.type === "16pf_v1"
-                ? (pf16 as any)
+                ? ({ pf16: pf16 as any, gender: pf16Gender, age: pf16Age } as any)
               : (leftPoints.map((v) => Number(v)) as number[]);
 
       const r = await fetch("/api/training/attempts/submit", {
@@ -275,14 +300,27 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
     saveColorDraft({ ...colorDraft, ...p });
   };
 
-  const savePF16Draft = (next: (ABC | "")[]) => {
+  const savePF16Draft = (next: (ABC | "")[], gender = pf16Gender, age = pf16Age) => {
     setPf16(next);
     try {
       if (typeof window !== "undefined") {
         if (!roomId) return;
-        window.sessionStorage.setItem(`training:${roomId}:draft:${test.slug}`, JSON.stringify(next));
+        window.sessionStorage.setItem(
+          `training:${roomId}:draft:${test.slug}`,
+          JSON.stringify({ pf16: next, gender, age })
+        );
       }
     } catch {}
+  };
+
+  const fillPF16All = (v: ABC) => {
+    const next = Array(test.questions?.length ?? 0).fill(v) as (ABC | "")[];
+    savePF16Draft(next);
+  };
+
+  const clearPF16All = () => {
+    const next = Array(test.questions?.length ?? 0).fill("") as (ABC | "")[];
+    savePF16Draft(next);
   };
 
   const togglePick = (key: "q5" | "q6", value: number) => {
@@ -462,6 +500,51 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
               </div>
             </details>
 
+            <div className="card">
+              <div className="text-xs font-semibold text-slate-600">Данные для нормирования</div>
+              <div className="mt-1 text-xs text-slate-600">Пол и возраст нужны только для перевода сырых баллов в стэны по таблицам норм.</div>
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div>
+                  <div className="text-xs text-slate-600">Пол</div>
+                  <div className="mt-1 flex gap-2">
+                    <button type="button" className={`btn ${pf16Gender === "male" ? "btn-primary" : "btn-ghost"}`} onClick={() => { setPf16Gender("male"); savePF16Draft(pf16, "male", pf16Age); }}>Мужчина</button>
+                    <button type="button" className={`btn ${pf16Gender === "female" ? "btn-primary" : "btn-ghost"}`} onClick={() => { setPf16Gender("female"); savePF16Draft(pf16, "female", pf16Age); }}>Женщина</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-600">Возраст</label>
+                  <input
+                    type="number"
+                    min={16}
+                    max={70}
+                    inputMode="numeric"
+                    className="mt-1 w-[160px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    value={pf16Age ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const n = v === "" ? null : Number(v);
+                      const age = typeof n === "number" && Number.isFinite(n) ? n : null;
+                      setPf16Age(age);
+                      savePF16Draft(pf16, pf16Gender, age);
+                    }}
+                  />
+                  <div className="mt-1 text-[11px] text-slate-500">16–70 лет</div>
+                </div>
+              </div>
+            </div>
+
+            {showDevTools ? (
+              <div className="card">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-xs font-semibold text-slate-600">Тестовый ввод:</div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => fillPF16All("A")}>Все A</button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => fillPF16All("B")}>Все B</button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => fillPF16All("C")}>Все C</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={clearPF16All}>Очистить</button>
+                </div>
+              </div>
+            ) : null}
+
             {(test.questions || []).map((q: any, idx: number) => {
               const chosen = pf16[idx] || "";
               const opts = (q?.options || {}) as Record<ABC, string>;
@@ -636,7 +719,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
       <div className="mt-6 flex items-center gap-2">
         <button
           onClick={submit}
-          disabled={busy}
+          disabled={busy || !canFinish}
           className="btn btn-primary disabled:opacity-50"
         >
           {busy ? "Сохраняем…" : `Завершить (${totalAnswered}/${test.type === "color_types_v1" ? 6 : (test.questions?.length ?? 0)})`}

@@ -80,7 +80,24 @@ export default function TestDetail({ test }: { test: AnyTest | null }) {
         {!test ? (
           <div className="text-sm text-zinc-900">Тест не найден</div>
         ) : (
-          <div className="text-sm text-zinc-600">Вопросов: {test.questions.length}</div>
+          <>
+            <div className="text-sm text-zinc-600">Вопросов: {test.questions.length}</div>
+
+            {test.description ? (
+              <div className="mt-3 text-sm text-zinc-800 whitespace-pre-wrap leading-relaxed">
+                {test.description}
+              </div>
+            ) : null}
+
+            {test.instructions ? (
+              <div className="mt-4 rounded-2xl border border-white/50 bg-white/45 p-4">
+                <div className="text-sm font-medium text-zinc-900">Инструкция</div>
+                <div className="mt-2 text-sm text-zinc-800 whitespace-pre-wrap leading-relaxed">
+                  {test.instructions}
+                </div>
+              </div>
+            ) : null}
+          </>
         )}
 
         <div className="mt-4 flex flex-wrap gap-2">

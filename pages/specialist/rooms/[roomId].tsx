@@ -29,6 +29,91 @@ type Progress = {
 
 function Digits({ result }: { result: ScoreResult }) {
   const kind = result.kind;
+  if (kind === "16pf_v1") {
+    const meta: any = (result.meta as any) || {};
+    const rawByFactor = meta.rawByFactor || {};
+    const maxByFactor = meta.maxByFactor || {};
+    const maxRawByFactor = meta.maxRawByFactor || {};
+    const stenByFactor = meta.stenByFactor || {};
+    const secondary = meta.secondary || {};
+    const secondaryNames: Record<string, string> = {
+      F1: "Тревога",
+      F2: "Экстраверсия - интроверсия",
+      F3: "Чувствительность",
+      F4: "Конформность",
+    };
+
+    const genderRu = meta.gender === "male" ? "мужчина" : meta.gender === "female" ? "женщина" : "—";
+    const age = meta.age ?? "—";
+    const normLabel = meta.normLabel || meta.norm_label_ru || meta.norm_group_label || meta.normGroupLabel || meta.norm_group || meta.normGroup || "—";
+
+    const chipClass = (sten: number) => {
+      if (sten >= 8) return "border-green-200 bg-green-50 text-green-800";
+      if (sten <= 3) return "border-red-200 bg-red-50 text-red-800";
+      return "border-zinc-200 bg-white/60 text-zinc-700";
+    };
+
+    return (
+      <div className="grid gap-3">
+        <div className="text-xs text-zinc-600">
+          Нормы: <span className="font-medium text-zinc-800">{String(normLabel)}</span>
+          <span className="mx-2 text-zinc-300">·</span>
+          Пол: <span className="font-medium text-zinc-800">{genderRu}</span>
+          <span className="mx-2 text-zinc-300">·</span>
+          Возраст: <span className="font-medium text-zinc-800">{String(age)}</span>
+        </div>
+
+        <div className="grid gap-2">
+          {result.ranked.map((r, idx) => {
+            const sten = Number(stenByFactor?.[r.tag] ?? r.count ?? 0);
+            const raw = rawByFactor?.[r.tag];
+            const rawMax = maxRawByFactor?.[r.tag] ?? maxByFactor?.[r.tag];
+            return (
+              <div
+                key={r.tag}
+                className={[
+                  "flex items-center justify-between gap-3 rounded-xl border px-3 py-2",
+                  idx % 2 === 0 ? "bg-white/55" : "bg-white/35",
+                ].join(" ")}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{r.style}</div>
+                  <div className="mt-0.5 text-xs text-zinc-600">
+                    Сырые: {raw ?? "?"}/{rawMax ?? "?"}
+                  </div>
+                </div>
+                <div className={["shrink-0 rounded-lg border px-2 py-1 text-xs font-semibold", chipClass(sten)].join(" ")}>STEN {sten}/10</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {secondary && Object.keys(secondary).length > 0 ? (
+          <div className="grid gap-2 rounded-2xl border bg-white/35 p-3">
+            <div className="text-xs font-semibold text-zinc-800">Вторичные факторы</div>
+            <div className="grid gap-2">
+              {Object.entries(secondary).map(([code, v]: any) => {
+                const value = Number(v?.count ?? v?.value ?? 0);
+                const sten = Math.round(value);
+                const name = secondaryNames[code] || v?.name;
+                const display = Number.isFinite(value) ? value.toFixed(1) : "—";
+                return (
+                  <div key={code} className="flex items-center justify-between gap-3 rounded-xl border bg-white/55 px-3 py-2">
+                    <div className="min-w-0 text-sm font-medium">
+                      {code}{name ? <span className="ml-2 text-xs font-normal text-zinc-600">— {name}</span> : null}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className={["rounded-lg border px-2 py-1 text-xs font-semibold", chipClass(sten)].join(" ")}>0–10 {display}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   if (kind === "forced_pair_v1") {
     const total = result.total || 0;
     return (

@@ -88,7 +88,9 @@ export default function TrainingResults() {
                     <tr className="border-b">
                       <th className="py-2 text-left font-medium text-zinc-700">Фактор</th>
                       <th className="py-2 text-left font-medium text-zinc-700">Баллы</th>
-                      <th className="py-2 text-left font-medium text-zinc-700">Уровень</th>
+                      {result.kind === "16pf_v1" ? null : (
+                        <th className="py-2 text-left font-medium text-zinc-700">Уровень</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -108,13 +110,8 @@ export default function TrainingResults() {
                       })();
 
                       const extraRaw = (() => {
+                        // Для участников: в 16PF не показываем сырые баллы.
                         if (result.kind === "usk_v1") return (result as any).meta?.rawByScale?.[r.tag] ?? null;
-                        if (result.kind === "16pf_v1") {
-                          const raw = (result as any).meta?.rawByFactor?.[r.tag];
-                          const max = (result as any).meta?.maxByFactor?.[r.tag];
-                          if (Number.isFinite(raw) && Number.isFinite(max)) return `${raw}/${max}`;
-                          if (Number.isFinite(raw)) return String(raw);
-                        }
                         return null;
                       })();
 
@@ -128,6 +125,8 @@ export default function TrainingResults() {
                                 <div className="font-medium text-zinc-900">Фактор "{r.tag}"</div>
                                 <div className="mt-0.5 text-xs text-zinc-600">{r.style}</div>
                               </>
+                            ) : result.kind === "16pf_v1" ? (
+                              <div className="font-medium text-zinc-900">{r.style}</div>
                             ) : (
                               <div className="flex items-center gap-2 font-medium text-zinc-900">
                                 <span className="inline-flex min-w-6 items-center justify-center rounded-md border bg-white px-1.5 py-0.5 text-[11px] text-zinc-700">
@@ -155,9 +154,11 @@ export default function TrainingResults() {
                               <div className="mt-1 text-[11px] text-zinc-500">Сырые баллы: {String(extraRaw)}</div>
                             ) : null}
                           </td>
-                          <td className="py-3">
-                            <span className={["inline-flex rounded-full px-2 py-1 text-xs", levelColor(r.level)].join(" ")}>{r.level}</span>
-                          </td>
+                          {result.kind === "16pf_v1" ? null : (
+                            <td className="py-3">
+                              <span className={["inline-flex rounded-full px-2 py-1 text-xs", levelColor(r.level)].join(" ")}>{r.level}</span>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}

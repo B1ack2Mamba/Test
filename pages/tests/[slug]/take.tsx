@@ -1007,100 +1007,188 @@ function USKForm({ test }: { test: USKTestV1 }) {
 }
 
 
+
 function PF16Form({ test }: { test: PF16TestV1 }) {
-  const router = useRouter();
-  const { user } = useSession();
-
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>("");
-
-  const [answers, setAnswers] = useState<(ABC | "")[]>(() => Array(test.questions.length).fill(""));
-
-  useEffect(() => {
-    const draft = getSessionDraft<(ABC | "")[]>(test.slug);
-    if (draft && Array.isArray(draft) && draft.length === test.questions.length) {
-      setAnswers(draft);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [test.slug, test.questions.length]);
-
-  const answeredCount = useMemo(() => answers.filter(Boolean).length, [answers]);
-  const canSubmit = answeredCount === test.questions.length;
-
-  const pick = (idx: number, v: ABC) => {
-    setAnswers((prev) => {
-      const next = [...prev];
-      next[idx] = v;
-      setSessionDraft(test.slug, next);
-      return next;
-    });
+  type Draft = {
+    pf16: Array<ABC | "">;
+    gender: "male" | "female" | null;
+    age: number | null;
   };
 
-  const submit = async () => {
-    if (!canSubmit || busy) return;
-    setBusy(true);
-    setError("");
+  const draftKey = `draft:${test.slug}`;
 
+  const [draft, setDraft] = useState<Draft>({
+    pf16: Array(test.questions.length).fill("") as Array<ABC | "">,
+    gender: null,
+    age: null,
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load draft on client only
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     try {
-      const res = score16PF(test, answers);
+      const raw = window.sessionStorage.getItem(draftKey);
+      if (!raw) return;
+      const d = JSON.parse(raw);
 
-      const userId = user?.id || "guest";
-      const attempt = typeof window !== "undefined" ? saveAttempt(userId, test.slug, res) : null;
+      const pf = Array.isArray(d?.pf16) ? d.pf16 : Array.isArray(d) ? d : null;
+      if (!pf) return;
 
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
-        window.sessionStorage.removeItem(authorKey(test.slug));
-        if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
-        window.sessionStorage.removeItem(storageKey(test.slug));
-      }
+      const pf16 = Array(test.questions.length)
+        .fill("")
+        .map((_, i) => {
+          const v = pf?.[i];
+          return v === "A" || v === "B" || v === "C" ? v : "";
+        }) as Array<ABC | "">;
 
-      router.push(`/tests/${test.slug}/result`);
+      const gender = d?.gender === "male" || d?.gender === "female" ? d.gender : null;
+      const age = typeof d?.age === "number" && Number.isFinite(d.age) ? d.age : null;
+
+      setDraft({ pf16, gender, age });
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+
+  // Persist draft
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.sessionStorage.setItem(draftKey, JSON.stringify(draft));
+    } catch {}
+  }, [draftKey, draft]);
+
+  const answered = draft.pf16.filter(Boolean).length;
+  const ageOk = draft.age != null && Number.isFinite(draft.age) && draft.age >= 16 && draft.age <= 70;
+  const canSubmit = answered === test.questions.length && !!draft.gender && ageOk;
+
+  function pick(i: number, v: ABC) {
+    setDraft((d) => {
+      const next = [...d.pf16];
+      next[i] = v;
+      return { ...d, pf16: next };
+    });
+  }
+
+  async function submit() {
+    setError(null);
+
+    if (!draft.gender) {
+      setError("Укажи пол (мужчина/женщина) — это нужно для норм и стэнов.");
+      return;
+    }
+    if (!ageOk) {
+      setError("Укажи возраст (числом) в диапазоне 16–70 — это нужно для норм и стэнов.");
+      return;
+    }
+
+    if (answered !== test.questions.length) {
+      setError(`Ответь на все вопросы: сейчас ${answered} / ${test.questions.length}.`);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const res = score16PF(test, { pf16: draft.pf16 as any, gender: draft.gender, age: draft.age as any });
+
+      // for /tests/[slug]/result
+      try {
+        localStorage.setItem(`last_result:${test.slug}`, JSON.stringify(res));
+      } catch {}
+
+      // local history
+      try {
+        const raw = localStorage.getItem("history");
+        const history = raw ? JSON.parse(raw) : [];
+        history.unshift({ slug: test.slug, title: test.title, at: new Date().toISOString(), kind: res.kind });
+        localStorage.setItem("history", JSON.stringify(history.slice(0, 50)));
+      } catch {}
+
+      window.location.href = `/tests/${test.slug}/result`;
     } catch (e: any) {
-      setError(e?.message ?? "Ошибка");
+      setError(e?.message ? String(e.message) : "Не удалось посчитать результат.");
     } finally {
       setBusy(false);
     }
-  };
+  }
+
+  const optCls = (active: boolean) =>
+    [
+      "rounded-2xl border px-3 py-2 text-left text-sm shadow-sm transition",
+      active ? "border-indigo-300 bg-indigo-50 text-slate-900" : "border-indigo-100/90 bg-white/85 text-slate-800 hover:bg-white/95",
+    ].join(" ");
+
+  const chipCls = (active: boolean) =>
+    [
+      "rounded-2xl border px-3 py-2 text-left text-sm shadow-sm transition",
+      active ? "border-indigo-300 bg-indigo-50 text-slate-900" : "border-indigo-100/90 bg-white/85 text-slate-800 hover:bg-white/95",
+    ].join(" ");
 
   return (
     <Layout title={test.title}>
-      <div className="mb-4 card">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-slate-900">Прогресс</div>
-            <div className="mt-1 text-sm text-slate-600">
-              Отвечено: {answeredCount}/{test.questions.length} (вопрос 187 — контрольный, в результат не входит)
+      <div className="card">
+        <div className="text-sm text-slate-600">Для корректных стэнов укажи пол и возраст.</div>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-indigo-100/90 bg-white/85 p-3">
+            <div className="text-[11px] font-medium text-slate-600">Пол</div>
+            <div className="mt-2 flex gap-2">
+              <button type="button" className={chipCls(draft.gender === "male")} onClick={() => setDraft((d) => ({ ...d, gender: "male" }))}>
+                Мужчина
+              </button>
+              <button type="button" className={chipCls(draft.gender === "female")} onClick={() => setDraft((d) => ({ ...d, gender: "female" }))}>
+                Женщина
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-indigo-100/90 bg-white/85 p-3">
+            <div className="text-[11px] font-medium text-slate-600">Возраст</div>
+            <input
+              type="number"
+              min={16}
+              max={70}
+              inputMode="numeric"
+              className="mt-2 w-full rounded-2xl border border-indigo-100/90 bg-white/90 px-3 py-2 text-sm outline-none focus:border-indigo-300"
+              placeholder="16–70"
+              value={draft.age ?? ""}
+              onChange={(e) => {
+                const v = e.target.value.trim();
+                if (v === "") return setDraft((d) => ({ ...d, age: null }));
+                const n = Number(v);
+                if (!Number.isFinite(n)) return;
+                setDraft((d) => ({ ...d, age: n }));
+              }}
+            />
+            <div className="mt-1 text-[11px] text-slate-500">Только число</div>
+          </div>
+
+          <div className="rounded-2xl border border-indigo-100/90 bg-white/85 p-3">
+            <div className="text-[11px] font-medium text-slate-600">Прогресс</div>
+            <div className="mt-2 text-sm text-slate-800">
+              {answered} / {test.questions.length}
             </div>
           </div>
         </div>
-
-        <details className="mt-4 card-soft p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-slate-900">Инструкция</summary>
-          <div className="mt-2 space-y-2 text-sm text-slate-700">
-            <p>В каждом вопросе выбери один вариант (A / B / C). Отвечай быстро, не «вычисляя правильный ответ».</p>
-            <p>Результат считается по 16 факторам. Оценка каждого фактора — 0–10 (округление).</p>
-            <p>Порог уровней: 0–4 — низкий, 5–7 — средний, 8–10 — высокий.</p>
-            <p>Вопрос №187 — контрольный, он не влияет на факторы (но оставлен в тесте).</p>
-          </div>
-        </details>
       </div>
 
-      <div className="space-y-3">
+      <div className="mt-4">
         {test.questions.map((q, i) => (
-          <div key={q.order} className="card">
-            <div className="text-sm font-semibold text-slate-900">
-              {q.order}. {q.text}
+          <div key={i} className="card mb-3">
+            <div className="text-sm font-medium text-slate-900">
+              {i + 1}. {q.text}
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <button type="button" className={cls(answers[i] === "A")} onClick={() => pick(i, "A")}>
-                A — {(q as any).options?.A ?? ""}
+              <button type="button" className={optCls(draft.pf16[i] === "A")} onClick={() => pick(i, "A")}>
+                A — {q.options.A}
               </button>
-              <button type="button" className={cls(answers[i] === "B")} onClick={() => pick(i, "B")}>
-                B — {(q as any).options?.B ?? ""}
+              <button type="button" className={optCls(draft.pf16[i] === "B")} onClick={() => pick(i, "B")}>
+                B — {q.options.B}
               </button>
-              <button type="button" className={cls(answers[i] === "C")} onClick={() => pick(i, "C")}>
-                C — {(q as any).options?.C ?? ""}
+              <button type="button" className={optCls(draft.pf16[i] === "C")} onClick={() => pick(i, "C")}>
+                C — {q.options.C}
               </button>
             </div>
           </div>
@@ -1108,12 +1196,7 @@ function PF16Form({ test }: { test: PF16TestV1 }) {
       </div>
 
       <div className="mt-6 flex justify-end">
-        <button
-          type="button"
-          onClick={submit}
-          disabled={!canSubmit || busy}
-          className="btn btn-primary"
-        >
+        <button type="button" onClick={submit} disabled={!canSubmit || busy} className="btn btn-primary">
           {busy ? "Сохраняем…" : "Показать результат"}
         </button>
       </div>
@@ -1122,8 +1205,6 @@ function PF16Form({ test }: { test: PF16TestV1 }) {
     </Layout>
   );
 }
-
-
 export default function TakeTest({ test }: { test: AnyTest }) {
   // В редких случаях хочется очистить черновик вручную (например, при смене теста)
   const router = useRouter();

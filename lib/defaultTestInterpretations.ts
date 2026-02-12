@@ -1,8 +1,19 @@
 // Server-side fallback interpretations ("keys") for tests.
+import { PF16_INTERPRETATION_KEYS } from "./pf16InterpretationKeys";
 // Used when Supabase table `test_interpretations` has no row yet.
 // IMPORTANT: import this file ONLY from server/API code.
 
 export const DEFAULT_TEST_INTERPRETATIONS: Record<string, any> = {
+  "16pf-a": {
+    "title": "16PF-A",
+    "kind": "16pf_v1",
+    "materials": PF16_INTERPRETATION_KEYS
+  },
+  "16pf-b": {
+    "title": "16PF-B",
+    "kind": "16pf_v1",
+    "materials": PF16_INTERPRETATION_KEYS
+  },
   "color-types": {
     "title": "Цветотипы (структограмма)",
     "kind": "color_types_v1",

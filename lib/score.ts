@@ -10,6 +10,7 @@ import type {
   PF16TestV1,
   PF16Factor,
 } from "@/lib/testTypes";
+import { pf16PickNormGroup, pf16NormGroupLabel, pf16RawToSten, type Pf16Gender } from "@/lib/pf16Norms";
 
 export type ScoreRow = {
   tag: string;
@@ -21,6 +22,8 @@ export type ScoreRow = {
 
 export type ScoreResult = {
   kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1" | "16pf_v1";
+  title?: string;
+  summary?: string;
   total: number;
   counts: Record<string, number>;
   percents: Record<string, number>;
@@ -387,97 +390,186 @@ function levelFor010(score: number, lowMax: number, midMax: number) {
  * - Each keyed item: if the respondent answer matches the key,
  *   then answers "a" and "c" are counted as 2 points, answer "b" as 1 point.
  * - Exception: Factor B counts any keyed match as 1 point.
- * - We normalize each factor to 0..10 (rounded) using max possible points derived from the key.
+ * - After raw scoring, each factor is converted to STEN (1..10) using the norm table for Forms A/B.
  * - Levels: 0..4 low, 5..7 medium, 8..10 high (configurable via thresholds_0_10).
  * - Question 187 is allowed in UI but ignored by key by design.
  */
-export function score16PF(test: PF16TestV1, answers: Array<ABC | "A" | "B" | "C" | string>): ScoreResult {
-  const factors = test.scoring.factors;
+export type PF16Submission = {
+  pf16: Array<ABC | "">;
+  gender?: Pf16Gender | null;
+  age?: number | null;
+};
+
+export function score16PF(
+  test: PF16TestV1,
+  answersOrSubmission: Array<ABC | ""> | PF16Submission
+): ScoreResult {
+  const submission: PF16Submission = Array.isArray(answersOrSubmission)
+    ? { pf16: answersOrSubmission }
+    : answersOrSubmission;
+
+  const answers = submission.pf16;
+  const gender = submission.gender ?? null;
+  const age = typeof submission.age === "number" ? submission.age : null;
+
   const keys = test.scoring.keys;
+  const factors = test.scoring.factors;
 
-  // Build quick lookup: q -> {factor, acceptSet}
-  const byQ: Record<number, { factor: PF16Factor; accept: Set<"a" | "b" | "c"> }> = {};
-  const maxByFactor: Record<string, number> = {};
-  for (const f of factors) {
-    const items = Array.isArray(keys[f]) ? keys[f] : [];
-    maxByFactor[f] = 0;
-    for (const it of items) {
-      const q = Number((it as any)?.q);
-      const acceptArr = (it as any)?.accept as any[];
-      const accept = new Set<"a" | "b" | "c">(
-        (Array.isArray(acceptArr) ? acceptArr : []).map((x) => normalizeABCtoKeyLetter(x)).filter(Boolean) as any
-      );
-      if (!Number.isFinite(q) || q <= 0 || accept.size === 0) continue;
-      byQ[q] = { factor: f, accept };
-
-      // Max possible points for this item (used for normalization)
-      if (f === "B") {
-        maxByFactor[f] += 1;
-      } else {
-        // If multiple answers are accepted (rare), take the maximum weight among them
-        let itemMax = 0;
-        for (const a of accept) itemMax = Math.max(itemMax, a === "b" ? 1 : 2);
-        maxByFactor[f] += itemMax || 0;
-      }
-    }
-  }
-
-  const rawByFactor: Record<string, number> = {};
-  for (const f of factors) rawByFactor[f] = 0;
-
-  // Answers are 1-based by question order in JSON.
-  for (let i = 1; i <= test.questions.length; i++) {
-    const ans = answers[i - 1];
-    const letter = normalizeABCtoKeyLetter(ans);
-    if (!letter) continue;
-
-    const rule = byQ[i];
-    if (!rule) continue; // not keyed (e.g., 1,2,187)
-    if (rule.accept.has(letter)) {
-      const w = rule.factor === "B" ? 1 : letter === "b" ? 1 : 2;
-      rawByFactor[rule.factor] = (rawByFactor[rule.factor] ?? 0) + w;
-    }
-  }
-
-  // Normalize to 0..10 per factor
-  const score10ByFactor: Record<string, number> = {};
-  const percentByFactor: Record<string, number> = {};
   const counts: Record<string, number> = {};
+  const stenByFactor: Record<string, number> = {};
+  const rawByFactor: Record<string, number> = {};
+  const maxStenByFactor: Record<string, number> = {};
+  const maxRawByFactor: Record<string, number> = {};
 
+  for (const f of factors) {
+    rawByFactor[f] = 0;
+    maxStenByFactor[f] = 10;
+    maxRawByFactor[f] = 0;
+  }
+
+  // raw scoring
+  for (const f of factors) {
+    const items = keys[f] || [];
+    for (const item of items) {
+      const qIndex = (item.q || 0) - 1;
+
+      const accept = (item.accept || []).map((x: string) => String(x).toLowerCase());
+      const accepts = (x: string) => accept.includes(String(x).toLowerCase());
+
+      // Determine theoretical max points from key itself
+      let maxPoints = 0;
+      if (f === "B") {
+        maxPoints = 1;
+      } else {
+        if (accept.length === 1) maxPoints = 1;
+        else if (accept.length >= 2) maxPoints = 2;
+        else maxPoints = 0;
+      }
+      maxRawByFactor[f] += maxPoints;
+
+      // If answer is missing/out of range — RAW doesn't increase
+      if (qIndex < 0 || qIndex >= answers.length) continue;
+      const ans = normalizeABCtoKeyLetter(answers[qIndex] || "");
+      if (!ans) continue;
+
+      // Score points
+      let pts = 0;
+      if (f === "B") {
+        if (accepts(ans)) pts = 1;
+      } else {
+        if (accept.length === 1) {
+          if (accepts(ans)) pts = 1;
+        } else if (accept.length >= 2) {
+          if (accepts(ans)) pts = ans === "b" ? 1 : 2;
+        }
+      }
+
+      rawByFactor[f] += pts;
+    }
+  }
+
+  const normGroup = gender && age !== null ? pf16PickNormGroup(gender, age) : "common";
+  const normGroupLabel = pf16NormGroupLabel(normGroup);
+
+  // convert raw -> sten
   for (const f of factors) {
     const raw = rawByFactor[f] ?? 0;
-    const max = maxByFactor[f] ?? 0;
-    const norm = max > 0 ? (raw / max) * 10 : 0;
-    const score10 = Math.max(0, Math.min(10, Math.round(norm)));
-    score10ByFactor[f] = score10;
-    counts[f] = score10;
-    percentByFactor[f] = score10 * 10;
+    const sten = pf16RawToSten(normGroup, f, raw);
+    stenByFactor[f] = sten;
+    counts[f] = sten;
   }
 
-  const lowMax = Number(test.scoring.thresholds_0_10?.low_max ?? 4);
-  const midMax = Number(test.scoring.thresholds_0_10?.mid_max ?? 7);
-
-  const ranked: ScoreRow[] = factors
-    .map((f) => ({
+  const rows: ScoreRow[] = factors.map((f) => {
+    const count = counts[f] ?? 0;
+    const max = maxStenByFactor[f] ?? 10;
+    const percent = max ? Math.round((count / max) * 100) : 0;
+    const label = (test.scoring.factor_to_name as any)?.[f] ?? f;
+    return {
       tag: f,
-      style: test.scoring.factor_to_name?.[f] ?? f,
-      count: counts[f],
-      percent: percentByFactor[f],
-      level: levelFor010(counts[f], lowMax, midMax),
-    }))
-    ;
+      style: label,
+      count,
+      percent,
+      level: levelFor010(
+        count,
+        test.scoring.thresholds_0_10.low_max,
+        test.scoring.thresholds_0_10.mid_max
+      ),
+    };
+  });
+
+  // Secondary factors (F1..F4) computed from primary STENs (per методичка)
+  const s = (k: string) => stenByFactor[k] ?? 5;
+  const clamp010 = (x: number) => Math.max(1, Math.min(10, x));
+  const round2 = (x: number) => Math.round(x * 100) / 100;
+
+  const F1 = round2(
+    clamp010(
+      ((38 + 2 * s("L") + 3 * s("O") + 4 * s("Q4")) - 2 * (s("C") + s("H") + s("Q3"))) / 10
+    )
+  );
+  const F2 = round2(
+    clamp010(
+      ((2 * s("A") + 3 * s("E") + 4 * s("F") + 5 * s("H")) - (2 * s("Q2") + 11)) / 10
+    )
+  );
+  const F3 = round2(
+    clamp010(
+      ((77 + 2 * s("C") + 2 * s("E") + 2 * s("F") + 2 * s("N")) - (4 * s("A") + 6 * s("I") + 2 * s("M"))) / 10
+    )
+  );
+  const F4 = round2(
+    clamp010(
+      ((4 * s("E") + 3 * s("M") + 4 * s("Q1") + 4 * s("Q2")) - (3 * s("A") + 2 * s("G"))) / 10
+    )
+  );
+
+  const secondary = {
+    F1: {
+      tag: "F1",
+      count: F1,
+      level: levelFor010(F1, test.scoring.thresholds_0_10.low_max, test.scoring.thresholds_0_10.mid_max),
+    },
+    F2: {
+      tag: "F2",
+      count: F2,
+      level: levelFor010(F2, test.scoring.thresholds_0_10.low_max, test.scoring.thresholds_0_10.mid_max),
+    },
+    F3: {
+      tag: "F3",
+      count: F3,
+      level: levelFor010(F3, test.scoring.thresholds_0_10.low_max, test.scoring.thresholds_0_10.mid_max),
+    },
+    F4: {
+      tag: "F4",
+      count: F4,
+      level: levelFor010(F4, test.scoring.thresholds_0_10.low_max, test.scoring.thresholds_0_10.mid_max),
+    },
+  };
+
+  const total = answers.length;
+  const percents: Record<string, number> = Object.fromEntries(
+    factors.map((f) => [f, Math.round(((counts[f] ?? 0) / 10) * 100)] as const)
+  ) as any;
 
   return {
     kind: "16pf_v1",
-    total: 10,
+    title: test.title,
+    summary: `Профиль сформирован. Нормы: ${normGroupLabel}.`,
+    total,
     counts,
-    percents: percentByFactor,
-    ranked,
+    percents,
+    ranked: rows,
     meta: {
+      counts,
+      maxByFactor: maxStenByFactor,
+      stenByFactor,
       rawByFactor,
-      maxByFactor,
-      score10ByFactor,
-      note: "count=score0..10 (rounded from raw/max), percent=count*10; raw stored in meta.rawByFactor",
+      maxRawByFactor,
+      gender,
+      age,
+      normGroup,
+      normGroupLabel,
+      secondary,
     },
   };
 }

@@ -73,6 +73,19 @@ export default function TestResult({ test }: { test: AnyTest }) {
             </Link>
           </div>
         </div>
+      ) : result.kind === "16pf_v1" ? (
+        <div className="card">
+          <div className="text-sm font-medium text-zinc-900">Тест завершён</div>
+          <div className="mt-2 text-sm text-zinc-600">Результаты 16PF (сырые баллы, стэны и уровни) доступны только специалисту.</div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link href={`/tests/${test.slug}`} className="btn btn-secondary">
+              ← К тесту
+            </Link>
+            <Link href="/" className="btn btn-secondary">
+              На главную
+            </Link>
+          </div>
+        </div>
       ) : (
         <>
           {chartData.length ? (

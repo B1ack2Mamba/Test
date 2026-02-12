@@ -29,6 +29,8 @@ export type ForcedPairTestV1 = {
   slug: string;
   title: string;
   description?: string;
+  /** Optional long-form instructions shown on the test page. */
+  instructions?: string;
   type: "forced_pair_v1" | "forced_pair";
   /** Optional pricing info (paywall). */
   pricing?: {
@@ -76,6 +78,8 @@ export type PairSplitTestV1 = {
   slug: string;
   title: string;
   description?: string;
+  /** Optional long-form instructions shown on the test page. */
+  instructions?: string;
   type: "pair_split_v1" | "pair_sum5_v1";
   pricing?: {
     interpretation_rub?: number;
@@ -138,6 +142,8 @@ export type ColorTypesTestV1 = {
   slug: string;
   title: string;
   description?: string;
+  /** Optional long-form instructions shown on the test page. */
+  instructions?: string;
   type: "color_types_v1";
   pricing?: {
     interpretation_rub?: number;
@@ -170,6 +176,8 @@ export type USKTestV1 = {
   slug: string;
   title: string;
   description?: string;
+  /** Optional long-form instructions shown on the test page. */
+  instructions?: string;
   type: "usk_v1";
   pricing?: {
     interpretation_rub?: number;
@@ -208,6 +216,8 @@ export type PF16TestV1 = {
   slug: string;
   title: string;
   description?: string;
+  /** Optional long-form instructions shown on the test page. */
+  instructions?: string;
   type: "16pf_v1";
   pricing?: {
     interpretation_rub?: number;

@@ -75,13 +75,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       result = scoreUSK(test as any, numeric);
       answersJson = { usk: numeric };
     } else if (test.type === "16pf_v1") {
-      const arr = Array.isArray(answers) ? (answers as any[]) : [];
-      const safe = arr.map((v) => {
-        const s = String(v || "").trim().toUpperCase();
-        return s === "A" || s === "B" || s === "C" ? s : "";
-      });
-      result = score16PF(test as any, safe);
-      answersJson = { pf16: safe };
+      // Answers may arrive as:
+      //  - Array<"A"|"B"|"C"|""> (legacy)
+      //  - { pf16: Array<"A"|"B"|"C"|"">, gender: "male"|"female", age: number }
+      const sub = (answers && typeof answers === "object" && !Array.isArray(answers)) ? (answers as any) : { pf16: answers };
+      const pf16 = Array.isArray(sub.pf16) ? sub.pf16 : (Array.isArray(answers) ? answers : []);
+      const safe = (pf16 as any[]).map((x) => (x === "A" || x === "B" || x === "C" ? x : ""));
+
+      const gender = (sub.gender === "male" || sub.gender === "female") ? sub.gender : undefined;
+      const ageNum = typeof sub.age === "number" ? sub.age : (typeof sub.age === "string" ? Number(sub.age) : NaN);
+      const age = Number.isFinite(ageNum) ? ageNum : undefined;
+
+      // For the 16PF forms we require demographics to produce correct sten norms
+      const needsDemographics = test.slug === "16pf-a" || test.slug === "16pf-b";
+      if (needsDemographics && ((gender !== "male" && gender !== "female") || typeof age !== "number" || !Number.isFinite(age) || age < 16 || age > 70)) {
+        return res.status(400).json({ ok: false, error: "Укажите пол и возраст (16–70) для корректного нормирования результатов." });
+      }
+
+      result = score16PF(test as any, { pf16: safe, gender, age } as any);
+      answersJson = { pf16: safe, gender, age };
     } else {
       return res.status(400).json({ ok: false, error: "Unknown test type" });
     }

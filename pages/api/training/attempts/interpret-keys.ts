@@ -101,6 +101,42 @@ function safeJson(v: any) {
   }
 }
 
+
+function normalizeKeysObject(v: any) {
+  if (typeof v === "string") {
+    try {
+      return JSON.parse(v);
+    } catch {
+      return v;
+    }
+  }
+  return v;
+}
+
+function stenBand(sten: number): "1-3" | "4-7" | "8-10" {
+  if (!Number.isFinite(sten)) return "4-7";
+  if (sten <= 3) return "1-3";
+  if (sten <= 7) return "4-7";
+  return "8-10";
+}
+
+function trimText(s: any, maxLen = 480) {
+  const t = String(s ?? "").trim();
+  if (!t) return "";
+  return t.length > maxLen ? t.slice(0, maxLen).trimEnd() + "…" : t;
+}
+
+function getStenExcerpt(primary: any, band: string) {
+  if (!primary) return "";
+  const sten = primary.sten || {};
+  return (
+    sten[band] ??
+    sten[String(band).replace("-", "–")] ??
+    sten[String(band).replace("-", "—")] ??
+    ""
+  );
+}
+
 function buildKeysPrompt(args: {
   testTitle: string;
   result: ScoreResult;
@@ -123,7 +159,7 @@ function buildKeysPrompt(args: {
   lines.push("- НЕ упоминай ИИ/нейросети/модели/API/промпты.");
   lines.push("- НЕ выдумывай факты о человеке. Только интерпретация по ключам и результатам.");
   if (audience === "client") {
-    lines.push("- В тексте для участника ЗАПРЕЩЕНО показывать цифры, проценты, баллы, формулы, параметры (a/b), коды факторов, теги и технические названия шкал.");
+    lines.push("- В тексте для участника ЗАПРЕЩЕНО показывать цифры, проценты, баллы, стэны, формулы, параметры (a/b), уровни (низкий/средний/высокий), коды факторов, теги и технические названия шкал.");
     lines.push("- Пиши так, чтобы участник понял без чисел: смыслы, проявления, риски, что поможет.");
     lines.push("- Формат: 1) резюме (2–4 строки); 2) как проявляется (5–9 буллетов); 3) риски (4–7 буллетов); 4) что поможет (5–8 буллетов)." );
   } else {
@@ -198,16 +234,135 @@ function buildKeysPrompt(args: {
       lines.push("5) Если ведущих несколько: отдельный короткий абзац про конфликт/баланс и как удерживать равновесие.");
     }
   } else {
-    const maxByFactor = (result.meta as any)?.maxByFactor || {};
-    for (const r of result.ranked) {
-      const mx = maxByFactor?.[r.tag] ?? "?";
-      lines.push(`- ${r.style} (${r.tag}): ${r.count}/${mx} — ${r.level}`);
+    if (result.kind === "16pf_v1") {
+      const meta: any = (result.meta as any) || {};
+      const gender: string | undefined = meta.gender || meta.demographics?.gender;
+      const age: number | undefined = meta.age || meta.demographics?.age;
+      const normLabel: string | undefined = meta.normGroupLabel || meta.normLabel || meta.norm_label_ru || meta.norm_group_label || meta.norm_group || meta.normGroup;
+      const rawByFactor: Record<string, number> = meta.rawByFactor || {};
+      const maxByFactor: Record<string, number> = meta.maxByFactor || {};
+      const maxRawByFactor: Record<string, number> = meta.maxRawByFactor || {};
+      const stenByFactor: Record<string, number> = meta.stenByFactor || {};
+
+      const genderRu = gender === "male" ? "мужчина" : gender === "female" ? "женщина" : "не указан";
+
+      lines.push("\nКонтекст нормирования 16PF:");
+      lines.push(`- Пол: ${genderRu}`);
+      if (typeof age === "number") lines.push(`- Возраст: ${age}`);
+      if (normLabel) lines.push(`- Нормы: ${normLabel}`);
+
+      lines.push("\nПервичные факторы (для анализа; НЕ раскрывать участнику):");
+      for (const r of result.ranked) {
+        const raw = rawByFactor?.[r.tag];
+        const rawMax = maxRawByFactor?.[r.tag] ?? maxByFactor?.[r.tag];
+        const sten = stenByFactor?.[r.tag] ?? r.count;
+        if (audience === "staff") {
+          lines.push(`- ${r.style} (${r.tag}): STEN ${sten}/10; RAW ${raw ?? "?"}/${rawMax ?? "?"}; Уровень: ${r.level}`);
+        } else {
+          lines.push(`- ${r.style}: STEN ${sten}/10`);
+        }
+      }
+
+      const sec: any = meta.secondary;
+      if (sec && typeof sec === "object") {
+        lines.push("\nВторичные факторы (для анализа; НЕ раскрывать участнику):");
+        for (const key of Object.keys(sec)) {
+          const v = sec[key];
+          if (!v) continue;
+          const sten = v.count ?? v.sten ?? v.value;
+          if (audience === "staff") {
+            lines.push(`- ${key}: STEN ${sten}/10; Уровень: ${v.level ?? "?"}`);
+          } else {
+            lines.push(`- ${key}: STEN ${sten}/10`);
+          }
+        }
+      }
+    } else {
+      const maxByFactor = (result.meta as any)?.maxByFactor || {};
+      for (const r of result.ranked) {
+        const mx = maxByFactor?.[r.tag] ?? "?";
+        lines.push(`- ${r.style} (${r.tag}): ${r.count}/${mx} — ${r.level}`);
+      }
     }
   }
 
   lines.push("");
+
+  const normalizedKeys = normalizeKeysObject(keys);
+
+  // 16PF: do NOT pass the whole "methodichka" — only excerpts for the given STENs,
+  // otherwise the prompt explodes and the model truncates output (e.g. "14 factors only").
+  if (result.kind === "16pf_v1") {
+    const meta: any = (result.meta as any) || {};
+    const materials = (normalizedKeys as any)?.materials ?? normalizedKeys ?? {};
+    const primaryFactors: any = (materials as any)?.primaryFactors || {};
+    const secondaryFactors: any = (materials as any)?.secondaryFactors || {};
+
+    const rawByFactor: Record<string, number> = meta.rawByFactor || {};
+    const maxRawByFactor: Record<string, number> = meta.maxRawByFactor || {};
+    const stenByFactor: Record<string, number> = meta.stenByFactor || {};
+
+    const nameByTag: Record<string, string> = {};
+    for (const r of result.ranked || []) nameByTag[String(r.tag)] = String(r.style || r.tag);
+
+    const order = ["A","B","C","E","F","G","H","I","L","M","N","O","Q1","Q2","Q3","Q4"];
+
+    const primary = order.map((tag) => {
+      const sten = Number(stenByFactor?.[tag] ?? 1);
+      const band = stenBand(sten);
+      const pf = primaryFactors?.[tag];
+      const heading = String(nameByTag[tag] || pf?.heading || tag);
+      const excerpt = trimText(getStenExcerpt(pf, band), 480);
+
+      return {
+        tag,
+        name: heading,
+        sten,
+        raw: audience === "staff" ? rawByFactor?.[tag] : undefined,
+        rawMax: audience === "staff" ? maxRawByFactor?.[tag] : undefined,
+        band,
+        excerpt,
+      };
+    });
+
+    const secondary = ["F1","F2","F3","F4"].map((tag) => {
+      const sec = (meta.secondary as any)?.[tag];
+      const sten = Number(sec?.count ?? sec?.sten ?? sec?.value ?? 0);
+      const excerpt = trimText(secondaryFactors?.[tag]?.text, 480);
+      return { tag, sten, excerpt };
+    });
+
+    const packet = {
+      title: String((normalizedKeys as any)?.title || testTitle),
+      kind: "16pf_v1",
+      source: (materials as any)?.source || (normalizedKeys as any)?.source,
+      primary,
+      secondary,
+    };
+
+    lines.push("Материалы интерпретации (выборочно, строго под эти результаты):");
+    lines.push(safeJson(packet));
+    lines.push("");
+    lines.push("Требования к ответу (КОМПАКТНО, чтобы всё влезло и не обрезалось):");
+    lines.push("- Игнорируй предыдущие общие правила формата. Следуй формату ниже строго.");
+    lines.push("- Общий вывод: 4–6 строк, без воды.");
+    lines.push("- 16 первичных факторов: ровно 16 строк в порядке A,B,C,E,F,G,H,I,L,M,N,O,Q1,Q2,Q3,Q4. На каждый фактор: ОДНО предложение (до ~18 слов). Только смысл для данного профиля.");
+    lines.push("- Интеграция: 4–6 буллетов (пики/провалы, противоречия, ресурсы).");
+    lines.push("- Рекомендации для тренинга: ровно 5 буллетов, каждый до ~12 слов.");
+    lines.push("- Вторичные факторы F1–F4: 4 строки, по одному предложению на фактор (до ~14 слов)." );
+    if (audience === "client") {
+      lines.push("- НЕ показывай участнику числа RAW/STEN и не упоминай слово 'STEN'. Описывай понятным языком.");
+    } else {
+      lines.push("- Можно использовать числа RAW/STEN и ссылки на факторы (A, B, ...).");
+    }
+    lines.push("- Запрещено писать 'в клинических группах' и медицинские ярлыки. Только тренинговая интерпретация.");
+    lines.push("");
+    lines.push("Важно: Если материалы противоречат твоему опыту — игнорируй свой опыт. Следуй материалам.");
+    return lines.join("\n");
+  }
+
   lines.push("Ключи (используй как единственный источник смыслов и формулировок):");
-  lines.push(safeJson(keys));
+  lines.push(safeJson(normalizedKeys));
   lines.push("");
   lines.push("Важно: Если ключи противоречат твоему опыту — игнорируй свой опыт. Следуй ключам." );
   return lines.join("\n");
@@ -229,7 +384,7 @@ async function callDeepseek(prompt: string): Promise<string> {
         { role: "user", content: prompt },
       ],
       temperature: 0.4,
-      max_tokens: 1200,
+      max_tokens: 2600,
     }),
   });
 
