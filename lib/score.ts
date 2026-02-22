@@ -497,55 +497,70 @@ export function score16PF(
     };
   });
 
-  // Secondary factors (F1..F4) computed from primary STENs (per методичка)
+  // Secondary factors (F1..F4) computed from primary STENs (per методичка / IMATON)
+  // В программе ИМАТОН вторичные факторы промаркированы так:
+  // F1 — Экстраверсия–интроверсия, F2 — Тревожность, F3 — Сензитивность–стабильность, F4 — Покорность–Независимость.
+  // Формулы дают дробное значение, но отображается STEN (целое 1..10).
   const s = (k: string) => stenByFactor[k] ?? 5;
-  const clamp010 = (x: number) => Math.max(1, Math.min(10, x));
+  const clamp010Float = (x: number) => Math.max(1, Math.min(10, x));
+  const clamp010Int = (x: number) => Math.max(1, Math.min(10, Math.round(x)));
   const round2 = (x: number) => Math.round(x * 100) / 100;
+  const signOf = (sten: number) => (sten >= 6 ? "+" : "-");
 
-  const F1 = round2(
-    clamp010(
-      ((38 + 2 * s("L") + 3 * s("O") + 4 * s("Q4")) - 2 * (s("C") + s("H") + s("Q3"))) / 10
-    )
+  // Raw (float) values on STEN scale
+  const rawAnxiety = clamp010Float(
+    ((38 + 2 * s("L") + 3 * s("O") + 4 * s("Q4")) - 2 * (s("C") + s("H") + s("Q3"))) / 10
   );
-  const F2 = round2(
-    clamp010(
-      ((2 * s("A") + 3 * s("E") + 4 * s("F") + 5 * s("H")) - (2 * s("Q2") + 11)) / 10
-    )
+  const rawExtraversion = clamp010Float(
+    ((2 * s("A") + 3 * s("E") + 4 * s("F") + 5 * s("H")) - (2 * s("Q2") + 11)) / 10
   );
-  const F3 = round2(
-    clamp010(
-      ((77 + 2 * s("C") + 2 * s("E") + 2 * s("F") + 2 * s("N")) - (4 * s("A") + 6 * s("I") + 2 * s("M"))) / 10
-    )
+  const rawSensitivity = clamp010Float(
+    ((77 + 2 * s("C") + 2 * s("E") + 2 * s("F") + 2 * s("N")) - (4 * s("A") + 6 * s("I") + 2 * s("M"))) / 10
   );
-  const F4 = round2(
-    clamp010(
-      ((4 * s("E") + 3 * s("M") + 4 * s("Q1") + 4 * s("Q2")) - (3 * s("A") + 2 * s("G"))) / 10
-    )
+  const rawIndependence = clamp010Float(
+    ((4 * s("E") + 3 * s("M") + 4 * s("Q1") + 4 * s("Q2")) - (3 * s("A") + 2 * s("G"))) / 10
   );
+
+  // Displayed STENs (integers)
+  const F1 = clamp010Int(rawExtraversion);
+  const F2 = clamp010Int(rawAnxiety);
+  const F3 = clamp010Int(rawSensitivity);
+  const F4 = clamp010Int(rawIndependence);
 
   const secondary = {
     F1: {
       tag: "F1",
+      name: "Экстраверсия - интроверсия",
       count: F1,
+      raw: round2(rawExtraversion),
+      sign: signOf(F1),
       level: levelFor010(F1, test.scoring.thresholds_0_10.low_max, test.scoring.thresholds_0_10.mid_max),
     },
     F2: {
       tag: "F2",
+      name: "Низкая тревожность - Высокая тревожность",
       count: F2,
+      raw: round2(rawAnxiety),
+      sign: signOf(F2),
       level: levelFor010(F2, test.scoring.thresholds_0_10.low_max, test.scoring.thresholds_0_10.mid_max),
     },
     F3: {
       tag: "F3",
+      name: "Сензитивность - стабильность",
       count: F3,
+      raw: round2(rawSensitivity),
+      sign: signOf(F3),
       level: levelFor010(F3, test.scoring.thresholds_0_10.low_max, test.scoring.thresholds_0_10.mid_max),
     },
     F4: {
       tag: "F4",
+      name: "Покорность - независимость",
       count: F4,
+      raw: round2(rawIndependence),
+      sign: signOf(F4),
       level: levelFor010(F4, test.scoring.thresholds_0_10.low_max, test.scoring.thresholds_0_10.mid_max),
     },
   };
-
   const total = answers.length;
   const percents: Record<string, number> = Object.fromEntries(
     factors.map((f) => [f, Math.round(((counts[f] ?? 0) / 10) * 100)] as const)
