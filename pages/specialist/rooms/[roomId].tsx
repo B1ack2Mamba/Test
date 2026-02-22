@@ -142,6 +142,8 @@ function Digits({ result }: { result: ScoreResult }) {
               })}
             </div>
           </div>
+        ) : null}
+
         <div className="flex justify-end">
           <button
             type="button"
@@ -213,7 +215,6 @@ function Digits({ result }: { result: ScoreResult }) {
           </div>
         ) : null}
 
-        ) : null}
       </div>
     );
   }
