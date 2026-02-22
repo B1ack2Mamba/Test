@@ -120,19 +120,31 @@ function stenBand(sten: number): "1-3" | "4-7" | "8-10" {
   return "8-10";
 }
 
+// In the методичка for 16PF, mid-range descriptions are often provided
+// only for STEN=4 and STEN=7 (boundary exemplars), plus ranges 1–3 and 8–10.
+// Map an exact STEN to the closest available key so we always feed the LLM
+// a grounded excerpt from the методичка.
+function pf16StenKey(sten: number): "1-3" | "4" | "7" | "8-10" {
+  if (!Number.isFinite(sten)) return "4";
+  if (sten <= 3) return "1-3";
+  if (sten >= 8) return "8-10";
+  if (sten <= 5) return "4"; // 4–5 → closer to 4
+  return "7"; // 6–7 → closer to 7
+}
+
 function trimText(s: any, maxLen = 480) {
   const t = String(s ?? "").trim();
   if (!t) return "";
   return t.length > maxLen ? t.slice(0, maxLen).trimEnd() + "…" : t;
 }
 
-function getStenExcerpt(primary: any, band: string) {
+function getStenExcerpt(primary: any, bandOrKey: string) {
   if (!primary) return "";
   const sten = primary.sten || {};
   return (
-    sten[band] ??
-    sten[String(band).replace("-", "–")] ??
-    sten[String(band).replace("-", "—")] ??
+    sten[bandOrKey] ??
+    sten[String(bandOrKey).replace("-", "–")] ??
+    sten[String(bandOrKey).replace("-", "—")] ??
     ""
   );
 }
@@ -312,7 +324,8 @@ function buildKeysPrompt(args: {
       const band = stenBand(sten);
       const pf = primaryFactors?.[tag];
       const heading = String(nameByTag[tag] || pf?.heading || tag);
-      const excerpt = trimText(getStenExcerpt(pf, band), 480);
+      const key = pf16StenKey(sten);
+      const excerpt = trimText(getStenExcerpt(pf, key), 480);
 
       return {
         tag,
@@ -321,6 +334,7 @@ function buildKeysPrompt(args: {
         raw: audience === "staff" ? rawByFactor?.[tag] : undefined,
         rawMax: audience === "staff" ? maxRawByFactor?.[tag] : undefined,
         band,
+        stenKey: key,
         excerpt,
       };
     });
