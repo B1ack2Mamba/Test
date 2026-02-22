@@ -29,6 +29,7 @@ type Progress = {
 
 function Digits({ result }: { result: ScoreResult }) {
   const kind = result.kind;
+  const [showTabidze, setShowTabidze] = useState(false);
   if (kind === "16pf_v1") {
     const meta: any = (result.meta as any) || {};
     const rawByFactor = meta.rawByFactor || {};
@@ -42,6 +43,37 @@ function Digits({ result }: { result: ScoreResult }) {
       F3: "Чувствительность",
       F4: "Конформность",
     };
+    const tabidzeGroups = [
+      { title: "Эмоциональные качества", factors: ["C", "L", "O", "Q4"] },
+      { title: "Волевые качества", factors: ["E", "H", "G", "Q3"] },
+      { title: "Коммуникативные качества", factors: ["A", "F", "I", "Q2"] },
+      { title: "Интеллектуальные качества", factors: ["B", "M", "N", "Q1"] },
+    ] as const;
+
+    const invertSet = new Set(["L", "O", "Q4"]);
+    const poles: Record<string, { neg: string; pos: string }> = {
+      C: { neg: "Эмоциональная неустойчивость", pos: "Эмоциональная устойчивость" },
+      L: { neg: "Подозрительность", pos: "Доверчивость" },
+      O: { neg: "Тревожность", pos: "Спокойствие" },
+      Q4: { neg: "Напряжённость", pos: "Расслабленность" },
+
+      E: { neg: "Подчинённость", pos: "Властность" },
+      H: { neg: "Робость", pos: "Смелость" },
+      G: { neg: "Небрежность", pos: "Ответственность" },
+      Q3: { neg: "Низкий самоконтроль", pos: "Высокий самоконтроль" },
+
+      A: { neg: "Отчуждённость", pos: "Общительность" },
+      F: { neg: "Пессимизм", pos: "Оптимизм" },
+      I: { neg: "Жёсткость", pos: "Мягкосердечие" },
+      Q2: { neg: "Зависимость от группы", pos: "Самостоятельность" },
+
+      B: { neg: "Низкий интеллект", pos: "Высокий интеллект" },
+      M: { neg: "Практичность", pos: "Мечтательность" },
+      N: { neg: "Прямолинейность", pos: "Дипломатичность" },
+      Q1: { neg: "Консерватизм", pos: "Гибкость" },
+    };
+
+    const tagToStyle: Record<string, string> = Object.fromEntries((result.ranked || []).map((r: any) => [r.tag, r.style]));
 
     const genderRu = meta.gender === "male" ? "мужчина" : meta.gender === "female" ? "женщина" : "—";
     const age = meta.age ?? "—";
@@ -110,6 +142,77 @@ function Digits({ result }: { result: ScoreResult }) {
               })}
             </div>
           </div>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowTabidze((v) => !v)}
+            className="rounded-xl border bg-white/60 px-3 py-2 text-xs font-semibold text-zinc-800 hover:bg-white"
+          >
+            {showTabidze ? "Скрыть таблицу по Табидзе" : "Показать таблицу по Табидзе"}
+          </button>
+        </div>
+
+        {showTabidze ? (
+          <div className="grid gap-3 rounded-2xl border bg-white/35 p-3">
+            <div className="text-xs font-semibold text-zinc-800">Таблица по Табидзе</div>
+
+            {tabidzeGroups.map((g) => (
+              <div key={g.title} className="grid gap-2">
+                <div className="text-[11px] font-semibold text-zinc-700">{g.title}</div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] border-collapse text-[11px]">
+                    <thead>
+                      <tr className="text-zinc-600">
+                        <th className="border px-2 py-1 text-left">STEN</th>
+                        <th className="border px-2 py-1 text-left">Фактор</th>
+                        <th className="border px-2 py-1 text-left">Ф*</th>
+                        <th className="border px-2 py-1 text-left">Ф^</th>
+                        <th className="border px-2 py-1 text-left">Полюс отрицательный</th>
+                        <th className="border px-2 py-1 text-center">Шкала (−5…+5)</th>
+                        <th className="border px-2 py-1 text-left">Полюс положительный</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.factors.map((tag) => {
+                        const sten = Number(stenByFactor?.[tag] ?? 0);
+                        const star = invertSet.has(tag) ? 10 - sten : sten;
+                        const hat = star - 5;
+                        const neg = poles[tag]?.neg ?? "";
+                        const pos = poles[tag]?.pos ?? "";
+                        const style = tagToStyle[tag] || tag;
+                        const pct = Math.min(5, Math.abs(hat)) / 5;
+                        const w = `${Math.round(pct * 100)}%`;
+
+                        return (
+                          <tr key={tag} className="text-zinc-800">
+                            <td className="border px-2 py-1">{sten}</td>
+                            <td className="border px-2 py-1">{style}</td>
+                            <td className="border px-2 py-1">{invertSet.has(tag) ? `${star}*` : star}</td>
+                            <td className="border px-2 py-1">{hat}</td>
+                            <td className="border px-2 py-1">{neg}</td>
+                            <td className="border px-2 py-1">
+                              <div className="relative mx-auto h-3 w-56 rounded bg-zinc-100">
+                                <div className="absolute inset-y-0 left-1/2 w-px bg-zinc-400" />
+                                {hat < 0 ? (
+                                  <div className="absolute inset-y-0 right-1/2 bg-zinc-900" style={{ width: w }} />
+                                ) : hat > 0 ? (
+                                  <div className="absolute inset-y-0 left-1/2 border border-zinc-900 bg-white" style={{ width: w }} />
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="border px-2 py-1">{pos}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         ) : null}
       </div>
     );
