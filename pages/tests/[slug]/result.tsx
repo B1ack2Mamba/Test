@@ -68,7 +68,7 @@ export default function TestResult({ test }: { test: AnyTest }) {
             <Link href={`/tests/${test.slug}`} className="btn btn-secondary">
               ← К тесту
             </Link>
-            <Link href="/" className="btn btn-secondary">
+            <Link href="/training" className="btn btn-secondary">
               На главную
             </Link>
           </div>
@@ -81,7 +81,7 @@ export default function TestResult({ test }: { test: AnyTest }) {
             <Link href={`/tests/${test.slug}`} className="btn btn-secondary">
               ← К тесту
             </Link>
-            <Link href="/" className="btn btn-secondary">
+            <Link href="/training" className="btn btn-secondary">
               На главную
             </Link>
           </div>
@@ -184,7 +184,7 @@ export default function TestResult({ test }: { test: AnyTest }) {
               <Link href={`/tests/${test.slug}`} className="btn btn-secondary">
                 ← К тесту
               </Link>
-              <Link href="/" className="btn btn-secondary">
+              <Link href="/training" className="btn btn-secondary">
                 На главную
               </Link>
             </div>

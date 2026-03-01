@@ -184,8 +184,8 @@ export default function AuthPage() {
         </form>
 
         <div className="mt-4 text-xs text-slate-600">
-          <Link href="/" className="link">
-            ← На главную
+          <Link href="/training" className="link">
+            ← К комнатам
           </Link>
         </div>
       </div>

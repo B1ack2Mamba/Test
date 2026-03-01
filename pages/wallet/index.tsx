@@ -15,7 +15,7 @@ export default function WalletPage() {
           <div className="text-sm font-semibold">Раздел временно скрыт</div>
           <div className="mt-1 text-sm text-slate-700">Сейчас доступна только работа с тестами в комнатах.</div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link href="/" className="btn btn-secondary">
+            <Link href="/training" className="btn btn-secondary">
               На главную
             </Link>
             <Link href="/training" className="btn btn-secondary">

@@ -27,7 +27,7 @@ export function Layout({
     <div className="min-h-screen bg-app text-slate-900">
       <header className="border-b border-indigo-100/90 bg-white/70 backdrop-blur-sm shadow-sm">
         <div className="mx-auto flex max-w-4xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <Link href="/" className="flex items-center gap-3 font-semibold tracking-tight">
+          <Link href="/training" className="flex items-center gap-3 font-semibold tracking-tight">
             {/* Mobile: compact mark + label. Desktop: full logo. */}
             <Image
               src="/krost-mark.png"
@@ -48,12 +48,6 @@ export function Layout({
             <span className="sm:hidden text-slate-900">КРОСТ</span>
           </Link>
           <nav className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
-            <Link
-              href="/"
-              className="btn btn-secondary btn-sm"
-            >
-              Главная
-            </Link>
             <Link
               href="/training"
               className="btn btn-secondary btn-sm"

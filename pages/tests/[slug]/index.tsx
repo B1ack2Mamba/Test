@@ -28,7 +28,7 @@ export default function TestDetail({ test }: { test: AnyTest | null }) {
         <div className="card">
           <div className="text-sm font-medium">Тест не найден</div>
           <div className="mt-3">
-            <Link href="/" className="btn btn-secondary">
+            <Link href="/training" className="btn btn-secondary">
               На главную
             </Link>
           </div>
@@ -109,7 +109,7 @@ export default function TestDetail({ test }: { test: AnyTest | null }) {
               Начать тест
             </Link>
           ) : null}
-          <Link href="/" className="btn btn-secondary">
+          <Link href="/training" className="btn btn-secondary">
             На главную
           </Link>
         </div>
