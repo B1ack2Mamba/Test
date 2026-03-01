@@ -295,7 +295,6 @@ export default function SpecialistRoom({ tests }: Props) {
   const [roomName, setRoomName] = useState<string>("Комната");
   const [editRoomName, setEditRoomName] = useState<string>("");
   const [savingRoom, setSavingRoom] = useState(false);
-  const [deletingRoom, setDeletingRoom] = useState(false);
   const [roomMsg, setRoomMsg] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -709,30 +708,6 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
     }
   };
 
-  const deleteRoom = async () => {
-    if (!session || !roomId) return;
-    if (typeof window !== "undefined") {
-      const ok = window.confirm("Удалить комнату? Это удалит участников и результаты.");
-      if (!ok) return;
-    }
-    setDeletingRoom(true);
-    setRoomMsg("");
-    try {
-      const r = await fetch("/api/training/rooms/delete", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ room_id: roomId }),
-      });
-      const j = await r.json();
-      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось удалить");
-      router.replace("/specialist");
-    } catch (e: any) {
-      setRoomMsg(e?.message || "Ошибка удаления");
-    } finally {
-      setDeletingRoom(false);
-    }
-  };
-
   
   const normalizeRoomTestsDraft = (rows: any[]) => {
     const sorted = [...rows].sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
@@ -978,7 +953,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
 
       <div className="mb-4 card">
         <div className="text-sm font-semibold">Настройки комнаты</div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
           <input
             value={editRoomName}
             onChange={(e) => setEditRoomName(e.target.value)}
@@ -991,13 +966,6 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
             className="btn btn-primary disabled:opacity-50"
           >
             {savingRoom ? "…" : "Сохранить"}
-          </button>
-          <button
-            onClick={deleteRoom}
-            disabled={deletingRoom}
-            className="rounded-xl border bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-white/75 disabled:opacity-50"
-          >
-            {deletingRoom ? "…" : "Удалить"}
           </button>
         </div>
         {roomMsg ? <div className="mt-2 text-xs text-zinc-600">{roomMsg}</div> : null}

@@ -89,6 +89,7 @@ export default function SpecialistHome() {
     }
   };
 
+
   if (!session || !user) {
     return (
       <Layout title="Специалист">

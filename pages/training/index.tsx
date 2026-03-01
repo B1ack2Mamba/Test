@@ -17,10 +17,31 @@ export default function TrainingHome() {
   const [joinBusy, setJoinBusy] = useState(false);
   const [joinError, setJoinError] = useState("");
 
+  const NAME_KEY = "training_display_name_v1";
+
+  const saveNameLocal = (name: string) => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(NAME_KEY, name);
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
-    if (!user?.email) return;
-    setJoinName(user.email.split("@")[0]);
-  }, [user?.email]);
+    if (typeof window === "undefined") return;
+    if (joinName) return;
+    try {
+      const val = String(localStorage.getItem(NAME_KEY) || "").trim();
+      if (val) setJoinName(val);
+    } catch {
+      // ignore
+    }
+  }, [joinName]);
+
+  useEffect(() => {
+    if (user?.email && !joinName) setJoinName(user.email.split("@")[0]);
+  }, [user?.email, joinName]);
 
   const canLoad = !!session?.access_token;
 
@@ -60,6 +81,7 @@ export default function TrainingHome() {
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось войти");
+      saveNameLocal(String(joinName || "").trim());
       // go to room
       window.location.href = `/training/rooms/${encodeURIComponent(joinRoomId)}`;
     } catch (e: any) {
@@ -71,9 +93,9 @@ export default function TrainingHome() {
 
   if (!session || !user) {
     return (
-      <Layout title="Тренинг">
+      <Layout title="Комнаты">
         <div className="card text-sm text-zinc-700">
-          Для участия в тренинге нужно войти.
+          Чтобы войти в комнату, нужно авторизоваться.
           <div className="mt-3">
             <Link href="/auth?next=%2Ftraining" className="btn btn-secondary btn-sm">
               Вход / регистрация
@@ -85,7 +107,7 @@ export default function TrainingHome() {
   }
 
   return (
-    <Layout title="Тренинг">
+    <Layout title="Комнаты">
       <div className="mb-4 card text-sm text-zinc-700">
         Выберите комнату и войдите по паролю тренера. После входа появится список тестов.
       </div>

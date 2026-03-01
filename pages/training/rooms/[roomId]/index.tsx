@@ -18,8 +18,6 @@ export default function TrainingRoom({ tests }: Props) {
   const { session, user } = useSession();
 
   const NAME_KEY = "training_display_name_v1";
-  const NAME_EXP_KEY = "training_display_name_exp_v1";
-  const NAME_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
   const [room, setRoom] = useState<RoomInfo | null>(null);
   const [member, setMember] = useState<MemberInfo | null>(null);
@@ -45,7 +43,6 @@ export default function TrainingRoom({ tests }: Props) {
     if (typeof window === "undefined") return;
     try {
       localStorage.setItem(NAME_KEY, name);
-      localStorage.setItem(NAME_EXP_KEY, String(Date.now() + NAME_TTL_MS));
     } catch {
       // ignore
     }
@@ -55,14 +52,8 @@ export default function TrainingRoom({ tests }: Props) {
     if (typeof window === "undefined") return;
     if (joinName) return;
     try {
-      const exp = Number(localStorage.getItem(NAME_EXP_KEY) || "0");
-      const val = String(localStorage.getItem(NAME_KEY) || "");
-      if (val && exp && exp > Date.now()) {
-        setJoinName(val);
-      } else {
-        localStorage.removeItem(NAME_KEY);
-        localStorage.removeItem(NAME_EXP_KEY);
-      }
+      const val = String(localStorage.getItem(NAME_KEY) || "").trim();
+      if (val) setJoinName(val);
     } catch {
       // ignore
     }

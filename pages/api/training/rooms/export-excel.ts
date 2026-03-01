@@ -100,13 +100,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { data: attemptsData, error: attErr } = attemptIds.length
     ? await supabaseAdmin
         .from("training_attempts")
-        .select("id,user_id,test_slug,result")
+        .select("id,user_id,test_slug,result,answers")
         .in("id", attemptIds)
     : ({ data: [], error: null } as any);
   if (attErr) return res.status(500).json({ ok: false, error: attErr.message });
 
   const attemptById = new Map<string, any>();
   for (const a of attemptsData ?? []) attemptById.set(String((a as any).id), a);
+
+  // attempt_id map (needed for exporting answers)
+  const attemptIdByUserSlug = new Map<string, string>();
+  for (const p of progressData ?? []) {
+    if (!p.attempt_id) continue;
+    attemptIdByUserSlug.set(`${p.user_id}:${p.test_slug}`, String(p.attempt_id));
+  }
 
   const resultByUserSlug = new Map<string, any>();
   for (const p of progressData ?? []) {
@@ -115,6 +122,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!a) continue;
     resultByUserSlug.set(`${p.user_id}:${p.test_slug}`, a.result);
   }
+
+  const getAttemptAnswers = (userId: string, slug: string) => {
+    const id = attemptIdByUserSlug.get(`${userId}:${slug}`);
+    if (!id) return null;
+    const a = attemptById.get(String(id));
+    return a?.answers ?? null;
+  };
 
   // Load test JSONs (for dynamic schemas)
   const testsJson: Record<string, any> = {};
@@ -387,6 +401,64 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .join("");
   };
 
+  // For sheets with many tiny columns (e.g., 16PF answers), make columns narrower.
+  const sheetColumnsXmlCompact = (defs: { width?: number }[]) => {
+    return defs
+      .map((c) => {
+        const w = typeof c.width === "number" ? Math.max(16, Math.round(c.width * 6)) : 80;
+        return `<Column ss:AutoFitWidth="0" ss:Width="${w}" />`;
+      })
+      .join("");
+  };
+
+  const build16PFAnswersSheetXml = (slug: string, sheetName: string) => {
+    // 187 items (forms A/B). Keep within Excel 2003 column limit (256).
+    const QN = 187;
+    const colsA: { key: string; header: string; width?: number }[] = [
+      { key: "idx", header: "№", width: 5 },
+      { key: "name", header: "ФИО", width: 30 },
+      { key: "gender", header: "пол", width: 10 },
+      { key: "age", header: "возраст", width: 10 },
+      ...Array.from({ length: QN }, (_, i) => ({ key: `q${i + 1}`, header: String(i + 1), width: 4 })),
+    ];
+
+    const header = rowXml(colsA.map((c) => cellXml(c.header, "sHeader", { type: "String" })));
+
+    const data = rows
+      .map((r, i) => {
+        const a = getAttemptAnswers(r.user_id, slug) as any;
+        const pf16: any[] = Array.isArray(a?.pf16) ? a.pf16 : [];
+        const gender = a?.gender === "male" ? "м" : a?.gender === "female" ? "ж" : "";
+        const age = typeof a?.age === "number" && Number.isFinite(a.age) ? a.age : "";
+
+        const rowCells: string[] = [];
+        rowCells.push(cellXml(i + 1, "sCell", { type: "Number" }));
+        rowCells.push(cellXml(r.name || "", "sName", { type: "String" }));
+        rowCells.push(cellXml(gender, "sCell", { type: "String" }));
+        rowCells.push(cellXml(age, "sCell", { type: typeof age === "number" ? "Number" : "String" }));
+
+        for (let k = 0; k < QN; k++) {
+          const v = pf16?.[k] ?? "";
+          rowCells.push(cellXml(v, "sCell", { type: "String" }));
+        }
+        return rowXml(rowCells);
+      })
+      .join("");
+
+    const expandedCols = colsA.length;
+    const expandedRows = 1 + rows.length;
+
+    return `
+  <Worksheet ss:Name="${xmlEscape(sheetName)}">
+    <Table ss:ExpandedColumnCount="${expandedCols}" ss:ExpandedRowCount="${expandedRows}">
+      ${sheetColumnsXmlCompact(colsA)}
+      ${header}
+      ${data}
+    </Table>
+    ${sheetOptionsXml(1, 2)}
+  </Worksheet>`;
+  };
+
   const buildMurmanskSheetXml = (name: string, rowsArr: any[], freezeRows = 2, freezeCols = 2) => {
     // Header row1 (groups with merges)
     const r1: string[] = [];
@@ -520,6 +592,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   };
 
   const fileName = `${roomName}`.replace(/[\\/:*?"<>|]+/g, " ").trim() || "room";
+
+  const extraSheets = [
+    testSlugs.includes("16pf-a") ? build16PFAnswersSheetXml("16pf-a", "16PF-A ответы") : "",
+    testSlugs.includes("16pf-b") ? build16PFAnswersSheetXml("16pf-b", "16PF-B ответы") : "",
+  ].join("\n");
+
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
@@ -629,6 +707,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   ${buildMurmanskSheetXml("СВОД по алфавиту", alpha, 2, 2)}
   ${buildListSheetXml()}
   ${buildStatSheetXml()}
+  ${extraSheets}
 </Workbook>`;
 
   res.setHeader("Content-Type", "application/vnd.ms-excel; charset=utf-8");

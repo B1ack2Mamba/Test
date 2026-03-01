@@ -1,43 +1,29 @@
 import Link from "next/link";
 import { Layout } from "@/components/Layout";
-import { getAllTests } from "@/lib/loadTests";
-import type { AnyTest } from "@/lib/testTypes";
 
-export default function Home({ tests }: { tests: AnyTest[] }) {
+export default function Home() {
   return (
-    <Layout title="Каталог тестов">
+    <Layout title="Главная">
       <div className="grid gap-3">
-        {tests.map((t) => (
-          <div key={t.slug} className="card">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <Link href={`/tests/${t.slug}`} className="block text-lg font-semibold hover:underline">
-                  {t.title}
-                </Link>
-                <div className="mt-2 text-xs text-zinc-500">{t.questions.length} вопросов</div>
-              </div>
+        <div className="card text-sm text-zinc-700">
+          Тесты доступны только через комнаты тренинга (чтобы никто случайно не проходил их на главной странице).
+        </div>
 
-              <div className="flex shrink-0 flex-col items-end gap-2">
-                <Link href={`/tests/${t.slug}/take`} className="btn btn-primary btn-sm">
-                  Начать
-                </Link>
-              </div>
-            </div>
+        <div className="card">
+          <div className="text-sm font-semibold">Куда перейти</div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link href="/training" className="btn btn-primary">
+              Комнаты
+            </Link>
+            <Link href="/specialist" className="btn btn-secondary">
+              Кабинет специалиста
+            </Link>
           </div>
-        ))}
-
-        {tests.length === 0 ? (
-          <div className="card text-sm text-zinc-600">
-            Пока нет опубликованных тестов.
-            <div className="mt-2">Скоро появятся.</div>
+          <div className="mt-3 text-xs text-zinc-500">
+            Если вам выдали пароль — зайдите в комнату, и там появится список тестов.
           </div>
-        ) : null}
+        </div>
       </div>
     </Layout>
   );
-}
-
-export async function getServerSideProps() {
-  const tests = await getAllTests();
-  return { props: { tests } };
 }

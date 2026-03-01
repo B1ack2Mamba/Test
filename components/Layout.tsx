@@ -45,20 +45,20 @@ export function Layout({
               className="hidden sm:block"
               priority
             />
-            <span className="sm:hidden text-slate-900">Тесты</span>
+            <span className="sm:hidden text-slate-900">КРОСТ</span>
           </Link>
           <nav className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
             <Link
               href="/"
               className="btn btn-secondary btn-sm"
             >
-              Тесты
+              Главная
             </Link>
             <Link
               href="/training"
               className="btn btn-secondary btn-sm"
             >
-              Тренинги
+              Комнаты
             </Link>
             {PAYMENTS_UI_ENABLED ? (
               <Link
