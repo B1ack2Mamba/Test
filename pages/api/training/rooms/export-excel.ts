@@ -264,6 +264,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       continue;
     }
 
+    // Situational guidance (situational leadership)
+    if (type === "situational_guidance_v1" || slug === "situational-guidance") {
+      const styleToName = (t?.scoring?.style_to_name || {}) as Record<string, string>;
+      const sub: ColDef[] = [
+        { key: `${slug}:S1`, header2: `S1\n${styleToName.S1 || "Указывающий"}`, group: title, test_slug: slug, width: 20, fromResult: (r) => r?.counts?.S1 ?? null },
+        { key: `${slug}:S2`, header2: `S2\n${styleToName.S2 || "Убеждающий"}`, group: title, test_slug: slug, width: 20, fromResult: (r) => r?.counts?.S2 ?? null },
+        { key: `${slug}:S3`, header2: `S3\n${styleToName.S3 || "Поощряющий"}`, group: title, test_slug: slug, width: 20, fromResult: (r) => r?.counts?.S3 ?? null },
+        { key: `${slug}:S4`, header2: `S4\n${styleToName.S4 || "Делегирующий"}`, group: title, test_slug: slug, width: 20, fromResult: (r) => r?.counts?.S4 ?? null },
+        { key: `${slug}:flex`, header2: "гибкость (сумма)", group: title, test_slug: slug, width: 16, fromResult: (r) => r?.meta?.flexibility?.sum ?? r?.counts?.flexibility ?? null },
+        { key: `${slug}:diag`, header2: "диагональ", group: title, test_slug: slug, width: 14, fromResult: (r) => r?.meta?.adequacy?.diagonal ?? r?.counts?.diagonal ?? null },
+        { key: `${slug}:upper`, header2: "верхний угол", group: title, test_slug: slug, width: 14, fromResult: (r) => r?.meta?.adequacy?.upper ?? r?.counts?.upper ?? null },
+        { key: `${slug}:lower`, header2: "нижний угол", group: title, test_slug: slug, width: 14, fromResult: (r) => r?.meta?.adequacy?.lower ?? r?.counts?.lower ?? null },
+      ];
+      pushGroup(title, sub);
+      continue;
+    }
+
     // 16PF
     if (type === "16pf_v1" || slug === "16pf") {
       const factors = Array.isArray(t?.scoring?.factors)
@@ -459,6 +476,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   </Worksheet>`;
   };
 
+  const buildSituationalGuidanceAnswersSheetXml = (slug: string, sheetName: string) => {
+    const QN = 12;
+    const colsA: { key: string; header: string; width?: number }[] = [
+      { key: "idx", header: "№", width: 5 },
+      { key: "name", header: "ФИО", width: 30 },
+      ...Array.from({ length: QN }, (_, i) => ({ key: `q${i + 1}`, header: String(i + 1), width: 4 })),
+    ];
+
+    const header = rowXml(colsA.map((c) => cellXml(c.header, "sHeader", { type: "String" })));
+
+    const data = rows
+      .map((r, i) => {
+        const a = getAttemptAnswers(r.user_id, slug) as any;
+        const chosen: any[] = Array.isArray(a?.chosen) ? a.chosen : Array.isArray(a) ? a : [];
+
+        const rowCells: string[] = [];
+        rowCells.push(cellXml(i + 1, "sCell", { type: "Number" }));
+        rowCells.push(cellXml(r.name || "", "sName", { type: "String" }));
+        for (let k = 0; k < QN; k++) {
+          const v = chosen?.[k] ?? "";
+          rowCells.push(cellXml(v, "sCell", { type: "String" }));
+        }
+        return rowXml(rowCells);
+      })
+      .join("");
+
+    const expandedCols = colsA.length;
+    const expandedRows = 1 + rows.length;
+
+    return `
+  <Worksheet ss:Name="${xmlEscape(sheetName)}">
+    <Table ss:ExpandedColumnCount="${expandedCols}" ss:ExpandedRowCount="${expandedRows}">
+      ${sheetColumnsXmlCompact(colsA)}
+      ${header}
+      ${data}
+    </Table>
+    ${sheetOptionsXml(1, 2)}
+  </Worksheet>`;
+  };
+
   const buildMurmanskSheetXml = (name: string, rowsArr: any[], freezeRows = 2, freezeCols = 2) => {
     // Header row1 (groups with merges)
     const r1: string[] = [];
@@ -596,6 +653,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const extraSheets = [
     testSlugs.includes("16pf-a") ? build16PFAnswersSheetXml("16pf-a", "16PF-A ответы") : "",
     testSlugs.includes("16pf-b") ? build16PFAnswersSheetXml("16pf-b", "16PF-B ответы") : "",
+    testSlugs.includes("situational-guidance") ? buildSituationalGuidanceAnswersSheetXml("situational-guidance", "Ситуативное руководство ответы") : "",
   ].join("\n");
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>

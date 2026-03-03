@@ -9,6 +9,9 @@ import type {
   ABC,
   PF16TestV1,
   PF16Factor,
+  SituationalGuidanceTestV1,
+  SituationalGuidanceChoice,
+  SituationalGuidanceStyle,
 } from "@/lib/testTypes";
 import { pf16PickNormGroup, pf16NormGroupLabel, pf16RawToSten, type Pf16Gender } from "@/lib/pf16Norms";
 
@@ -21,7 +24,7 @@ export type ScoreRow = {
 };
 
 export type ScoreResult = {
-  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1" | "16pf_v1";
+  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1" | "situational_guidance_v1" | "16pf_v1";
   title?: string;
   summary?: string;
   total: number;
@@ -30,6 +33,96 @@ export type ScoreResult = {
   ranked: ScoreRow[];
   meta?: Record<string, any>;
 };
+
+// ===================== Situational Guidance (Situational Leadership) =====================
+
+function sNum(s: SituationalGuidanceStyle): number {
+  return s === "S1" ? 1 : s === "S2" ? 2 : s === "S3" ? 3 : 4;
+}
+function rNum(r: string): number {
+  return r === "R1" ? 1 : r === "R2" ? 2 : r === "R3" ? 3 : 4;
+}
+
+export function scoreSituationalGuidance(test: SituationalGuidanceTestV1, answers: SituationalGuidanceChoice[]): ScoreResult {
+  const styles: SituationalGuidanceStyle[] = Array.isArray(test.scoring?.styles) ? (test.scoring.styles as any) : ["S1", "S2", "S3", "S4"];
+  const styleToName = (test.scoring?.style_to_name || {}) as Record<string, string>;
+
+  const counts = Object.fromEntries(styles.map((s) => [s, 0])) as Record<SituationalGuidanceStyle, number>;
+  const maxByFactor = Object.fromEntries(styles.map((s) => [s, test.questions?.length ?? 12])) as Record<string, number>;
+
+  const perQuestion: any[] = [];
+  let flexSum = 0;
+  let diag = 0;
+  let upper = 0;
+  let lower = 0;
+
+  const keys = Array.isArray(test.scoring?.keys) ? (test.scoring.keys as any[]) : [];
+  const totalQ = test.questions?.length ?? 0;
+
+  for (let i = 0; i < totalQ; i++) {
+    const k = keys[i];
+    const choice = answers?.[i];
+    if (choice !== "A" && choice !== "B" && choice !== "C" && choice !== "D") {
+      throw new Error(`Ответ #${i + 1} должен быть A/B/C/D`);
+    }
+    const style = (k?.option_to_style?.[choice] as SituationalGuidanceStyle) || null;
+    if (!style) throw new Error(`Нет ключа для вопроса #${i + 1}`);
+    counts[style] = (counts[style] ?? 0) + 1;
+
+    const pts = Number(k?.points?.[choice] ?? 0);
+    if (Number.isFinite(pts)) flexSum += pts;
+
+    const rr = String(k?.readiness || "R1") as any;
+    const rN = rNum(rr);
+    const sN = sNum(style);
+    if (sN === rN) diag++;
+    else if (sN > rN) upper++;
+    else lower++;
+
+    perQuestion.push({
+      order: i + 1,
+      choice,
+      style,
+      readiness: rr,
+      points: pts,
+      coord: { s: sN, r: rN },
+    });
+  }
+
+  const total = totalQ || 1;
+  const percents = Object.fromEntries(styles.map((s) => [s, Math.round(((counts[s] ?? 0) / total) * 100)])) as any;
+
+  const flexNorm = test.scoring?.flexibility_norm || { low_max: 18, normal_min: 19, normal_max: 22, high_min: 23 };
+  const flexLevel = flexSum <= flexNorm.low_max ? "низкая" : flexSum <= flexNorm.normal_max ? "норма" : "высокая";
+
+  const ranked: ScoreRow[] = styles.map((s) => ({
+    tag: s,
+    style: styleToName[s] || s,
+    count: counts[s] ?? 0,
+    percent: percents[s] ?? 0,
+    level: "",
+  }));
+
+  return {
+    kind: "situational_guidance_v1",
+    total: totalQ,
+    counts: {
+      ...counts,
+      flexibility: flexSum,
+      diagonal: diag,
+      upper,
+      lower,
+    } as any,
+    percents: percents as any,
+    ranked,
+    meta: {
+      maxByFactor,
+      flexibility: { sum: flexSum, level: flexLevel, norm: flexNorm },
+      adequacy: { diagonal: diag, upper, lower },
+      perQuestion,
+    },
+  };
+}
 
 // ===================== Negotiation test (forced pair) =====================
 

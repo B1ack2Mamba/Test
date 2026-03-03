@@ -116,6 +116,8 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
 
   const [forced, setForced] = useState<string[]>(() => Array(test.questions?.length ?? 0).fill(""));
   const [leftPoints, setLeftPoints] = useState<(number | null)[]>(() => Array(test.questions?.length ?? 0).fill(null));
+  // Situational guidance (A/B/C/D per situation)
+  const [sg, setSg] = useState<("A" | "B" | "C" | "D" | "")[]>(() => Array(test.questions?.length ?? 0).fill(""));
   // IMPORTANT: don't read sessionStorage in the state initializer on an SSR page
   // (it can cause a hydration mismatch if a draft exists on the client).
   const [colorDraft, setColorDraft] = useState<ColorDraft>({
@@ -211,11 +213,14 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
     if (test.type === "16pf_v1") {
       return pf16.filter(Boolean).length;
     }
+    if (test.type === "situational_guidance_v1") {
+      return sg.filter(Boolean).length;
+    }
     if (test.type === "forced_pair" || test.type === "forced_pair_v1") {
       return forced.filter(Boolean).length;
     }
     return leftPoints.filter((v) => v !== null).length;
-  }, [test.type, forced, leftPoints, colorDraft, pf16]);
+  }, [test.type, forced, leftPoints, colorDraft, pf16, sg]);
 
   const totalRequired = test.type === "color_types_v1" ? 6 : (test.questions?.length ?? 0);
   const pf16AgeOk = typeof pf16Age === "number" && Number.isFinite(pf16Age) && pf16Age >= 16 && pf16Age <= 70;
@@ -257,6 +262,8 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
               }
             : test.type === "usk_v1"
               ? (leftPoints.map((v) => (v === null ? 0 : Number(v))) as number[])
+              : test.type === "situational_guidance_v1"
+                ? (sg as any)
               : test.type === "16pf_v1"
                 ? ({ pf16: pf16 as any, gender: pf16Gender, age: pf16Age } as any)
               : (leftPoints.map((v) => Number(v)) as number[]);
@@ -573,6 +580,30 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
           </>
         ) : (
           (test.questions || []).map((q: any, idx: number) => {
+          if (test.type === "situational_guidance_v1") {
+            const chosen = sg[idx] || "";
+            const opts = (q?.options || {}) as Record<string, string>;
+            const pick = (v: "A" | "B" | "C" | "D") => {
+              const next = [...sg];
+              next[idx] = v;
+              setSg(next);
+            };
+            return (
+              <div key={idx} className="card">
+                <div className="mb-3 text-sm font-medium text-slate-700">
+                  {idx + 1}. {String(q?.prompt || "")}
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {(["A", "B", "C", "D"] as const).map((k) => (
+                    <button key={k} type="button" className={cls(chosen === k)} onClick={() => pick(k)}>
+                      <div className="text-xs font-semibold text-slate-600">Вариант {k}</div>
+                      <div className="mt-1 text-sm whitespace-normal break-words">{opts?.[k] || ""}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          }
           if (test.type === "forced_pair" || test.type === "forced_pair_v1") {
             const chosen = forced[idx];
             // Some tests may encode pairs as {left,right}, others as options[0/1]. Be defensive.

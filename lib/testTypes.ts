@@ -188,6 +188,52 @@ export type USKTestV1 = {
   scoring: USKScoring;
 };
 
+// ===================== Situational Guidance (Situational Leadership) =====================
+
+export type SituationalGuidanceStyle = "S1" | "S2" | "S3" | "S4";
+export type SituationalGuidanceReadiness = "R1" | "R2" | "R3" | "R4";
+export type SituationalGuidanceChoice = "A" | "B" | "C" | "D";
+
+export type SituationalGuidanceQuestion = {
+  order: number;
+  prompt: string;
+  options: Record<SituationalGuidanceChoice, string>;
+};
+
+export type SituationalGuidanceScoring = {
+  styles: SituationalGuidanceStyle[];
+  style_to_name: Record<SituationalGuidanceStyle, string>;
+  flexibility_norm?: {
+    low_max: number;
+    normal_min: number;
+    normal_max: number;
+    high_min: number;
+  };
+  /** Per-situation key: readiness + mapping from chosen option (A-D) to style (S1-S4) + points for flexibility. */
+  keys: Array<{
+    order: number;
+    readiness: SituationalGuidanceReadiness;
+    option_to_style: Record<SituationalGuidanceChoice, SituationalGuidanceStyle>;
+    points: Record<SituationalGuidanceChoice, number>;
+  }>;
+};
+
+export type SituationalGuidanceTestV1 = {
+  slug: string;
+  title: string;
+  description?: string;
+  /** Optional long-form instructions shown on the test page. */
+  instructions?: string;
+  type: "situational_guidance_v1";
+  pricing?: {
+    interpretation_rub?: number;
+    details_rub?: number;
+  };
+  has_interpretation?: boolean;
+  questions: SituationalGuidanceQuestion[];
+  scoring: SituationalGuidanceScoring;
+};
+
 
 
 // ===================== 16PF (Cattell) =====================
@@ -228,4 +274,10 @@ export type PF16TestV1 = {
   scoring: PF16Scoring;
 };
 
-export type AnyTest = ForcedPairTestV1 | PairSplitTestV1 | ColorTypesTestV1 | USKTestV1 | PF16TestV1;
+export type AnyTest =
+  | ForcedPairTestV1
+  | PairSplitTestV1
+  | ColorTypesTestV1
+  | USKTestV1
+  | SituationalGuidanceTestV1
+  | PF16TestV1;

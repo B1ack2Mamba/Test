@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
 import { loadTestJsonBySlugAdmin } from "@/lib/loadTestAdmin";
-import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF } from "@/lib/score";
+import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance } from "@/lib/score";
 import { ensureRoomTests } from "@/lib/trainingRoomTests";
 import type { Tag } from "@/lib/testTypes";
 
@@ -94,6 +94,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       result = score16PF(test as any, { pf16: safe, gender, age } as any);
       answersJson = { pf16: safe, gender, age };
+    } else if (test.type === "situational_guidance_v1") {
+      const arr = Array.isArray(answers) ? (answers as any[]) : [];
+      const safe = arr.map((x) => (x === "A" || x === "B" || x === "C" || x === "D" ? x : ""));
+      result = scoreSituationalGuidance(test as any, safe as any);
+      answersJson = { chosen: safe };
     } else {
       return res.status(400).json({ ok: false, error: "Unknown test type" });
     }

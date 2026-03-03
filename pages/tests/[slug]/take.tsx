@@ -3,8 +3,18 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import { getTestBySlug } from "@/lib/loadTests";
-import type { AnyTest, ForcedPairTestV1, PairSplitTestV1, ColorTypesTestV1, USKTestV1, PF16TestV1, Tag, ABC } from "@/lib/testTypes";
-import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF } from "@/lib/score";
+import type {
+  AnyTest,
+  ForcedPairTestV1,
+  PairSplitTestV1,
+  ColorTypesTestV1,
+  USKTestV1,
+  PF16TestV1,
+  SituationalGuidanceTestV1,
+  Tag,
+  ABC,
+} from "@/lib/testTypes";
+import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance } from "@/lib/score";
 import { useSession } from "@/lib/useSession";
 import { PAYMENTS_UI_ENABLED } from "@/lib/payments";
 import { saveAttempt, updateAttempt } from "@/lib/localHistory";
@@ -1014,6 +1024,117 @@ function USKForm({ test }: { test: USKTestV1 }) {
 
 
 
+function SituationalGuidanceForm({ test }: { test: SituationalGuidanceTestV1 }) {
+  const router = useRouter();
+  const { user, session } = useSession();
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>("");
+
+  const [answers, setAnswers] = useState<(("A" | "B" | "C" | "D") | null)[]>(() => Array(test.questions.length).fill(null));
+
+  useEffect(() => {
+    const draft = getSessionDraft<(("A" | "B" | "C" | "D") | null)[]>(test.slug);
+    if (draft && Array.isArray(draft) && draft.length === test.questions.length) {
+      setAnswers(draft as any);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [test.slug, test.questions.length]);
+
+  const answeredCount = useMemo(() => answers.filter(Boolean).length, [answers]);
+  const canSubmit = answeredCount === test.questions.length;
+
+  const pick = (idx: number, v: "A" | "B" | "C" | "D") => {
+    setAnswers((prev) => {
+      const next = [...prev];
+      next[idx] = v;
+      setSessionDraft(test.slug, next);
+      return next;
+    });
+  };
+
+  const submit = async () => {
+    if (!canSubmit || busy) return;
+    setBusy(true);
+    setError("");
+
+    try {
+      // At this point all answers are filled (canSubmit=true), so the array keeps question order.
+      const chosen = answers as any;
+      const res = scoreSituationalGuidance(test, chosen);
+
+      const userId = user?.id || "guest";
+      const attempt = typeof window !== "undefined" ? saveAttempt(userId, test.slug, res) : null;
+
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
+        if (attempt?.id) window.sessionStorage.setItem(attemptIdKey(test.slug), attempt.id);
+        window.sessionStorage.removeItem(storageKey(test.slug));
+      }
+
+      // Paid interpretation (if ever enabled)
+      if (test.has_interpretation && priceRub(test) > 0) {
+        if (!user || !session) {
+          setError("Для показа результата нужно войти. После входа нажми «Показать результат» ещё раз.");
+          router.push(`/auth?next=${encodeURIComponent(`/tests/${test.slug}/take`)}`);
+          return;
+        }
+      }
+
+      router.push(`/tests/${test.slug}/result`);
+    } catch (e: any) {
+      setError(e?.message ?? "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Layout title={test.title}>
+      <div className="mb-4 card">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm text-slate-600">
+            Прогресс: <span className="font-medium text-slate-900">{answeredCount}/{test.questions.length}</span>
+          </div>
+          <div className="text-sm text-slate-600">{ensureProgress(test.questions.length, answeredCount)}%</div>
+        </div>
+        {test.instructions ? <div className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{test.instructions}</div> : null}
+      </div>
+
+      <div className="grid gap-3">
+        {test.questions.map((q, idx) => (
+          <div key={q.order} className="card">
+            <div className="text-sm font-semibold text-slate-900">{q.order}. {q.prompt}</div>
+            <div className="mt-3 grid gap-2">
+              {(["A", "B", "C", "D"] as const).map((k) => (
+                <button key={k} type="button" onClick={() => pick(idx, k)} className={cls(answers[idx] === k)}>
+                  <div className="text-xs font-semibold text-slate-600">Вариант {k}</div>
+                  <div className="mt-1 text-sm whitespace-normal break-words">{q.options?.[k] || ""}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 card">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-slate-600">Ответьте на все ситуации, чтобы увидеть результат.</div>
+          <button
+            type="button"
+            disabled={!canSubmit || busy}
+            onClick={submit}
+            className={["btn", canSubmit && !busy ? "btn-primary" : "btn-secondary"].join(" ")}
+          >
+            {busy ? "Обрабатываем…" : buttonLabel(test)}
+          </button>
+        </div>
+        {error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
+      </div>
+    </Layout>
+  );
+}
+
 function PF16Form({ test }: { test: PF16TestV1 }) {
   type Draft = {
     pf16: Array<ABC | "">;
@@ -1225,6 +1346,8 @@ export default function TakeTest({ test }: { test: AnyTest }) {
         <ColorTypesForm test={test as ColorTypesTestV1} />
       ) : test.type === "usk_v1" ? (
         <USKForm test={test as USKTestV1} />
+      ) : test.type === "situational_guidance_v1" ? (
+        <SituationalGuidanceForm test={test as SituationalGuidanceTestV1} />
       ) : test.type === "16pf_v1" ? (
         <PF16Form test={test as PF16TestV1} />
       ) : (
