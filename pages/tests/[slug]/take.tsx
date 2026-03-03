@@ -82,26 +82,32 @@ function SplitScale({
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      <div className="grid grid-cols-3 gap-2">
-        {leftItems.map((n) => (
-          <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
-            <div>{labelFor(n)}</div>
-            <div className={`mt-0.5 text-[10px] ${value === n ? "text-indigo-950/70" : "text-slate-500"}`}>
-              {L} {n} / {R} {max - n}
-            </div>
-          </button>
-        ))}
+      <div>
+        <div className="mb-1 text-[11px] font-semibold text-slate-600">{L}</div>
+        <div className="grid grid-cols-3 gap-2">
+          {leftItems.map((n) => (
+            <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
+              <div className="flex items-center justify-between gap-2">
+                <span>{labelFor(n)}</span>
+                <span className={`text-xs font-semibold ${value === n ? "text-indigo-950" : "text-slate-500"}`}>{L}</span>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {rightItems.map((n) => (
-          <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
-            <div>{labelFor(n)}</div>
-            <div className={`mt-0.5 text-[10px] ${value === n ? "text-indigo-950/70" : "text-slate-500"}`}>
-              {L} {n} / {R} {max - n}
-            </div>
-          </button>
-        ))}
+      <div>
+        <div className="mb-1 text-[11px] font-semibold text-slate-600">{R}</div>
+        <div className="grid grid-cols-3 gap-2">
+          {rightItems.map((n) => (
+            <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
+              <div className="flex items-center justify-between gap-2">
+                <span>{labelFor(n)}</span>
+                <span className={`text-xs font-semibold ${value === n ? "text-indigo-950" : "text-slate-500"}`}>{R}</span>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

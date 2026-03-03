@@ -16,6 +16,11 @@ const AuthNavNoSSR = dynamic(
   { ssr: false, loading: () => <span className="text-xs text-slate-500">…</span> }
 );
 
+const NativeActionsNoSSR = dynamic(
+  () => import("@/components/NativeActions").then((m) => m.NativeActions),
+  { ssr: false, loading: () => null }
+);
+
 export function Layout({
   title,
   children,
@@ -26,8 +31,8 @@ export function Layout({
   return (
     <div className="min-h-screen bg-app text-slate-900">
       <header className="border-b border-indigo-100/90 bg-white/70 backdrop-blur-sm shadow-sm">
-        <div className="mx-auto flex max-w-4xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <Link href="/training" className="flex items-center gap-3 font-semibold tracking-tight">
+        <div className="app-header-inner mx-auto flex max-w-4xl flex-col gap-2 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+          <Link href="/training" className="app-brand flex items-center gap-3 font-semibold tracking-tight">
             {/* Mobile: compact mark + label. Desktop: full logo. */}
             <Image
               src="/krost-mark.png"
@@ -62,6 +67,8 @@ export function Layout({
                 Кошелёк
               </Link>
             ) : null}
+
+            <NativeActionsNoSSR />
 
             <SpecialistNavNoSSR />
             <AuthNavNoSSR />

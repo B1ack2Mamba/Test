@@ -13,6 +13,19 @@ body {
 }
 
 /*
+  Native (Capacitor) tweaks
+  - prevent header content from overlapping the Android status bar
+  - hide the brand mark in the mobile app (time must stay visible)
+*/
+html.native-app .app-header-inner {
+  padding-top: 20px;
+}
+
+html.native-app .app-brand {
+  display: none !important;
+}
+
+/*
   Lunar minimal theme
   - pastel moonlight background
   - clearer separation between surfaces

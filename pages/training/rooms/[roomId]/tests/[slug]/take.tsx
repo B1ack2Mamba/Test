@@ -67,26 +67,32 @@ function SplitScale({
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      <div className="grid grid-cols-3 gap-2">
-        {leftItems.map((n) => (
-          <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
-            <div>{labelFor(n)}</div>
-            <div className={`mt-0.5 text-[10px] ${value === n ? "text-white/80" : "text-slate-500"}`}>
-              {L} {n} / {R} {max - n}
-            </div>
-          </button>
-        ))}
+      <div>
+        <div className="mb-1 text-[11px] font-semibold text-slate-600">{L}</div>
+        <div className="grid grid-cols-3 gap-2">
+          {leftItems.map((n) => (
+            <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
+              <div className="flex items-center justify-between gap-2">
+                <span>{labelFor(n)}</span>
+                <span className={`text-xs font-semibold ${value === n ? "text-indigo-950" : "text-slate-500"}`}>{L}</span>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {rightItems.map((n) => (
-          <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
-            <div>{labelFor(n)}</div>
-            <div className={`mt-0.5 text-[10px] ${value === n ? "text-white/80" : "text-slate-500"}`}>
-              {L} {n} / {R} {max - n}
-            </div>
-          </button>
-        ))}
+      <div>
+        <div className="mb-1 text-[11px] font-semibold text-slate-600">{R}</div>
+        <div className="grid grid-cols-3 gap-2">
+          {rightItems.map((n) => (
+            <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
+              <div className="flex items-center justify-between gap-2">
+                <span>{labelFor(n)}</span>
+                <span className={`text-xs font-semibold ${value === n ? "text-indigo-950" : "text-slate-500"}`}>{R}</span>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -486,17 +492,8 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
               <summary className="cursor-pointer text-sm font-medium text-zinc-800">
                 Инструкция (нажми, чтобы раскрыть)
               </summary>
-              <div className="mt-3 space-y-2 text-sm text-slate-700">
-                <p>
-                  Отвечай быстро и честно. Здесь нет «правильных» ответов.
-                </p>
-                <p>
-                  Формат: 187 вопросов, по 3 варианта (A/B/C). Вопрос <b>187</b> контрольный —
-                  <b> не влияет на результат</b>, но остаётся в тесте.
-                </p>
-                <p>
-                  Итог по 16 факторам в шкале <b>0–10</b>: 0–4 низкий, 5–7 средний, 8–10 высокий.
-                </p>
+              <div className="mt-3 text-sm text-slate-700">
+                Отвечай быстро и честно, здесь нет правильных ответов.
               </div>
             </details>
 
