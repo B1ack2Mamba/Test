@@ -84,12 +84,12 @@ function SplitScale({
     <div className="grid gap-3 sm:grid-cols-2">
       <div>
         <div className="mb-1 text-[11px] font-semibold text-slate-600">{L}</div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {leftItems.map((n) => (
-            <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
-              <div className="flex items-center justify-between gap-2">
-                <span>{labelFor(n)}</span>
-                <span className={`text-xs font-semibold ${value === n ? "text-indigo-950" : "text-slate-500"}`}>{L}</span>
+            <button key={n} type="button" onClick={() => onChange(n)} className={`${cls(value === n)} text-[13px] sm:text-[15px]`}>
+              <div className="flex flex-col gap-1">
+                <div className="whitespace-normal break-words">{labelFor(n)}</div>
+                <div className={`text-[11px] font-semibold ${value === n ? "text-indigo-950" : "text-slate-500"}`}>{L}</div>
               </div>
             </button>
           ))}
@@ -98,12 +98,12 @@ function SplitScale({
 
       <div>
         <div className="mb-1 text-[11px] font-semibold text-slate-600">{R}</div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {rightItems.map((n) => (
-            <button key={n} type="button" onClick={() => onChange(n)} className={cls(value === n)}>
-              <div className="flex items-center justify-between gap-2">
-                <span>{labelFor(n)}</span>
-                <span className={`text-xs font-semibold ${value === n ? "text-indigo-950" : "text-slate-500"}`}>{R}</span>
+            <button key={n} type="button" onClick={() => onChange(n)} className={`${cls(value === n)} text-[13px] sm:text-[15px]`}>
+              <div className="flex flex-col gap-1">
+                <div className="whitespace-normal break-words">{labelFor(n)}</div>
+                <div className={`text-[11px] font-semibold ${value === n ? "text-indigo-950" : "text-slate-500"}`}>{R}</div>
               </div>
             </button>
           ))}

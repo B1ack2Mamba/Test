@@ -16,10 +16,6 @@ const AuthNavNoSSR = dynamic(
   { ssr: false, loading: () => <span className="text-xs text-slate-500">…</span> }
 );
 
-const NativeActionsNoSSR = dynamic(
-  () => import("@/components/NativeActions").then((m) => m.NativeActions),
-  { ssr: false, loading: () => null }
-);
 
 export function Layout({
   title,
@@ -67,8 +63,6 @@ export function Layout({
                 Кошелёк
               </Link>
             ) : null}
-
-            <NativeActionsNoSSR />
 
             <SpecialistNavNoSSR />
             <AuthNavNoSSR />

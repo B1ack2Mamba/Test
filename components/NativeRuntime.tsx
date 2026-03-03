@@ -52,6 +52,15 @@ export function NativeRuntime() {
         // ignore
       }
 
+      // --- Status bar (Android/iOS): don't overlay WebView ---
+      try {
+        const { StatusBar } = await import("@capacitor/status-bar");
+        await StatusBar.setOverlaysWebView({ overlay: false });
+      } catch {
+        // ignore
+      }
+
+
       // --- External links: open outside the app ---
       try {
         const { Browser } = await import("@capacitor/browser");
