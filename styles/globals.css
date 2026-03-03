@@ -18,7 +18,12 @@ body {
   - hide the brand mark in the mobile app (time must stay visible)
 */
 html.native-app .app-header-inner {
-  padding-top: 20px;
+  /*
+    Cap WebView on Android can render under the OS status bar.
+    `safe-area-inset-top` may be 0 on some Android builds, so we add
+    a practical fallback offset to keep time/indicators visible.
+  */
+  padding-top: calc(env(safe-area-inset-top, 0px) + 44px);
 }
 
 html.native-app .app-brand {

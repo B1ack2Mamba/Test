@@ -7,14 +7,13 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * 2) Если меняешь appId/appName — делай это ДО `npx cap add android`, иначе придётся пересоздавать платформы.
  */
 const config: CapacitorConfig = {
-  appId: 'com.tests',
-  appName: 'Tests',
+  appId: 'com.krost.tests',
+  appName: 'Krost Tests',
   webDir: 'www',
- 
 
   server: {
     // TODO: поставь свой домен
-      url: 'https://test-alpha-ashen-88.vercel.app/',
+    url: 'https://YOUR-DOMAIN.TLD',
 
     // Для продакшена лучше держать false. Включают только если домен на http.
     cleartext: false,
