@@ -219,6 +219,81 @@ function Digits({ result }: { result: ScoreResult }) {
       </div>
     );
   }
+
+  if (kind === "situational_guidance_v1") {
+    const total = result.total || 12;
+    const meta: any = (result.meta as any) || {};
+    const flex = Number(meta?.flexibility?.sum ?? (result.counts as any)?.flexibility ?? 0);
+    const flexLevel = String(meta?.flexibility?.level ?? "");
+    const flexNorm = meta?.flexibility?.norm || { normal_min: 19, normal_max: 22 };
+
+    const adeq: any = meta?.adequacy || {};
+    const diag = Number(adeq?.diagonal ?? (result.counts as any)?.diagonal ?? 0);
+    const near = Number(adeq?.near ?? (result.counts as any)?.near ?? 0);
+    const upper = Number(adeq?.upper ?? (result.counts as any)?.upper ?? 0);
+    const lower = Number(adeq?.lower ?? (result.counts as any)?.lower ?? 0);
+
+    const diagPct = Number(adeq?.diagonal_percent ?? ((diag / (total || 1)) * 100).toFixed(1));
+    const nearPct = Number(adeq?.near_percent ?? ((near / (total || 1)) * 100).toFixed(1));
+    const upperPct = Number(adeq?.upper_percent ?? ((upper / (total || 1)) * 100).toFixed(1));
+    const lowerPct = Number(adeq?.lower_percent ?? ((lower / (total || 1)) * 100).toFixed(1));
+
+    return (
+      <div className="grid gap-3">
+        <div className="grid gap-2">
+          {result.ranked.map((r, idx) => (
+            <div
+              key={r.tag}
+              className={[
+                "flex items-center justify-between rounded-xl border px-3 py-2",
+                idx % 2 === 0 ? "bg-white/55" : "bg-white/35",
+              ].join(" ")}
+            >
+              <div className="text-sm font-medium">
+                <span className="mr-2 inline-flex h-5 w-8 items-center justify-center rounded-md border bg-white text-[11px] text-zinc-700">
+                  {String(r.tag)}
+                </span>
+                {r.style}
+              </div>
+              <div className="text-sm text-zinc-700">
+                {r.count}/{total}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-2xl border bg-white/55 p-3 text-sm">
+          <div className="font-medium text-zinc-900">Гибкость применения стилей</div>
+          <div className="mt-1 text-zinc-700">
+            <b>{flex}</b> баллов{" "}
+            <span className="text-xs text-zinc-500">
+              ({flexLevel || "—"}, норма {flexNorm?.normal_min ?? 19}–{flexNorm?.normal_max ?? 22})
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white/55 p-3 text-sm">
+          <div className="font-medium text-zinc-900">Адекватность применения стилей</div>
+          <div className="mt-1 text-zinc-700">
+            <b>{diagPct}%</b>{" "}
+            <span className="text-xs text-zinc-500">
+              ({diag}/{total} на диагонали)
+            </span>
+          </div>
+
+          <div className="mt-3 text-sm text-zinc-700">
+            <div className="font-medium text-zinc-900">Прямо противоположный стиль</div>
+            <div className="mt-1">Попустительский: <b>{upperPct}%</b> <span className="text-xs text-zinc-500">({upper}/{total})</span></div>
+            <div className="mt-1">Излишний контроль: <b>{lowerPct}%</b> <span className="text-xs text-zinc-500">({lower}/{total})</span></div>
+            {near ? (
+              <div className="mt-2 text-xs text-zinc-500">Рядом с диагональю: {nearPct}% ({near}/{total})</div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (kind === "forced_pair_v1") {
     const total = result.total || 0;
     return (
@@ -488,6 +563,22 @@ ${pickedSide === "B" ? "✅ " : ""}Вариант 2: ${bText || "—"}`
         { title: `5. ${prompt(5)}`, answer: pickBlock(5, q5) },
         { title: `6. ${prompt(6)}`, answer: pickBlock(6, q6) },
       ];
+    }
+
+
+    // situational_guidance_v1 (Ситуативное руководство)
+    if (attemptTest.type === "situational_guidance_v1") {
+      const chosen: string[] = Array.isArray((attempt as any)?.answers?.chosen) ? (attempt as any).answers.chosen : [];
+      return (attemptTest.questions || []).map((q: any, i: number) => {
+        const ch = safeText(chosen[i] ?? "").toUpperCase();
+        const opts = (q?.options || {}) as Record<string, string>;
+        const optText = ch && opts ? safeText(opts[ch]) : "";
+        const question = safeText(q?.prompt || `Ситуация ${i + 1}`);
+        const answer = ch
+          ? `Выбран вариант: ${ch}${optText ? `\n\n${ch}) ${optText}` : ""}`
+          : "Выбран вариант: —";
+        return { title: `${i + 1}. ${question}`, answer };
+      });
     }
 
     if (attemptTest.type !== "pair_sum5_v1" && attemptTest.type !== "pair_split_v1") {

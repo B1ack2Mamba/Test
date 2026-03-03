@@ -53,8 +53,9 @@ export function scoreSituationalGuidance(test: SituationalGuidanceTestV1, answer
   const perQuestion: any[] = [];
   let flexSum = 0;
   let diag = 0;
-  let upper = 0;
-  let lower = 0;
+  let near = 0;
+  let upper = 0; // попустительство (слишком «мягко») — далеко от диагонали
+  let lower = 0; // излишний контроль — далеко от диагонали
 
   const keys = Array.isArray(test.scoring?.keys) ? (test.scoring.keys as any[]) : [];
   const totalQ = test.questions?.length ?? 0;
@@ -75,8 +76,10 @@ export function scoreSituationalGuidance(test: SituationalGuidanceTestV1, answer
     const rr = String(k?.readiness || "R1") as any;
     const rN = rNum(rr);
     const sN = sNum(style);
-    if (sN === rN) diag++;
-    else if (sN > rN) upper++;
+    const delta = sN - rN;
+    if (delta === 0) diag++;
+    else if (Math.abs(delta) === 1) near++;
+    else if (delta > 0) upper++;
     else lower++;
 
     perQuestion.push({
@@ -110,6 +113,7 @@ export function scoreSituationalGuidance(test: SituationalGuidanceTestV1, answer
       ...counts,
       flexibility: flexSum,
       diagonal: diag,
+      near,
       upper,
       lower,
     } as any,
@@ -118,7 +122,17 @@ export function scoreSituationalGuidance(test: SituationalGuidanceTestV1, answer
     meta: {
       maxByFactor,
       flexibility: { sum: flexSum, level: flexLevel, norm: flexNorm },
-      adequacy: { diagonal: diag, upper, lower },
+      adequacy: {
+        diagonal: diag,
+        near,
+        upper,
+        lower,
+        // проценты от общего числа ситуаций
+        diagonal_percent: Number(((diag / total) * 100).toFixed(1)),
+        near_percent: Number(((near / total) * 100).toFixed(1)),
+        upper_percent: Number(((upper / total) * 100).toFixed(1)),
+        lower_percent: Number(((lower / total) * 100).toFixed(1)),
+      },
       perQuestion,
     },
   };

@@ -58,6 +58,30 @@ export default function TestResult({ test }: { test: AnyTest }) {
     return result?.kind === "usk_v1" || result?.kind === "16pf_v1";
   }, [result?.kind]);
 
+  const sgMeta = useMemo(() => {
+    if (!result || result.kind !== "situational_guidance_v1") return null;
+    const meta: any = (result.meta as any) || {};
+    const total = result.total || 12;
+
+    const flex = Number(meta?.flexibility?.sum ?? (result.counts as any)?.flexibility ?? 0);
+    const flexLevel = String(meta?.flexibility?.level ?? "");
+    const flexNorm = meta?.flexibility?.norm || { normal_min: 19, normal_max: 22 };
+
+    const adeq: any = meta?.adequacy || {};
+    const diag = Number(adeq?.diagonal ?? (result.counts as any)?.diagonal ?? 0);
+    const near = Number(adeq?.near ?? (result.counts as any)?.near ?? 0);
+    const upper = Number(adeq?.upper ?? (result.counts as any)?.upper ?? 0);
+    const lower = Number(adeq?.lower ?? (result.counts as any)?.lower ?? 0);
+
+    const diagPct = Number(adeq?.diagonal_percent ?? ((diag / (total || 1)) * 100).toFixed(1));
+    const nearPct = Number(adeq?.near_percent ?? ((near / (total || 1)) * 100).toFixed(1));
+    const upperPct = Number(adeq?.upper_percent ?? ((upper / (total || 1)) * 100).toFixed(1));
+    const lowerPct = Number(adeq?.lower_percent ?? ((lower / (total || 1)) * 100).toFixed(1));
+
+    return { total, flex, flexLevel, flexNorm, diag, near, upper, lower, diagPct, nearPct, upperPct, lowerPct };
+  }, [result]);
+
+
   return (
     <Layout title={`${test.title} — результат`}>
       {!result ? (
@@ -92,6 +116,52 @@ export default function TestResult({ test }: { test: AnyTest }) {
             <div className="mb-4 card">
               <div className="mb-3 text-sm font-medium text-zinc-900">Профиль</div>
               <LineChart data={chartData} />
+            </div>
+          ) : null}
+
+          {sgMeta ? (
+            <div className="mb-4 card">
+              <div className="text-sm font-medium text-zinc-900">Итог</div>
+
+              <div className="mt-3 grid gap-2 text-sm text-zinc-900">
+                {result.ranked.map((r) => (
+                  <div key={r.tag}>
+                    {r.style} — <b>{r.count}</b> баллов
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 text-sm text-zinc-900">
+                Твоя гибкость применения стилей — <b>{sgMeta.flex}</b> баллов{" "}
+                <span className="text-xs text-zinc-500">
+                  ({sgMeta.flexLevel || "—"}, норма {sgMeta.flexNorm?.normal_min ?? 19}–{sgMeta.flexNorm?.normal_max ?? 22})
+                </span>
+              </div>
+
+              <div className="mt-3 text-sm text-zinc-900">
+                Твоя адекватность применения стилей руководства — <b>{sgMeta.diagPct}%</b>
+              </div>
+
+              <div className="mt-3 text-sm text-zinc-900">
+                Ситуации, в которых ты применяешь стиль руководства прямо противоположный от необходимого:
+              </div>
+
+              <div className="mt-2 text-sm text-zinc-900">
+                Попустительский — <b>{sgMeta.upperPct}%</b>
+              </div>
+              <div className="mt-1 text-sm text-zinc-900">
+                Излишне контролируешь — <b>{sgMeta.lowerPct}%</b>
+              </div>
+
+              {sgMeta.near ? (
+                <div className="mt-2 text-xs text-zinc-500">
+                  Рядом с диагональю: {sgMeta.nearPct}% ({sgMeta.near}/{sgMeta.total})
+                </div>
+              ) : null}
+
+              <div className="mt-4 text-sm text-zinc-600">
+                На очном тренинге с помощью тренера ты разберёшь свои результаты тестирования. Не забудь взять их с собой!
+              </div>
             </div>
           ) : null}
 
