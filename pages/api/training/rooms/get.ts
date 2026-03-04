@@ -11,11 +11,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const roomId = String(req.query.room_id || "").trim();
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
 
-  const { data: room, error } = await supabaseAdmin
-    .from("training_rooms")
-    .select("id,name,created_by_email,is_active")
-    .eq("id", roomId)
-    .maybeSingle();
+  // Relax typing: many projects ship with locally generated Supabase types that
+  // may lag behind DB migrations. Using `any` prevents Next.js typecheck errors
+  // like GenericStringError/ParserError when selecting optional columns.
+  const sb: any = supabaseAdmin as any;
+
+  const selectRoom = async (withFlag: boolean) => {
+    const sel = withFlag
+      ? "id,name,created_by_email,is_active,participants_can_see_digits"
+      : "id,name,created_by_email,is_active";
+    return await sb.from("training_rooms").select(sel).eq("id", roomId).maybeSingle();
+  };
+
+  let { data: room, error } = await selectRoom(true);
+  if (error && /participants_can_see_digits/i.test(error.message)) {
+    ({ data: room, error } = await selectRoom(false));
+  }
 
   if (error || !room) return res.status(404).json({ ok: false, error: "Room not found" });
 
@@ -29,7 +40,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   return res.status(200).json({
     ok: true,
-    room: { id: room.id, name: room.name, created_by_email: room.created_by_email ?? null, is_active: room.is_active },
+    room: {
+      id: room.id,
+      name: room.name,
+      created_by_email: room.created_by_email ?? null,
+      is_active: room.is_active,
+      participants_can_see_digits: Boolean((room as any)?.participants_can_see_digits),
+    },
     member: member ? { role: member.role, display_name: member.display_name } : null,
   });
 }

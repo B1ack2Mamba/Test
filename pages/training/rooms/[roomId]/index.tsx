@@ -7,7 +7,7 @@ import type { AnyTest } from "@/lib/testTypes";
 
 type Props = { tests: AnyTest[] };
 
-type RoomInfo = { id: string; name: string; created_by_email: string | null; is_active: boolean };
+type RoomInfo = { id: string; name: string; created_by_email: string | null; is_active: boolean; participants_can_see_digits?: boolean };
 type MemberInfo = { role: string; display_name: string };
 
 type ProgressRow = { test_slug: string; started_at: string | null; completed_at: string | null; attempt_id: string | null };
@@ -303,7 +303,9 @@ export default function TrainingRoom({ tests }: Props) {
           </div>
         ) : (
           <div className="mt-3 text-xs text-zinc-500">
-            Примечание: результаты в цифрах доступны только специалисту в комнате.
+            {room?.participants_can_see_digits
+              ? "Тренинг-режим включён: после прохождения тестов цифры будут доступны в «Мои результаты»."
+              : "Примечание: результаты в цифрах доступны только специалисту в комнате."}
           </div>
         )}
       </div>

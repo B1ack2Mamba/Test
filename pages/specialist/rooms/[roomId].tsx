@@ -232,6 +232,10 @@ function Digits({ result }: { result: ScoreResult }) {
     const near = Number(adeq?.near ?? (result.counts as any)?.near ?? 0);
     const upper = Number(adeq?.upper ?? (result.counts as any)?.upper ?? 0);
     const lower = Number(adeq?.lower ?? (result.counts as any)?.lower ?? 0);
+    const diagOrders = (adeq?.diagonal_orders || []) as number[];
+    const nearOrders = (adeq?.near_orders || []) as number[];
+    const upperOrders = (adeq?.upper_orders || []) as number[];
+    const lowerOrders = (adeq?.lower_orders || []) as number[];
 
     const diagPct = Number(adeq?.diagonal_percent ?? ((diag / (total || 1)) * 100).toFixed(1));
     const nearPct = Number(adeq?.near_percent ?? ((near / (total || 1)) * 100).toFixed(1));
@@ -284,7 +288,13 @@ function Digits({ result }: { result: ScoreResult }) {
           <div className="mt-3 text-sm text-zinc-700">
             <div className="font-medium text-zinc-900">Прямо противоположный стиль</div>
             <div className="mt-1">Попустительский: <b>{upperPct}%</b> <span className="text-xs text-zinc-500">({upper}/{total})</span></div>
+            {upperOrders?.length ? (
+              <div className="mt-0.5 text-xs text-zinc-500">Ситуации: {upperOrders.join(", ")}</div>
+            ) : null}
             <div className="mt-1">Излишний контроль: <b>{lowerPct}%</b> <span className="text-xs text-zinc-500">({lower}/{total})</span></div>
+            {lowerOrders?.length ? (
+              <div className="mt-0.5 text-xs text-zinc-500">Ситуации: {lowerOrders.join(", ")}</div>
+            ) : null}
             {near ? (
               <div className="mt-2 text-xs text-zinc-500">Рядом с диагональю: {nearPct}% ({near}/{total})</div>
             ) : null}

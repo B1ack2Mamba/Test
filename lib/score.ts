@@ -57,6 +57,11 @@ export function scoreSituationalGuidance(test: SituationalGuidanceTestV1, answer
   let upper = 0; // попустительство (слишком «мягко») — далеко от диагонали
   let lower = 0; // излишний контроль — далеко от диагонали
 
+  const diagOrders: number[] = [];
+  const nearOrders: number[] = [];
+  const upperOrders: number[] = [];
+  const lowerOrders: number[] = [];
+
   const keys = Array.isArray(test.scoring?.keys) ? (test.scoring.keys as any[]) : [];
   const totalQ = test.questions?.length ?? 0;
 
@@ -77,10 +82,19 @@ export function scoreSituationalGuidance(test: SituationalGuidanceTestV1, answer
     const rN = rNum(rr);
     const sN = sNum(style);
     const delta = sN - rN;
-    if (delta === 0) diag++;
-    else if (Math.abs(delta) === 1) near++;
-    else if (delta > 0) upper++;
-    else lower++;
+    if (delta === 0) {
+      diag++;
+      diagOrders.push(i + 1);
+    } else if (Math.abs(delta) === 1) {
+      near++;
+      nearOrders.push(i + 1);
+    } else if (delta > 0) {
+      upper++;
+      upperOrders.push(i + 1);
+    } else {
+      lower++;
+      lowerOrders.push(i + 1);
+    }
 
     perQuestion.push({
       order: i + 1,
@@ -127,6 +141,10 @@ export function scoreSituationalGuidance(test: SituationalGuidanceTestV1, answer
         near,
         upper,
         lower,
+        diagonal_orders: diagOrders,
+        near_orders: nearOrders,
+        upper_orders: upperOrders,
+        lower_orders: lowerOrders,
         // проценты от общего числа ситуаций
         diagonal_percent: Number(((diag / total) * 100).toFixed(1)),
         near_percent: Number(((near / total) * 100).toFixed(1)),

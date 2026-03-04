@@ -4,7 +4,7 @@ import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
 import { isSpecialistUser } from "@/lib/specialist";
 
-type Room = { id: string; name: string; created_at: string; is_active: boolean };
+type Room = { id: string; name: string; created_at: string; is_active: boolean; participants_can_see_digits?: boolean };
 
 export default function SpecialistHome() {
   const { session, user } = useSession();
@@ -18,6 +18,12 @@ export default function SpecialistHome() {
   const [busy, setBusy] = useState(false);
   const [createErr, setCreateErr] = useState("");
   const [deletingId, setDeletingId] = useState<string>("");
+
+  // settings modal
+  const [settingsRoom, setSettingsRoom] = useState<Room | null>(null);
+  const [digitsEnabled, setDigitsEnabled] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsMsg, setSettingsMsg] = useState("");
 
   const load = async () => {
     if (!session) return;
@@ -86,6 +92,34 @@ export default function SpecialistHome() {
       setErr(e?.message || "Ошибка");
     } finally {
       setDeletingId("");
+    }
+  };
+
+  const openSettings = (r: Room) => {
+    setSettingsRoom(r);
+    setDigitsEnabled(Boolean(r.participants_can_see_digits));
+    setSettingsMsg("");
+  };
+
+  const saveSettings = async () => {
+    if (!session || !settingsRoom) return;
+    setSettingsBusy(true);
+    setSettingsMsg("");
+    try {
+      const r = await fetch("/api/training/rooms/settings/update", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ room_id: settingsRoom.id, participants_can_see_digits: digitsEnabled }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось сохранить");
+      setRooms((prev) => prev.map((x) => (x.id === settingsRoom.id ? { ...x, participants_can_see_digits: digitsEnabled } : x)));
+      setSettingsMsg("Сохранено ✅");
+      setTimeout(() => setSettingsMsg(""), 2500);
+    } catch (e: any) {
+      setSettingsMsg(e?.message || "Ошибка");
+    } finally {
+      setSettingsBusy(false);
     }
   };
 
@@ -168,7 +202,21 @@ export default function SpecialistHome() {
                 </div>
                 <div className="text-xs text-zinc-500">Открыть</div>
               </div>
+
+              {r.participants_can_see_digits ? (
+                <div className="mt-2 inline-flex w-fit items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-800">
+                  Тренинг-режим: цифры участникам
+                </div>
+              ) : null}
             </Link>
+
+            <button
+              onClick={() => openSettings(r)}
+              className="btn btn-secondary w-full sm:w-auto sm:min-h-[34px] sm:rounded-lg sm:px-3 sm:py-1.5 sm:text-[13px]"
+              title="Настройки комнаты"
+            >
+              Настройки
+            </button>
 
             <button
               onClick={() => removeRoom(r.id, r.name)}
@@ -184,6 +232,55 @@ export default function SpecialistHome() {
           <div className="card text-sm text-zinc-600">Пока нет комнат.</div>
         ) : null}
       </div>
+
+      {settingsRoom ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
+          <div className="w-full max-w-lg card shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold">Настройки комнаты</div>
+                <div className="mt-1 text-xs text-zinc-500">{settingsRoom.name}</div>
+              </div>
+              <button
+                onClick={() => setSettingsRoom(null)}
+                className="btn btn-secondary btn-sm"
+              >
+                Закрыть
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-2xl border bg-white/55 p-3">
+              <label className="flex cursor-pointer items-start gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={digitsEnabled}
+                  onChange={(e) => setDigitsEnabled(e.target.checked)}
+                />
+                <div>
+                  <div className="font-medium text-zinc-900">Тренинг-режим: цифры участникам</div>
+                  <div className="mt-1 text-xs text-zinc-600">
+                    Если включено, участники будут видеть <b>только цифры</b> своих результатов в разделе «Мои результаты».
+                    Расшифровки/тексты при этом не показываются.
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            {settingsMsg ? <div className="mt-3 text-sm text-zinc-700">{settingsMsg}</div> : null}
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                onClick={saveSettings}
+                disabled={settingsBusy}
+                className="btn btn-primary disabled:opacity-50"
+              >
+                {settingsBusy ? "…" : "Сохранить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </Layout>
   );
 }
