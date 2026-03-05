@@ -17,11 +17,21 @@ export default function AuthPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
+  const [password2Touched, setPassword2Touched] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword2, setShowPassword2] = useState(false);
   const [isSpecialist, setIsSpecialist] = useState(false);
   const [specialistCode, setSpecialistCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+
+  const passwordTooShort = useMemo(() => mode === "signup" && password.length > 0 && password.length < 8, [mode, password]);
+  const passwordMismatch = useMemo(
+    () => mode === "signup" && password2Touched && password2.length > 0 && password !== password2,
+    [mode, password, password2, password2Touched]
+  );
 
   useEffect(() => {
     if (user && session) {
@@ -47,6 +57,9 @@ export default function AuthPage() {
       }
 
       if (mode === "signup") {
+        if (password.length < 8) throw new Error("Пароль должен быть не короче 8 символов.");
+        if (password !== password2) throw new Error("Пароли не совпадают.");
+
         // Specialist sign-up uses server route (service_role) and a shared code.
         if (isSpecialist) {
           const r = await fetch("/api/auth/specialist-signup", {
@@ -121,15 +134,57 @@ export default function AuthPage() {
 
           <label className="grid gap-1">
             <span className="text-xs text-slate-600">Пароль</span>
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              placeholder="••••••••"
-              className="input"
-              required
-            />
+            <div className="relative">
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                className="input pr-10"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
+              >
+                {showPassword ? "🙈" : "👁"}
+              </button>
+            </div>
+            {mode === "signup" ? <div className="text-[11px] text-slate-500">8+ символов</div> : null}
+            {passwordTooShort ? (
+              <div className="text-sm text-red-600">Пароль должен быть не короче 8 символов.</div>
+            ) : null}
           </label>
+
+          {mode === "signup" ? (
+            <label className="grid gap-1">
+              <span className="text-xs text-slate-600">Повторите пароль</span>
+              <div className="relative">
+                <input
+                  value={password2}
+                  onChange={(e) => {
+                    setPassword2(e.target.value);
+                    if (!password2Touched) setPassword2Touched(true);
+                  }}
+                  type={showPassword2 ? "text" : "password"}
+                  placeholder="••••••••"
+                  className="input pr-10"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword2((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                  aria-label={showPassword2 ? "Скрыть пароль" : "Показать пароль"}
+                >
+                  {showPassword2 ? "🙈" : "👁"}
+                </button>
+              </div>
+              {passwordMismatch ? <div className="text-sm text-red-600">Пароли не совпадают.</div> : null}
+            </label>
+          ) : null}
 
           {mode === "signup" ? (
             <div className="card-soft p-3">
