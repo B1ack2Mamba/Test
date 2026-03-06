@@ -319,7 +319,18 @@ export default function TrainingRoom({ tests }: Props) {
               <div key={t.slug} className="card">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <div className="text-lg font-semibold">{t.title}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-lg font-semibold">{t.title}</div>
+                      {t.slug === "16pf-a" ? (
+                        <Link
+                          href="/certificates"
+                          className="rounded-md border bg-white/55 px-2 py-0.5 text-[10px] font-semibold text-zinc-700 hover:bg-white/70"
+                          title="Открыть документы"
+                        >
+                          Сертифицировано
+                        </Link>
+                      ) : null}
+                    </div>
                     {t.description ? <div className="mt-1 text-sm text-zinc-600">{t.description}</div> : null}
                     <div className="mt-2 text-xs text-zinc-500">
                       {done ? "✅ Завершён" : "⏳ Не пройден"} · {t.questions?.length ?? 0} вопросов

@@ -1,4 +1,4 @@
--- Seed: color-types (Цветотипы / структурограмма)
+-- Seed: color-types (Цветотипы)
 -- 1) Run supabase/schema.sql + supabase/paywall.sql + supabase/wallet_debit.sql + supabase/yookassa.sql + supabase/training_rooms.sql first.
 -- 2) Then run this seed.
 --
@@ -11,13 +11,13 @@ begin;
 insert into public.tests (slug, title, description, type, json, price_rub, is_published)
 values (
   'color-types',
-  'Цветотипы (структограмма)',
+  'Цветотипы',
   '6 ситуаций для самоанализа. В результате — три показателя: Зелёный / Красный / Синий.',
   'color_types_v1',
   $$
 {
   "slug": "color-types",
-  "title": "Цветотипы (структограмма)",
+  "title": "Цветотипы",
   "description": "6 ситуаций для самоанализа. В результате — три показателя: Зелёный / Красный / Синий.",
   "type": "color_types_v1",
   "pricing": {

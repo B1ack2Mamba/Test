@@ -21,11 +21,14 @@ function getAllTestsLocal(): AnyTest[] {
       has_interpretation: price > 0,
     };
   });
-  return tests.filter((t) => t.slug !== "16pf").sort((a, b) => a.title.localeCompare(b.title, "ru"));
+  return tests
+    .filter((t) => t.slug !== "16pf" && t.slug !== "16pf-b")
+    .map((t) => (t.slug === "color-types" ? ({ ...t, title: "Цветотипы" } as AnyTest) : t))
+    .sort((a, b) => a.title.localeCompare(b.title, "ru"));
 }
 
 function getTestBySlugLocal(slug: string): AnyTest | null {
-  if (slug === "16pf") return null;
+  if (slug === "16pf" || slug === "16pf-b") return null;
   const filePath = path.join(TESTS_DIR, `${slug}.json`);
   if (!fs.existsSync(filePath)) return null;
   const raw = fs.readFileSync(filePath, "utf-8");
@@ -79,7 +82,8 @@ export async function getAllTests(): Promise<AnyTest[]> {
         } as AnyTest;
       })
       .filter((t): t is AnyTest => Boolean(t))
-      .filter((t) => t.slug !== "16pf") as AnyTest[];
+      .filter((t) => t.slug !== "16pf" && t.slug !== "16pf-b")
+      .map((t) => (t.slug === "color-types" ? ({ ...t, title: "Цветотипы" } as AnyTest) : t)) as AnyTest[];
 
     // Production behavior: DB is source of truth.
     if (!isDev) {
@@ -91,10 +95,10 @@ export async function getAllTests(): Promise<AnyTest[]> {
     // For complex 16PF forms we prefer LOCAL JSON in dev to avoid partial/old DB seeds breaking scoring.
     const map = new Map<string, AnyTest>();
     for (const t of local) {
-      if (t?.slug && t.slug !== "16pf") map.set(t.slug, t);
+      if (t?.slug && t.slug !== "16pf" && t.slug !== "16pf-b") map.set(t.slug, t);
     }
     for (const t of dbTests) {
-      if (!t?.slug || t.slug === "16pf") continue;
+      if (!t?.slug || t.slug === "16pf" || t.slug === "16pf-b") continue;
       const s = String(t.slug);
       // Do NOT override local 16PF forms in dev.
       if ((s === "16pf-a" || s === "16pf-b") && map.has(s)) continue;
@@ -116,14 +120,14 @@ const merged = Array.from(map.values());
  * Load one test by slug.
  */
 export async function getTestBySlug(slug: string): Promise<AnyTest | null> {
-  if (slug === "16pf") return null;
+  if (slug === "16pf" || slug === "16pf-b") return null;
 
   const env = getSupabaseEnv();
   const isDev = process.env.NODE_ENV !== "production";
   const local = getTestBySlugLocal(slug);
 
   // Dev preference: always use LOCAL JSON for 16PF forms to keep scoring stable while DB is being tuned/seeded.
-  if (isDev && (slug === "16pf-a" || slug === "16pf-b") && local) return local;
+  if (isDev && slug === "16pf-a" && local) return local;
 
   if (!env) return local;
 
@@ -149,11 +153,15 @@ export async function getTestBySlug(slug: string): Promise<AnyTest | null> {
       typeof (data as any)?.price_rub === "number" ? (data as any).price_rub : test.pricing?.interpretation_rub ?? 0;
     const details = test.pricing?.details_rub ?? 49;
 
-    return {
+    const out: AnyTest = {
       ...test,
       pricing: { ...test.pricing, interpretation_rub: price, details_rub: details },
       has_interpretation: price > 0,
     };
+
+    // Display-only normalization.
+    if (out.slug === "color-types") return { ...out, title: "Цветотипы" } as AnyTest;
+    return out;
   } catch (e) {
     console.warn("Supabase load failed:", e);
     return isDev ? local : null;

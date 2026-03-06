@@ -272,11 +272,12 @@ function BelbinForm({ test }: { test: AnyTest }) {
           const opts = (q?.options || {}) as Record<string, string>;
           const sum = BELBIN_LETTERS.reduce((acc, L) => acc + (Number(row?.[L]) || 0), 0);
           const ok = sum === 10;
+          const left = Math.max(0, 10 - sum);
           return (
             <div key={idx} className="card">
               <div className="mb-2 text-sm font-medium text-slate-700">{idx + 1}. {String(q?.prompt || "")}</div>
               <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="text-xs text-slate-600">Сумма: {sum}/10</div>
+                <div className="text-xs text-slate-600">Сумма: {sum}/10 · Осталось: {left}</div>
                 <div className={`text-xs font-semibold ${ok ? "text-emerald-700" : "text-amber-700"}`}>{ok ? "OK" : "Нужно 10"}</div>
               </div>
 

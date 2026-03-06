@@ -68,7 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     roomTests = (data ?? []) as any[];
   }
 
-  const testSlugs = roomTests.map((r) => String(r.test_slug));
+  const testSlugs = roomTests.map((r) => String(r.test_slug)).filter((s) => s !== "16pf-b");
 
   // Participants
   const { data: membersData, error: memErr } = await supabaseAdmin
@@ -167,10 +167,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Color types
     if (type === "color_types_v1" || slug === "color-types") {
-      pushGroup("структограмма", [
-        { key: `${slug}:green`, header2: "Зелёный", group: "структограмма", test_slug: slug, width: 12, fromResult: (r) => r?.counts?.green ?? null },
-        { key: `${slug}:red`, header2: "Красный", group: "структограмма", test_slug: slug, width: 12, fromResult: (r) => r?.counts?.red ?? null },
-        { key: `${slug}:blue`, header2: "Синий", group: "структограмма", test_slug: slug, width: 12, fromResult: (r) => r?.counts?.blue ?? null },
+      pushGroup("Цветотипы", [
+        { key: `${slug}:green`, header2: "Зелёный", group: "Цветотипы", test_slug: slug, width: 12, fromResult: (r) => r?.counts?.green ?? null },
+        { key: `${slug}:red`, header2: "Красный", group: "Цветотипы", test_slug: slug, width: 12, fromResult: (r) => r?.counts?.red ?? null },
+        { key: `${slug}:blue`, header2: "Синий", group: "Цветотипы", test_slug: slug, width: 12, fromResult: (r) => r?.counts?.blue ?? null },
       ]);
       continue;
     }

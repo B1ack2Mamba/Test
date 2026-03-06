@@ -1176,7 +1176,9 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
 
         <div className="mt-3 overflow-auto">
           <div className="min-w-[700px] grid gap-2">
-            {(normalizeRoomTestsDraft(Array.isArray(roomTestsDraft) && roomTestsDraft.length ? roomTestsDraft : roomTests) as any[]).map((rt: any, idx: number) => {
+            {(normalizeRoomTestsDraft(Array.isArray(roomTestsDraft) && roomTestsDraft.length ? roomTestsDraft : roomTests) as any[])
+              .filter((rt: any) => String(rt?.test_slug) !== "16pf-b")
+              .map((rt: any, idx: number) => {
               const t = testsBySlug.get(String(rt.test_slug));
               const title = t?.title || String(rt.test_slug);
               return (
@@ -1189,7 +1191,18 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
                       onChange={() => toggleRoomTest(String(rt.test_slug))}
                     />
                     <div>
-                      <div className="text-sm font-medium">{title}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-sm font-medium">{title}</div>
+                        {String(rt.test_slug) === "16pf-a" ? (
+                          <Link
+                            href="/certificates"
+                            className="rounded-md border bg-white/55 px-2 py-0.5 text-[10px] font-semibold text-zinc-700 hover:bg-white/70"
+                            title="Открыть документы"
+                          >
+                            Сертифицировано
+                          </Link>
+                        ) : null}
+                      </div>
                       <div className="text-[11px] text-zinc-500">{String(rt.test_slug)}</div>
                     </div>
                   </div>

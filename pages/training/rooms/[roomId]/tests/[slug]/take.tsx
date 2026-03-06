@@ -630,6 +630,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
             const opts = (q?.options || {}) as Record<string, string>;
             const sum = BELBIN_LETTERS.reduce((acc, L) => acc + (Number(row?.[L]) || 0), 0);
             const ok = sum === 10;
+            const left = Math.max(0, 10 - sum);
 
             const setVal = (L: BelbinLetter, v: number) => {
               const next = [...belbin];
@@ -658,7 +659,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <div className="text-xs text-slate-600">Распределите 10 баллов между A–H</div>
                   <div className={`text-xs font-semibold ${ok ? "text-emerald-700" : "text-amber-700"}`}>
-                    Сумма: {sum}/10
+                    Сумма: {sum}/10 · Осталось: {left}
                   </div>
                 </div>
 
