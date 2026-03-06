@@ -634,14 +634,21 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
             const setVal = (L: BelbinLetter, v: number) => {
               const next = [...belbin];
               const cur = { ...(next[idx] || emptyBelbinRow()) } as any;
-              cur[L] = v;
+              // In Belbin each section must allocate exactly 10 points across A–H.
+              // Prevent allocating more than the remaining points in the section.
+              const raw = Number.isFinite(v) ? Math.floor(v) : 0;
+              const curVal = Number(cur?.[L] ?? 0) || 0;
+              const sumAll = BELBIN_LETTERS.reduce((acc, X) => acc + (Number(cur?.[X]) || 0), 0);
+              const otherSum = sumAll - curVal;
+              const maxForLetter = Math.max(0, 10 - otherSum);
+              cur[L] = Math.max(0, Math.min(maxForLetter, raw));
               next[idx] = cur;
               saveBelbinDraft(next as any);
             };
 
             const bump = (L: BelbinLetter, delta: number) => {
               const cur = Number(row?.[L] ?? 0) || 0;
-              setVal(L, Math.max(0, Math.min(10, cur + delta)));
+              setVal(L, cur + delta);
             };
 
             return (
@@ -665,24 +672,35 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                         </div>
 
                         <div className="flex shrink-0 items-center gap-1">
-                          <button type="button" className="btn btn-secondary px-3 py-1" onClick={() => bump(L, -1)}>
-                            −
-                          </button>
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            min={0}
-                            max={10}
-                            value={Number(row?.[L] ?? 0)}
-                            onChange={(e) => {
-                              const v = Number(e.target.value);
-                              setVal(L, Number.isFinite(v) ? Math.max(0, Math.min(10, Math.floor(v))) : 0);
-                            }}
-                            className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm"
-                          />
-                          <button type="button" className="btn btn-secondary px-3 py-1" onClick={() => bump(L, 1)}>
-                            +
-                          </button>
+                          {(() => {
+                            const curVal = Number(row?.[L] ?? 0) || 0;
+                            const otherSum = sum - curVal;
+                            const maxForLetter = Math.max(0, 10 - otherSum);
+                            const canDec = curVal > 0;
+                            const canInc = curVal < maxForLetter;
+                            return (
+                              <>
+                                <button type="button" className="btn btn-secondary px-3 py-1" disabled={!canDec} onClick={() => bump(L, -1)}>
+                                  −
+                                </button>
+                                <input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={0}
+                                  max={Math.max(maxForLetter, curVal)}
+                                  value={curVal}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    setVal(L, Number.isFinite(v) ? v : 0);
+                                  }}
+                                  className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm"
+                                />
+                                <button type="button" className="btn btn-secondary px-3 py-1" disabled={!canInc} onClick={() => bump(L, 1)}>
+                                  +
+                                </button>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>

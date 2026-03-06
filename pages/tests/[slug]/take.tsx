@@ -221,14 +221,20 @@ function BelbinForm({ test }: { test: AnyTest }) {
   const setVal = (idx: number, L: BelbinLetter, v: number) => {
     const next = [...rows];
     const cur: any = { ...(next[idx] || emptyBelbinRow()) };
-    cur[L] = v;
+    // Belbin rule: per section total across A–H must not exceed 10.
+    const raw = Number.isFinite(v) ? Math.floor(v) : 0;
+    const curVal = Number(cur?.[L] ?? 0) || 0;
+    const sumAll = BELBIN_LETTERS.reduce((acc, X) => acc + (Number(cur?.[X]) || 0), 0);
+    const otherSum = sumAll - curVal;
+    const maxForLetter = Math.max(0, 10 - otherSum);
+    cur[L] = Math.max(0, Math.min(maxForLetter, raw));
     next[idx] = cur;
     save(next as any);
   };
 
   const bump = (idx: number, L: BelbinLetter, delta: number) => {
     const cur = Number(rows?.[idx]?.[L] ?? 0) || 0;
-    setVal(idx, L, Math.max(0, Math.min(10, cur + delta)));
+    setVal(idx, L, cur + delta);
   };
 
   const submit = async () => {
@@ -283,24 +289,35 @@ function BelbinForm({ test }: { test: AnyTest }) {
                         <div className="mt-1 text-sm text-slate-900 whitespace-normal break-words">{opts?.[L] || ""}</div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm" onClick={() => bump(idx, L, -1)}>
-                          −
-                        </button>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={0}
-                          max={10}
-                          value={Number(row?.[L] ?? 0)}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            setVal(idx, L, Number.isFinite(v) ? Math.max(0, Math.min(10, Math.floor(v))) : 0);
-                          }}
-                          className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm"
-                        />
-                        <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm" onClick={() => bump(idx, L, 1)}>
-                          +
-                        </button>
+                        {(() => {
+                          const curVal = Number(row?.[L] ?? 0) || 0;
+                          const otherSum = sum - curVal;
+                          const maxForLetter = Math.max(0, 10 - otherSum);
+                          const canDec = curVal > 0;
+                          const canInc = curVal < maxForLetter;
+                          return (
+                            <>
+                              <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm" disabled={!canDec} onClick={() => bump(idx, L, -1)}>
+                                −
+                              </button>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                min={0}
+                                max={Math.max(maxForLetter, curVal)}
+                                value={curVal}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value);
+                                  setVal(idx, L, Number.isFinite(v) ? v : 0);
+                                }}
+                                className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm"
+                              />
+                              <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm" disabled={!canInc} onClick={() => bump(idx, L, 1)}>
+                                +
+                              </button>
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
