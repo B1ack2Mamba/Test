@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
 import { loadTestJsonBySlugAdmin } from "@/lib/loadTestAdmin";
-import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance } from "@/lib/score";
+import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance, scoreBelbin } from "@/lib/score";
 import { ensureRoomTests } from "@/lib/trainingRoomTests";
 import type { Tag } from "@/lib/testTypes";
 
@@ -94,6 +94,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       result = score16PF(test as any, { pf16: safe, gender, age } as any);
       answersJson = { pf16: safe, gender, age };
+    } else if (test.type === "belbin_v1") {
+      // Belbin allocations: array[7] of {A..H:number} where each section sums to 10
+      const arr = Array.isArray(answers) ? (answers as any[]) : (Array.isArray(answers?.sections) ? answers.sections : []);
+      const safe = (arr as any[]).map((row) => {
+        const o: any = {};
+        for (const L of ["A","B","C","D","E","F","G","H"]) {
+          const v = Number((row || {})[L] ?? 0);
+          o[L] = Number.isFinite(v) ? Math.max(0, Math.min(10, Math.floor(v))) : 0;
+        }
+        return o;
+      });
+      result = scoreBelbin(test as any, safe as any);
+      answersJson = { sections: safe };
     } else if (test.type === "situational_guidance_v1") {
       const arr = Array.isArray(answers) ? (answers as any[]) : [];
       const safe = arr.map((x) => (x === "A" || x === "B" || x === "C" || x === "D" ? x : ""));

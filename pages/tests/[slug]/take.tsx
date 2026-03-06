@@ -14,7 +14,7 @@ import type {
   Tag,
   ABC,
 } from "@/lib/testTypes";
-import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance } from "@/lib/score";
+import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance, scoreBelbin } from "@/lib/score";
 import { useSession } from "@/lib/useSession";
 import { PAYMENTS_UI_ENABLED } from "@/lib/payments";
 import { saveAttempt, updateAttempt } from "@/lib/localHistory";
@@ -61,6 +61,11 @@ function cap(s: string) {
   if (!t) return t;
   return t.slice(0, 1).toUpperCase() + t.slice(1);
 }
+
+const BELBIN_LETTERS = ["A","B","C","D","E","F","G","H"] as const;
+type BelbinLetter = typeof BELBIN_LETTERS[number];
+const emptyBelbinRow = () => Object.fromEntries(BELBIN_LETTERS.map((L) => [L, 0])) as Record<BelbinLetter, number>;
+
 
 function SplitScale({
   value,
@@ -168,6 +173,158 @@ async function buyAndAttachAuthor({
     throw new Error(json?.error || "Ошибка получения авторской расшифровки");
   }
   return json.content ?? null;
+}
+
+
+function BelbinForm({ test }: { test: AnyTest }) {
+  const router = useRouter();
+  const { user } = useSession();
+
+  const questions = (test as any).questions || [];
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>("");
+
+  const [rows, setRows] = useState<Record<BelbinLetter, number>[]>(() =>
+    Array(questions.length || 7).fill(null).map(() => emptyBelbinRow())
+  );
+
+  useEffect(() => {
+    const d: any = getSessionDraft<any>(test.slug);
+    const arr = Array.isArray(d) ? d : Array.isArray(d?.belbin) ? d.belbin : Array.isArray(d?.sections) ? d.sections : null;
+    if (arr && Array.isArray(arr)) {
+      const next = arr.slice(0, questions.length || 7).map((row: any) => {
+        const o: any = emptyBelbinRow();
+        for (const L of BELBIN_LETTERS) {
+          const v = Number(row?.[L] ?? 0);
+          o[L] = Number.isFinite(v) ? Math.max(0, Math.min(10, Math.floor(v))) : 0;
+        }
+        return o;
+      });
+      while (next.length < (questions.length || 7)) next.push(emptyBelbinRow());
+      setRows(next as any);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [test.slug, questions.length]);
+
+  const completed = useMemo(() => {
+    return rows.filter((r) => BELBIN_LETTERS.reduce((acc, L) => acc + (Number(r?.[L]) || 0), 0) === 10).length;
+  }, [rows]);
+
+  const canSubmit = completed === (questions.length || 7);
+
+  const save = (next: Record<BelbinLetter, number>[]) => {
+    setRows(next);
+    setSessionDraft(test.slug, { belbin: next });
+  };
+
+  const setVal = (idx: number, L: BelbinLetter, v: number) => {
+    const next = [...rows];
+    const cur: any = { ...(next[idx] || emptyBelbinRow()) };
+    cur[L] = v;
+    next[idx] = cur;
+    save(next as any);
+  };
+
+  const bump = (idx: number, L: BelbinLetter, delta: number) => {
+    const cur = Number(rows?.[idx]?.[L] ?? 0) || 0;
+    setVal(idx, L, Math.max(0, Math.min(10, cur + delta)));
+  };
+
+  const submit = async () => {
+    if (!canSubmit || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = scoreBelbin(test as any, rows as any);
+      const userId = user?.id || "guest";
+      if (typeof window !== "undefined") {
+        saveAttempt(userId, test.slug, res);
+        window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
+        window.sessionStorage.removeItem(authorKey(test.slug));
+        router.push(`/tests/${test.slug}/result`);
+      }
+    } catch (e: any) {
+      setError(e?.message || "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const total = questions.length || 7;
+
+  return (
+    <Layout title={test.title}>
+      <div className="card">
+        <div className="text-sm text-slate-700">{test.instructions || "Распределите 10 баллов в каждой секции."}</div>
+        <div className="mt-2 text-xs text-slate-600">Прогресс: {completed}/{total} секций заполнено</div>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        {(questions as any[]).map((q: any, idx: number) => {
+          const row = rows[idx] || emptyBelbinRow();
+          const opts = (q?.options || {}) as Record<string, string>;
+          const sum = BELBIN_LETTERS.reduce((acc, L) => acc + (Number(row?.[L]) || 0), 0);
+          const ok = sum === 10;
+          return (
+            <div key={idx} className="card">
+              <div className="mb-2 text-sm font-medium text-slate-700">{idx + 1}. {String(q?.prompt || "")}</div>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="text-xs text-slate-600">Сумма: {sum}/10</div>
+                <div className={`text-xs font-semibold ${ok ? "text-emerald-700" : "text-amber-700"}`}>{ok ? "OK" : "Нужно 10"}</div>
+              </div>
+
+              <div className="grid gap-2">
+                {BELBIN_LETTERS.map((L) => (
+                  <div key={L} className="rounded-xl border border-slate-200 bg-white/70 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-slate-600">{L}</div>
+                        <div className="mt-1 text-sm text-slate-900 whitespace-normal break-words">{opts?.[L] || ""}</div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm" onClick={() => bump(idx, L, -1)}>
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          max={10}
+                          value={Number(row?.[L] ?? 0)}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setVal(idx, L, Number.isFinite(v) ? Math.max(0, Math.min(10, Math.floor(v))) : 0);
+                          }}
+                          className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm"
+                        />
+                        <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm" onClick={() => bump(idx, L, 1)}>
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {!ok ? <div className="mt-3 text-xs text-amber-700">Сумма в секции должна быть ровно 10.</div> : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {error ? <div className="mt-4 card text-sm text-red-600">{error}</div> : null}
+
+      <div className="mt-6 flex items-center gap-2">
+        <button onClick={submit} disabled={!canSubmit || busy} className="btn btn-primary disabled:opacity-50">
+          {busy ? "Считаем…" : buttonLabel(test)}
+        </button>
+        <Link href={`/tests/${encodeURIComponent(test.slug)}`} className="btn btn-secondary">
+          Назад
+        </Link>
+      </div>
+    </Layout>
+  );
 }
 
 function ForcedPairForm({ test }: { test: ForcedPairTestV1 }) {
@@ -1348,6 +1505,8 @@ export default function TakeTest({ test }: { test: AnyTest }) {
         <USKForm test={test as USKTestV1} />
       ) : test.type === "situational_guidance_v1" ? (
         <SituationalGuidanceForm test={test as SituationalGuidanceTestV1} />
+      ) : test.type === "belbin_v1" ? (
+        <BelbinForm test={test as any} />
       ) : test.type === "16pf_v1" ? (
         <PF16Form test={test as PF16TestV1} />
       ) : (

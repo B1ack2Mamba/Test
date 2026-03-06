@@ -304,6 +304,57 @@ function Digits({ result }: { result: ScoreResult }) {
     );
   }
 
+
+
+  if (kind === "belbin_v1") {
+    const total = (result as any).total || 70;
+    const top = [...(result.ranked || [])]
+      .sort((a: any, b: any) => Number(b?.count ?? 0) - Number(a?.count ?? 0))
+      .slice(0, 3);
+
+    return (
+      <div className="grid gap-3">
+        <div className="grid gap-2 sm:grid-cols-3">
+          {top.map((r: any, i: number) => (
+            <div key={String(r.tag)} className="rounded-2xl border bg-white/55 p-3">
+              <div className="text-[11px] font-semibold text-zinc-600">Топ {i + 1}</div>
+              <div className="mt-1 text-sm font-semibold text-zinc-900">{r.style}</div>
+              <div className="mt-1 text-xs text-zinc-600">
+                {r.count}/{total} · {r.percent}%
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-2">
+          {result.ranked.map((r, idx) => (
+            <div
+              key={r.tag}
+              className={[
+                "flex items-center justify-between rounded-xl border px-3 py-2",
+                idx % 2 === 0 ? "bg-white/55" : "bg-white/35",
+              ].join(" ")}
+            >
+              <div className="text-sm font-medium">
+                <span className="mr-2 inline-flex h-5 min-w-10 items-center justify-center rounded-md border bg-white px-2 text-[11px] text-zinc-700">
+                  {String(r.tag)}
+                </span>
+                {r.style}
+              </div>
+              <div className="text-sm text-zinc-700">
+                {r.count}/{total} · {r.percent}%
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="text-xs text-zinc-500">
+          Примечание: роль «Специалист» в этой версии опросника может не измеряться отдельной шкалой.
+        </div>
+      </div>
+    );
+  }
+
   if (kind === "forced_pair_v1") {
     const total = result.total || 0;
     return (

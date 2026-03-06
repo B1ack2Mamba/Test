@@ -302,7 +302,65 @@ function buildKeysPrompt(args: {
 
   const normalizedKeys = normalizeKeysObject(keys);
 
-  // 16PF: do NOT pass the whole "methodichka" — only excerpts for the given STENs,
+  
+  // Belbin: provide a dedicated compact packet + a strict structure for the answer.
+  if (result.kind === "belbin_v1") {
+    const rolesObj: any = (normalizedKeys as any)?.roles || {};
+    const all: any[] = Array.isArray(result.ranked) ? (result.ranked as any[]) : [];
+    const total = (result as any).total || 70;
+
+    const sortedDesc = [...all].sort((a, b) => Number(b?.count ?? 0) - Number(a?.count ?? 0));
+    const sortedAsc = [...all].sort((a, b) => Number(a?.count ?? 0) - Number(b?.count ?? 0));
+    const top3 = sortedDesc.slice(0, 3);
+    const bottom2 = sortedAsc.slice(0, 2);
+
+    const packet = {
+      title: String((normalizedKeys as any)?.title || testTitle),
+      kind: "belbin_v1",
+      totalPoints: total,
+      top3: top3.map((r) => ({ tag: r.tag, name: r.style, score: r.count, percent: r.percent })),
+      bottom2: bottom2.map((r) => ({ tag: r.tag, name: r.style, score: r.count, percent: r.percent })),
+      roles: sortedDesc.map((r) => ({
+        tag: r.tag,
+        name: r.style,
+        score: r.count,
+        percent: r.percent,
+        about: trimText(rolesObj?.[String(r.tag)]?.about, 260),
+      })),
+      note: (normalizedKeys as any)?.notes?.specialist || null,
+    };
+
+    lines.push("Материалы интерпретации (командные роли Белбина):");
+    lines.push(safeJson(packet));
+    lines.push("");
+    lines.push("Требования к ответу (БЕЛБИН — соблюдай строго):");
+    lines.push("- Игнорируй общий формат выше. Следуй формату ниже строго.");
+    lines.push("- Используй смыслы ролей только из поля roles[].about (не выдумывай новые).");
+    if (audience === "staff") {
+      lines.push("- Выведи ТОП-3 роли в виде короткой таблицы (роль | баллы | %).");
+      lines.push("- Далее: по каждой роли ТОП-3: проявления (3–5 буллетов), вклад (2–3 буллета), риски перегиба (2–4 буллета), рекомендации (2–3 буллета).");
+      lines.push("- Затем: 1–2 роли поддержки (средние значения) — чем дополняют ТОП-3 (3–5 предложений).");
+      lines.push("- Затем: 1–2 слепые зоны (bottom2) — что может не получаться и как компенсировать (4–6 буллетов).");
+      lines.push("- Рекомендации для тренинга: ровно 6 буллетов (коротко).");
+      lines.push("- Вопросы для обсуждения: ровно 5 вопросов.");
+      lines.push("- В конце добавь примечание про роль «Специалист» (если это указано в note), и 3 вопроса для самооценки «Специалиста».");
+    } else {
+      lines.push("- Запрещены цифры, проценты, баллы, теги и коды ролей.");
+      lines.push("- Назови ведущие роли словами и опиши: как проявляются, чем полезны, какие риски и что поможет.");
+      lines.push("- Формат: 1) резюме (2–4 строки); 2) проявления (6–10 буллетов); 3) риски (4–7 буллетов); 4) что поможет (5–8 буллетов).");
+      lines.push("- В конце добавь мягкое примечание, что роль «Специалист» может оцениваться отдельно (без цифр).");
+    }
+    lines.push("");
+    lines.push("3 вопроса для самооценки роли «Специалист» (вставь в конец):");
+    lines.push("- В каких темах я даю команде уникальную глубокую экспертизу?");
+    lines.push("- Насколько я люблю углубляться в детали и развивать узкую компетенцию?");
+    lines.push("- Как команда может лучше использовать мою экспертизу (формат взаимодействия)?");
+
+    return lines.join("\n");
+  }
+
+
+// 16PF: do NOT pass the whole "methodichka" — only excerpts for the given STENs,
   // otherwise the prompt explodes and the model truncates output (e.g. "14 factors only").
   if (result.kind === "16pf_v1") {
     const meta: any = (result.meta as any) || {};

@@ -76,6 +76,21 @@ export default function TrainingResults() {
               <div className="text-sm font-semibold">Ваши результаты</div>
               {meta ? <div className="mt-1 text-xs text-zinc-500">test: {meta.test_slug}</div> : null}
 
+              {result.kind === "belbin_v1" && result.ranked?.length ? (
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {[...result.ranked]
+                    .sort((a, b) => (Number((b as any).count ?? 0) - Number((a as any).count ?? 0)))
+                    .slice(0, 3)
+                    .map((r: any, i: number) => (
+                      <div key={String(r.tag)} className="rounded-2xl border bg-white/55 p-3">
+                        <div className="text-[11px] font-semibold text-zinc-600">Топ {i + 1}</div>
+                        <div className="mt-1 text-sm font-semibold text-zinc-900">{r.style}</div>
+                        <div className="mt-1 text-xs text-zinc-600">{r.count}/{(result as any).total || 70} · {r.percent}%</div>
+                      </div>
+                    ))}
+                </div>
+              ) : null}
+
               {result?.ranked?.length ? (
                 <div className="mt-3">
                   <LineChart data={result.ranked.map((r) => ({ tag: r.tag, percent: r.percent }))} />
@@ -106,6 +121,7 @@ export default function TrainingResults() {
                         }
                         if (result.kind === "usk_v1") return (result as any).total || 10;
                         if (result.kind === "16pf_v1") return 10;
+                        if (result.kind === "belbin_v1") return (result as any).total || 70;
                         return null;
                       })();
 

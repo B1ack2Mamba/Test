@@ -23,14 +23,37 @@ export function DigitsTable({ result }: { result: ScoreResult }) {
     }
     if (kind === "usk_v1") return (result as any).total || 10;
     if (kind === "16pf_v1") return 10;
+    if (kind === "belbin_v1") return 70;
     return null;
   };
 
   const rawByScale = meta?.rawByScale || {};
 
+  const topBelbin =
+    kind === "belbin_v1"
+      ? [...(result.ranked || [])]
+          .sort((a: any, b: any) => Number(b?.count ?? 0) - Number(a?.count ?? 0))
+          .slice(0, 3)
+      : null;
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <div className="grid gap-3">
+      {topBelbin ? (
+        <div className="grid gap-2 sm:grid-cols-3">
+          {topBelbin.map((r: any, i: number) => (
+            <div key={String(r.tag)} className="rounded-2xl border bg-white/55 p-3">
+              <div className="text-[11px] font-semibold text-zinc-600">Топ {i + 1}</div>
+              <div className="mt-1 text-sm font-semibold text-zinc-900">{r.style}</div>
+              <div className="mt-1 text-xs text-zinc-600">
+                {r.count}/70 · {r.percent}%
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
         <thead>
           <tr className="border-b">
             <th className="py-2 text-left font-medium text-zinc-700">Шкала</th>
@@ -82,6 +105,7 @@ export function DigitsTable({ result }: { result: ScoreResult }) {
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

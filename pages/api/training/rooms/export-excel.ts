@@ -248,6 +248,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       continue;
     }
 
+
+
+    // Belbin team roles
+    if (type === "belbin_v1" || slug === "belbin") {
+      const roles = Array.isArray(t?.scoring?.roles) ? (t.scoring.roles as string[]) : ["CW","CH","SH","PL","RI","ME","TW","CF"];
+      const roleToName = (t?.scoring?.role_to_name || {}) as Record<string, string>;
+      const sub: ColDef[] = roles.map((r) => ({
+        key: `${slug}:${r}`,
+        header2: `${r}
+${roleToName[r] || r}`,
+        group: title,
+        test_slug: slug,
+        width: 22,
+        fromResult: (res) => res?.counts?.[r] ?? null,
+      }));
+      pushGroup(title, sub);
+      continue;
+    }
     // USK
     if (type === "usk_v1" || slug === "usk") {
       const scales = Array.isArray(t?.scoring?.scales) ? (t.scoring.scales as string[]) : [];
@@ -428,6 +446,51 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .join("");
   };
 
+  // Generic helper for simple object-table sheets (used by Belbin answers export).
+  // Keep it dependency-free and compatible with Excel (SpreadsheetML 2003).
+  const buildSheetXml = (
+    sheetName: string,
+    cols: { key: string; title: string; width?: number }[],
+    rowsArr: any[]
+  ) => {
+    const header = rowXml(cols.map((c) => cellXml(c.title, "sHeader", { type: "String" })));
+
+    const data = (rowsArr || [])
+      .map((r) => {
+        const rowCells = cols.map((c) => {
+          const v = r?.[c.key];
+          const style = c.key === "name" ? "sName" : "sCell";
+          const type = typeof v === "number" && isFinite(v) ? "Number" : "String";
+          return cellXml(v ?? "", style, { type: type as any });
+        });
+        return rowXml(rowCells);
+      })
+      .join("");
+
+    const expandedCols = cols.length;
+    const expandedRows = 1 + (rowsArr?.length ?? 0);
+    const colWidths = cols.map((c) => ({
+      width:
+        typeof c.width === "number"
+          ? c.width
+          : c.key === "idx"
+            ? 5
+            : c.key === "name"
+              ? 40
+              : 18,
+    }));
+
+    return `
+  <Worksheet ss:Name="${xmlEscape(sheetName)}">
+    <Table ss:ExpandedColumnCount="${expandedCols}" ss:ExpandedRowCount="${expandedRows}">
+      ${sheetColumnsXml(colWidths)}
+      ${header}
+      ${data}
+    </Table>
+    ${sheetOptionsXml(1, 0)}
+  </Worksheet>`;
+  };
+
   const build16PFAnswersSheetXml = (slug: string, sheetName: string) => {
     // 187 items (forms A/B). Keep within Excel 2003 column limit (256).
     const QN = 187;
@@ -474,6 +537,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     </Table>
     ${sheetOptionsXml(1, 2)}
   </Worksheet>`;
+  };
+
+
+  const buildBelbinAnswersSheetXml = (slug: string, sheetName: string) => {
+    const t = testsJson[slug];
+    const questions = Array.isArray(t?.questions) ? t.questions : [];
+
+    const letters = ["A","B","C","D","E","F","G","H"];
+
+    const cols = [
+      { key: "idx", title: "№" },
+      { key: "name", title: "ФИО" },
+      ...questions.map((q: any, i: number) => ({ key: `S${i + 1}`, title: `Секция ${i + 1}` })),
+    ];
+
+    // Each section cell contains allocations like: A:2 B:0 ...
+    const rows = participants.map((m: any, pi: number) => {
+      const userId = String(m.user_id);
+      const name = String(m.display_name || "");
+      const out: any = { idx: pi + 1, name };
+
+      const a = getAttemptAnswers(userId, slug) || {};
+      const sections = Array.isArray((a as any).sections)
+        ? (a as any).sections
+        : Array.isArray((a as any).belbin)
+          ? (a as any).belbin
+          : [];
+
+      for (let i = 0; i < questions.length; i++) {
+        const row = sections[i] || {};
+        const s = letters.map((L) => `${L}:${Number(row?.[L] ?? 0) || 0}`).join(" ");
+        out[`S${i + 1}`] = s;
+      }
+      return out;
+    });
+
+    return buildSheetXml(sheetName, cols, rows);
   };
 
   const buildSituationalGuidanceAnswersSheetXml = (slug: string, sheetName: string) => {
@@ -653,6 +753,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const extraSheets = [
     testSlugs.includes("16pf-a") ? build16PFAnswersSheetXml("16pf-a", "16PF-A ответы") : "",
     testSlugs.includes("16pf-b") ? build16PFAnswersSheetXml("16pf-b", "16PF-B ответы") : "",
+    testSlugs.includes("belbin") ? buildBelbinAnswersSheetXml("belbin", "Белбин ответы") : "",
     testSlugs.includes("situational-guidance") ? buildSituationalGuidanceAnswersSheetXml("situational-guidance", "Ситуативное руководство ответы") : "",
   ].join("\n");
 

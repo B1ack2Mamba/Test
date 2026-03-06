@@ -32,6 +32,10 @@ function uniq<T>(arr: T[]) {
   return Array.from(new Set(arr));
 }
 
+const BELBIN_LETTERS = ["A","B","C","D","E","F","G","H"] as const;
+type BelbinLetter = typeof BELBIN_LETTERS[number];
+const emptyBelbinRow = () => Object.fromEntries(BELBIN_LETTERS.map((L) => [L, 0])) as Record<BelbinLetter, number>;
+
 function SplitScale({
   value,
   onChange,
@@ -129,6 +133,11 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
     q6: [],
   });
 
+  // Belbin (7 sections × A..H allocations)
+  const [belbin, setBelbin] = useState<Record<BelbinLetter, number>[]>(() =>
+    Array(test.type === "belbin_v1" ? (test.questions?.length ?? 7) : 0).fill(null).map(() => emptyBelbinRow())
+  );
+
   // 16PF draft (A/B/C answers per question)
   const [pf16, setPf16] = useState<(ABC | "")[]>(() => Array(test.questions?.length ?? 0).fill(""));
   const [pf16Gender, setPf16Gender] = useState<"male" | "female" | null>(null);
@@ -159,6 +168,23 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
         q5: safePick(d?.q5),
         q6: safePick(d?.q6),
       });
+
+      // Belbin draft is stored as { belbin: [ {A..H:number} × 7 ] } or directly as array.
+      if (test.type === "belbin_v1") {
+        const arr = Array.isArray(d) ? (d as any[]) : Array.isArray(d?.belbin) ? (d.belbin as any[]) : Array.isArray(d?.sections) ? (d.sections as any[]) : null;
+        if (arr) {
+          const rows = arr.slice(0, test.questions?.length ?? 7).map((row: any) => {
+            const o: any = emptyBelbinRow();
+            for (const L of BELBIN_LETTERS) {
+              const v = Number(row?.[L] ?? 0);
+              o[L] = Number.isFinite(v) ? Math.max(0, Math.min(10, Math.floor(v))) : 0;
+            }
+            return o;
+          });
+          while (rows.length < (test.questions?.length ?? 7)) rows.push(emptyBelbinRow());
+          setBelbin(rows as any);
+        }
+      }
 
       // 16PF draft is stored as an array of "A"/"B"/"C" (or {pf16:[...]}).
       if (test.type === "16pf_v1") {
@@ -198,6 +224,13 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
 
 
   const totalAnswered = useMemo(() => {
+    if (test.type === "belbin_v1") {
+      const want = 10;
+      return belbin.filter((row) => {
+        const sum = BELBIN_LETTERS.reduce((acc, L) => acc + (Number(row?.[L]) || 0), 0);
+        return sum === want;
+      }).length;
+    }
     if (test.type === "color_types_v1") {
       const rankOk = (r: (ABC | "")[]) => r.length === 3 && r.every(Boolean) && uniq(r).length === 3;
       const pickOk = (a: number[]) => a.length === 3 && uniq(a).length === 3;
@@ -220,9 +253,9 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
       return forced.filter(Boolean).length;
     }
     return leftPoints.filter((v) => v !== null).length;
-  }, [test.type, forced, leftPoints, colorDraft, pf16, sg]);
+  }, [test.type, forced, leftPoints, colorDraft, pf16, sg, belbin]);
 
-  const totalRequired = test.type === "color_types_v1" ? 6 : (test.questions?.length ?? 0);
+  const totalRequired = test.type === "color_types_v1" ? 6 : test.type === "belbin_v1" ? (test.questions?.length ?? 7) : (test.questions?.length ?? 0);
   const pf16AgeOk = typeof pf16Age === "number" && Number.isFinite(pf16Age) && pf16Age >= 16 && pf16Age <= 70;
   const pf16DemoOk = test.type !== "16pf_v1" ? true : ((pf16Gender === "male" || pf16Gender === "female") && pf16AgeOk);
   const canFinish = totalAnswered === totalRequired && pf16DemoOk;
@@ -266,6 +299,8 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                 ? (sg as any)
               : test.type === "16pf_v1"
                 ? ({ pf16: pf16 as any, gender: pf16Gender, age: pf16Age } as any)
+              : test.type === "belbin_v1"
+                ? (belbin as any)
               : (leftPoints.map((v) => Number(v)) as number[]);
 
       const r = await fetch("/api/training/attempts/submit", {
@@ -311,6 +346,16 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
 
   const patchColor = (p: Partial<ColorDraft>) => {
     saveColorDraft({ ...colorDraft, ...p });
+  };
+
+  const saveBelbinDraft = (next: Record<BelbinLetter, number>[]) => {
+    setBelbin(next);
+    try {
+      if (typeof window !== "undefined") {
+        if (!roomId) return;
+        window.sessionStorage.setItem(`training:${roomId}:draft:${test.slug}`, JSON.stringify({ belbin: next }));
+      }
+    } catch {}
   };
 
   const savePF16Draft = (next: (ABC | "")[], gender = pf16Gender, age = pf16Age) => {
@@ -580,6 +625,77 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
           </>
         ) : (
           (test.questions || []).map((q: any, idx: number) => {
+          if (test.type === "belbin_v1") {
+            const row = belbin[idx] || emptyBelbinRow();
+            const opts = (q?.options || {}) as Record<string, string>;
+            const sum = BELBIN_LETTERS.reduce((acc, L) => acc + (Number(row?.[L]) || 0), 0);
+            const ok = sum === 10;
+
+            const setVal = (L: BelbinLetter, v: number) => {
+              const next = [...belbin];
+              const cur = { ...(next[idx] || emptyBelbinRow()) } as any;
+              cur[L] = v;
+              next[idx] = cur;
+              saveBelbinDraft(next as any);
+            };
+
+            const bump = (L: BelbinLetter, delta: number) => {
+              const cur = Number(row?.[L] ?? 0) || 0;
+              setVal(L, Math.max(0, Math.min(10, cur + delta)));
+            };
+
+            return (
+              <div key={idx} className="card">
+                <div className="mb-2 text-sm font-medium text-slate-700">{idx + 1}. {String(q?.prompt || "")}</div>
+
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="text-xs text-slate-600">Распределите 10 баллов между A–H</div>
+                  <div className={`text-xs font-semibold ${ok ? "text-emerald-700" : "text-amber-700"}`}>
+                    Сумма: {sum}/10
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  {BELBIN_LETTERS.map((L) => (
+                    <div key={L} className="rounded-xl border border-slate-200 bg-white/70 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-slate-600">{L}</div>
+                          <div className="mt-1 text-sm text-slate-900 whitespace-normal break-words">{opts?.[L] || ""}</div>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button type="button" className="btn btn-secondary px-3 py-1" onClick={() => bump(L, -1)}>
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            max={10}
+                            value={Number(row?.[L] ?? 0)}
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              setVal(L, Number.isFinite(v) ? Math.max(0, Math.min(10, Math.floor(v))) : 0);
+                            }}
+                            className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm"
+                          />
+                          <button type="button" className="btn btn-secondary px-3 py-1" onClick={() => bump(L, 1)}>
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {!ok ? (
+                  <div className="mt-3 text-xs text-amber-700">Сумма в секции должна быть ровно 10.</div>
+                ) : null}
+              </div>
+            );
+          }
+
           if (test.type === "situational_guidance_v1") {
             const chosen = sg[idx] || "";
             const opts = (q?.options || {}) as Record<string, string>;

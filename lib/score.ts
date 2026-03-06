@@ -12,6 +12,9 @@ import type {
   SituationalGuidanceTestV1,
   SituationalGuidanceChoice,
   SituationalGuidanceStyle,
+  BelbinTestV1,
+  BelbinLetter,
+  BelbinRole,
 } from "@/lib/testTypes";
 import { pf16PickNormGroup, pf16NormGroupLabel, pf16RawToSten, type Pf16Gender } from "@/lib/pf16Norms";
 
@@ -24,7 +27,7 @@ export type ScoreRow = {
 };
 
 export type ScoreResult = {
-  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1" | "situational_guidance_v1" | "16pf_v1";
+  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1" | "situational_guidance_v1" | "belbin_v1" | "16pf_v1";
   title?: string;
   summary?: string;
   total: number;
@@ -155,6 +158,85 @@ export function scoreSituationalGuidance(test: SituationalGuidanceTestV1, answer
     },
   };
 }
+
+// ===================== Belbin Team Roles =====================
+
+export type BelbinAllocations = Array<Record<BelbinLetter, number>>;
+
+export function scoreBelbin(test: BelbinTestV1, allocations: BelbinAllocations): ScoreResult {
+  const letters: BelbinLetter[] = Array.isArray(test.scoring?.letters)
+    ? (test.scoring.letters as any)
+    : (["A", "B", "C", "D", "E", "F", "G", "H"] as any);
+  const roles: BelbinRole[] = Array.isArray(test.scoring?.roles)
+    ? (test.scoring.roles as any)
+    : (["CW", "CH", "SH", "PL", "RI", "ME", "TW", "CF"] as any);
+  const roleToName = (test.scoring?.role_to_name || {}) as Record<string, string>;
+
+  const totalPerSection = Number(test.scoring?.total_per_section ?? 10);
+  const qCount = test.questions?.length ?? 0;
+  const totalPoints = qCount * totalPerSection;
+
+  const counts = Object.fromEntries(roles.map((r) => [r, 0])) as Record<BelbinRole, number>;
+  const perSection: any[] = [];
+
+  const keys = Array.isArray(test.scoring?.keys) ? (test.scoring.keys as any[]) : [];
+
+  for (let i = 0; i < qCount; i++) {
+    const alloc = (allocations?.[i] || {}) as any;
+    const k = keys.find((x: any) => Number(x?.order) === i + 1) || keys[i];
+    const letterToRole = (k?.letter_to_role || {}) as Record<string, BelbinRole>;
+
+    let sum = 0;
+    const clean: Record<string, number> = {};
+
+    for (const L of letters) {
+      const v = Number(alloc?.[L] ?? 0);
+      const n = Number.isFinite(v) ? Math.max(0, Math.min(totalPerSection, Math.floor(v))) : 0;
+      clean[L] = n;
+      sum += n;
+
+      const role = letterToRole[L];
+      if (role) counts[role] = (counts[role] ?? 0) + n;
+    }
+
+    if (sum !== totalPerSection) {
+      throw new Error(`Секция #${i + 1}: сумма баллов должна быть ${totalPerSection} (сейчас ${sum}).`);
+    }
+
+    perSection.push({ order: i + 1, sum, alloc: clean });
+  }
+
+  const percents = Object.fromEntries(
+    roles.map((r) => [r, totalPoints ? Math.round(((counts[r] ?? 0) / totalPoints) * 100) : 0])
+  ) as any;
+
+  // IMPORTANT: keep the role order stable (like the original result table)
+  const ranked: ScoreRow[] = roles.map((r) => ({
+    tag: r,
+    style: roleToName[r] || r,
+    count: counts[r] ?? 0,
+    percent: percents[r] ?? 0,
+    level: "",
+  }));
+
+  const top = [...ranked].sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
+
+  return {
+    kind: "belbin_v1",
+    total: totalPoints,
+    counts: counts as any,
+    percents: percents as any,
+    ranked,
+    meta: {
+      totalPerSection,
+      totalPoints,
+      perSection,
+      top: top.slice(0, 3),
+      notes: (test.scoring as any)?.notes || null,
+    },
+  };
+}
+
 
 // ===================== Negotiation test (forced pair) =====================
 

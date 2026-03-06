@@ -236,6 +236,49 @@ export type SituationalGuidanceTestV1 = {
 
 
 
+// ===================== Belbin Team Roles =====================
+
+export type BelbinLetter = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H";
+
+export type BelbinRole = "CW" | "CH" | "SH" | "PL" | "RI" | "ME" | "TW" | "CF";
+
+export type BelbinQuestion = {
+  order: number;
+  prompt: string;
+  options: Record<BelbinLetter, string>;
+};
+
+export type BelbinScoring = {
+  total_per_section: number;
+  letters: BelbinLetter[];
+  roles: BelbinRole[];
+  role_to_name: Record<BelbinRole, string>;
+  role_to_desc?: Record<BelbinRole, string>;
+  keys: Array<{
+    order: number;
+    letter_to_role: Record<BelbinLetter, BelbinRole>;
+    role_to_letter?: Record<BelbinRole, BelbinLetter>;
+  }>;
+  notes?: string;
+};
+
+export type BelbinTestV1 = {
+  slug: string;
+  title: string;
+  description?: string;
+  /** Optional long-form instructions shown on the test page. */
+  instructions?: string;
+  type: "belbin_v1";
+  pricing?: {
+    interpretation_rub?: number;
+    details_rub?: number;
+  };
+  has_interpretation?: boolean;
+  questions: BelbinQuestion[];
+  scoring: BelbinScoring;
+};
+
+
 // ===================== 16PF (Cattell) =====================
 
 export type PF16Factor = "A" | "B" | "C" | "E" | "F" | "G" | "H" | "I" | "L" | "M" | "N" | "O" | "Q1" | "Q2" | "Q3" | "Q4";
@@ -280,4 +323,5 @@ export type AnyTest =
   | ColorTypesTestV1
   | USKTestV1
   | SituationalGuidanceTestV1
+  | BelbinTestV1
   | PF16TestV1;
