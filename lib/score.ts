@@ -15,6 +15,9 @@ import type {
   BelbinTestV1,
   BelbinLetter,
   BelbinRole,
+  EminTestV1,
+  EminScale,
+  EminPrimaryScale,
 } from "@/lib/testTypes";
 import { pf16PickNormGroup, pf16NormGroupLabel, pf16RawToSten, type Pf16Gender } from "@/lib/pf16Norms";
 
@@ -27,7 +30,7 @@ export type ScoreRow = {
 };
 
 export type ScoreResult = {
-  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1" | "situational_guidance_v1" | "belbin_v1" | "16pf_v1";
+  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1" | "situational_guidance_v1" | "belbin_v1" | "16pf_v1" | "emin_v1";
   title?: string;
   summary?: string;
   total: number;
@@ -568,6 +571,118 @@ export function scoreUSK(test: USKTestV1, answers: number[]): ScoreResult {
   };
 }
 
+
+
+// ===================== Emotional Intelligence (ЭМИН, Д.В. Люсин) =====================
+
+function eminLevelFromNorms(norms: any, scale: string, value: number): string {
+  const bins: any[] = Array.isArray(norms?.[scale]) ? norms[scale] : [];
+  for (const b of bins) {
+    const min = Number(b?.min);
+    const maxRaw = b?.max;
+    const max = maxRaw === null || maxRaw === undefined ? null : Number(maxRaw);
+    if (!Number.isFinite(min)) continue;
+    if (max === null) {
+      if (value >= min) return String(b?.label || "");
+    } else {
+      if (value >= min && value <= max) return String(b?.label || "");
+    }
+  }
+  return "";
+}
+
+export function scoreEmin(test: EminTestV1, answers: number[]): ScoreResult {
+  const qCount = test.questions?.length ?? 0;
+  if (!qCount) throw new Error("Нет вопросов");
+
+  const keys: any[] = Array.isArray((test as any)?.scoring?.keys) ? ((test as any).scoring.keys as any[]) : [];
+  if (!keys.length) throw new Error("Нет ключей");
+
+  const primary: EminPrimaryScale[] = Array.isArray((test as any).scoring?.primary_scales)
+    ? ((test as any).scoring.primary_scales as any)
+    : (["MP", "MU", "VP", "VU", "VE"] as any);
+
+  const derived: Array<Exclude<EminScale, EminPrimaryScale>> = Array.isArray((test as any).scoring?.derived_scales)
+    ? ((test as any).scoring.derived_scales as any)
+    : (["MEI", "VEI", "PE", "UE", "OEI"] as any);
+
+  const name: Record<string, string> = (test as any).scoring?.scale_to_name || {};
+
+  const counts: Record<string, number> = Object.fromEntries([...primary, ...derived].map((k) => [k, 0]));
+  const itemsByScale: Record<string, number> = Object.fromEntries(primary.map((k) => [k, 0]));
+
+  const keyByOrder = new Map<number, any>();
+  for (const k of keys) {
+    const o = Number(k?.order);
+    if (!Number.isFinite(o)) continue;
+    keyByOrder.set(o, k);
+  }
+
+  for (let i = 0; i < qCount; i++) {
+    const vRaw = Number(answers?.[i]);
+    if (!Number.isFinite(vRaw)) throw new Error(`Ответ #${i + 1} должен быть числом`);
+    const v = Math.max(0, Math.min(3, Math.round(vRaw)));
+
+    const k = keyByOrder.get(i + 1) || keys[i];
+    const scale = String(k?.scale || "").trim();
+    const sign = String(k?.sign || "+").trim();
+
+    if (!primary.includes(scale as any)) {
+      throw new Error(`Нет ключа шкалы для вопроса #${i + 1}`);
+    }
+
+    const scored = sign === "-" ? 3 - v : v;
+
+    counts[scale] = (counts[scale] ?? 0) + scored;
+    itemsByScale[scale] = (itemsByScale[scale] ?? 0) + 1;
+  }
+
+  counts["MEI"] = (counts["MP"] ?? 0) + (counts["MU"] ?? 0);
+  counts["VEI"] = (counts["VP"] ?? 0) + (counts["VU"] ?? 0) + (counts["VE"] ?? 0);
+  counts["PE"] = (counts["MP"] ?? 0) + (counts["VP"] ?? 0);
+  counts["UE"] = (counts["MU"] ?? 0) + (counts["VU"] ?? 0) + (counts["VE"] ?? 0);
+  counts["OEI"] = (counts["MP"] ?? 0) + (counts["MU"] ?? 0) + (counts["VP"] ?? 0) + (counts["VU"] ?? 0) + (counts["VE"] ?? 0);
+
+  const maxByFactor: Record<string, number> = {};
+  for (const sc of primary) {
+    maxByFactor[sc] = (itemsByScale[sc] ?? 0) * 3;
+  }
+  maxByFactor["MEI"] = (maxByFactor["MP"] ?? 0) + (maxByFactor["MU"] ?? 0);
+  maxByFactor["VEI"] = (maxByFactor["VP"] ?? 0) + (maxByFactor["VU"] ?? 0) + (maxByFactor["VE"] ?? 0);
+  maxByFactor["PE"] = (maxByFactor["MP"] ?? 0) + (maxByFactor["VP"] ?? 0);
+  maxByFactor["UE"] = (maxByFactor["MU"] ?? 0) + (maxByFactor["VU"] ?? 0) + (maxByFactor["VE"] ?? 0);
+  maxByFactor["OEI"] = primary.reduce((acc, sc) => acc + (maxByFactor[sc] ?? 0), 0);
+
+  const norms = (test as any).scoring?.norms || {};
+  const order: string[] = ["MP", "MU", "VP", "VU", "VE", "MEI", "VEI", "PE", "UE", "OEI"];
+
+  const percents: Record<string, number> = {};
+  for (const sc of order) {
+    const max = maxByFactor[sc] || 1;
+    percents[sc] = Math.round(((counts[sc] ?? 0) / max) * 100);
+  }
+
+  const ranked: ScoreRow[] = order.map((sc) => ({
+    tag: sc,
+    style: name[sc] || sc,
+    count: counts[sc] ?? 0,
+    percent: percents[sc] ?? 0,
+    level: eminLevelFromNorms(norms, sc, counts[sc] ?? 0),
+  }));
+
+  return {
+    kind: "emin_v1",
+    total: maxByFactor["OEI"] ?? qCount * 3,
+    counts,
+    percents,
+    ranked,
+    meta: {
+      maxByFactor,
+      itemsByScale,
+      norms,
+    },
+  };
+}
 
 // ===================== 16PF =====================
 

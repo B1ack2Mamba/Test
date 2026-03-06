@@ -143,6 +143,9 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
   const [pf16Gender, setPf16Gender] = useState<"male" | "female" | null>(null);
   const [pf16Age, setPf16Age] = useState<number | null>(null);
 
+  // ЭМИН (Люсин): 46 утверждений, ответы 0..3
+  const [emin, setEmin] = useState<(number | null)[]>(() => Array(test.questions?.length ?? 0).fill(null));
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     // Wait for router to provide the real roomId before reading the draft.
@@ -200,6 +203,22 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
         setPf16Gender(g);
         setPf16Age(a);
       }
+
+      // ЭМИН (Люсин): draft is stored as an array of numbers 0..3 (or { emin:[...] }).
+      if (test.type === "emin_v1") {
+        const arr = Array.isArray(d) ? (d as any[]) : Array.isArray(d?.emin) ? (d.emin as any[]) : null;
+        if (arr) {
+          const safe = arr
+            .map((v) => {
+              const n = Number(v);
+              return Number.isFinite(n) ? Math.max(0, Math.min(3, Math.round(n))) : 0;
+            })
+            .slice(0, test.questions?.length ?? 0);
+          const full = Array(test.questions?.length ?? 0).fill(null) as (number | null)[];
+          for (let i = 0; i < safe.length; i++) full[i] = safe[i];
+          setEmin(full);
+        }
+      }
     } catch {
       // ignore
     }
@@ -246,6 +265,9 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
     if (test.type === "16pf_v1") {
       return pf16.filter(Boolean).length;
     }
+    if (test.type === "emin_v1") {
+      return emin.filter((v) => v !== null).length;
+    }
     if (test.type === "situational_guidance_v1") {
       return sg.filter(Boolean).length;
     }
@@ -253,7 +275,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
       return forced.filter(Boolean).length;
     }
     return leftPoints.filter((v) => v !== null).length;
-  }, [test.type, forced, leftPoints, colorDraft, pf16, sg, belbin]);
+  }, [test.type, forced, leftPoints, colorDraft, pf16, emin, sg, belbin]);
 
   const totalRequired = test.type === "color_types_v1" ? 6 : test.type === "belbin_v1" ? (test.questions?.length ?? 7) : (test.questions?.length ?? 0);
   const pf16AgeOk = typeof pf16Age === "number" && Number.isFinite(pf16Age) && pf16Age >= 16 && pf16Age <= 70;
@@ -301,6 +323,8 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                 ? ({ pf16: pf16 as any, gender: pf16Gender, age: pf16Age } as any)
               : test.type === "belbin_v1"
                 ? (belbin as any)
+              : test.type === "emin_v1"
+                ? (emin.map((v) => (v === null ? 0 : Number(v))) as number[])
               : (leftPoints.map((v) => Number(v)) as number[]);
 
       const r = await fetch("/api/training/attempts/submit", {
@@ -367,6 +391,16 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
           `training:${roomId}:draft:${test.slug}`,
           JSON.stringify({ pf16: next, gender, age })
         );
+      }
+    } catch {}
+  };
+
+  const saveEminDraft = (next: (number | null)[]) => {
+    setEmin(next);
+    try {
+      if (typeof window !== "undefined") {
+        if (!roomId) return;
+        window.sessionStorage.setItem(`training:${roomId}:draft:${test.slug}`, JSON.stringify({ emin: next }));
       }
     } catch {}
   };
@@ -533,6 +567,54 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                     ) : (
                       <>Выберите ровно 3 пункта (сейчас: {value.length}).</>
                     )}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        ) : test.type === "emin_v1" ? (
+          <>
+            <details className="card">
+              <summary className="cursor-pointer text-sm font-medium text-zinc-800">
+                Инструкция (нажми, чтобы раскрыть)
+              </summary>
+              <div className="mt-3 text-sm text-slate-700">
+                Прочитайте утверждение и выберите, насколько вы согласны с ним.
+              </div>
+              <div className="mt-2 text-xs text-slate-600">
+                Варианты: 0 — «Совсем не согласен», 1 — «Скорее не согласен», 2 — «Скорее согласен», 3 — «Полностью согласен».
+              </div>
+            </details>
+
+            {(test.questions || []).map((q: any, idx: number) => {
+              const chosen = emin[idx];
+              const opts = [
+                { v: 0, label: "Совсем не согласен" },
+                { v: 1, label: "Скорее не согласен" },
+                { v: 2, label: "Скорее согласен" },
+                { v: 3, label: "Полностью согласен" },
+              ] as const;
+
+              return (
+                <div key={idx} className="card">
+                  <div className="mb-3 text-sm font-medium text-slate-700">
+                    {idx + 1}. {String(q?.text || "")}
+                  </div>
+                  <div className="grid gap-2">
+                    {opts.map((o) => (
+                      <button
+                        key={o.v}
+                        type="button"
+                        className={cls(chosen === o.v)}
+                        onClick={() => {
+                          const next = [...emin];
+                          next[idx] = o.v;
+                          saveEminDraft(next);
+                        }}
+                      >
+                        <div className="text-sm">{o.label}</div>
+                      </button>
+                    ))}
                   </div>
                 </div>
               );

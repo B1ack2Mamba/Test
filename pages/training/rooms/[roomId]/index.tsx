@@ -322,13 +322,12 @@ export default function TrainingRoom({ tests }: Props) {
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="text-lg font-semibold">{t.title}</div>
                       {t.slug === "16pf-a" ? (
-                        <Link
-                          href="/certificates"
-                          className="rounded-md border bg-white/55 px-2 py-0.5 text-[10px] font-semibold text-zinc-700 hover:bg-white/70"
-                          title="Открыть документы"
+                        <span
+                          className="rounded-md border bg-white/55 px-2 py-0.5 text-[10px] font-semibold text-zinc-700"
+                          title="Сертифицированная методика"
                         >
                           Сертифицировано
-                        </Link>
+                        </span>
                       ) : null}
                     </div>
                     {t.description ? <div className="mt-1 text-sm text-zinc-600">{t.description}</div> : null}

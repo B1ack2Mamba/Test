@@ -282,6 +282,37 @@ ${roleToName[r] || r}`,
       continue;
     }
 
+    // ЭМИН (эмоциональный интеллект, Люсин)
+    if (type === "emin_v1" || slug === "emin") {
+      const scaleToName = (t?.scoring?.scale_to_name || {}) as Record<string, string>;
+      const order = ["MP","MU","VP","VU","VE","MEI","VEI","PE","UE","OEI"];
+      const sub: ColDef[] = [];
+      for (const sc of order) {
+        sub.push({
+          key: `${slug}:${sc}`,
+          header2: scaleToName[sc] || sc,
+          group: title,
+          test_slug: slug,
+          width: 22,
+          fromResult: (r) => r?.counts?.[sc] ?? null,
+        });
+        sub.push({
+          key: `${slug}:${sc}:level`,
+          header2: `${sc} уровень`,
+          group: title,
+          test_slug: slug,
+          width: 14,
+          fromResult: (r) => {
+            const arr = Array.isArray(r?.ranked) ? (r.ranked as any[]) : [];
+            const row = arr.find((x) => String((x as any)?.tag) === String(sc));
+            return (row as any)?.level ?? null;
+          },
+        });
+      }
+      pushGroup(title, sub);
+      continue;
+    }
+
     // Situational guidance (situational leadership)
     if (type === "situational_guidance_v1" || slug === "situational-guidance") {
       const styleToName = (t?.scoring?.style_to_name || {}) as Record<string, string>;

@@ -236,6 +236,57 @@ export type SituationalGuidanceTestV1 = {
 
 
 
+
+// ===================== Emotional Intelligence (ЭМИН, Д.В. Люсин) =====================
+
+export type EminPrimaryScale = "MP" | "MU" | "VP" | "VU" | "VE";
+export type EminScale = EminPrimaryScale | "MEI" | "VEI" | "PE" | "UE" | "OEI";
+
+export type EminQuestion = {
+  order: number;
+  text: string;
+};
+
+export type EminNormBin = {
+  label: string; // "очень низкий" | "низкий" | "средний" | "высокий" | "очень высокий"
+  min: number;
+  max: number | null; // null => "и выше"
+};
+
+export type EminScoring = {
+  primary_scales: EminPrimaryScale[];
+  derived_scales: Array<Exclude<EminScale, EminPrimaryScale>>;
+  scale_to_name: Record<EminScale, string>;
+  keys: Array<{
+    order: number;
+    scale: EminPrimaryScale;
+    sign: "+" | "-";
+  }>;
+  norms: Record<EminScale, EminNormBin[]>;
+  answer_scale?: {
+    min: number; // 0
+    max: number; // 3
+    labels: [string, string, string, string];
+  };
+};
+
+export type EminTestV1 = {
+  slug: string;
+  title: string;
+  description?: string;
+  /** Optional long-form instructions shown on the test page. */
+  instructions?: string;
+  type: "emin_v1";
+  pricing?: {
+    interpretation_rub?: number;
+    details_rub?: number;
+  };
+  has_interpretation?: boolean;
+  questions: EminQuestion[];
+  scoring: EminScoring;
+};
+
+
 // ===================== Belbin Team Roles =====================
 
 export type BelbinLetter = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H";
@@ -324,4 +375,5 @@ export type AnyTest =
   | USKTestV1
   | SituationalGuidanceTestV1
   | BelbinTestV1
-  | PF16TestV1;
+  | PF16TestV1
+  | EminTestV1;

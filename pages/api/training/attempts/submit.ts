@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
 import { loadTestJsonBySlugAdmin } from "@/lib/loadTestAdmin";
-import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance, scoreBelbin } from "@/lib/score";
+import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance, scoreBelbin, scoreEmin } from "@/lib/score";
 import { ensureRoomTests } from "@/lib/trainingRoomTests";
 import type { Tag } from "@/lib/testTypes";
 
@@ -107,6 +107,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       result = scoreBelbin(test as any, safe as any);
       answersJson = { sections: safe };
+
+    } else if (test.type === "emin_v1") {
+      // ЭМИН (Люсин): answers are 0..3 per item (4-point Likert).
+      const arr = Array.isArray(answers) ? (answers as any[]) : (Array.isArray(answers?.emin) ? answers.emin : []);
+      const safe = (arr as any[]).map((v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return 0;
+        return Math.max(0, Math.min(3, Math.round(n)));
+      });
+      result = scoreEmin(test as any, safe as any);
+      answersJson = { emin: safe };
+
     } else if (test.type === "situational_guidance_v1") {
       const arr = Array.isArray(answers) ? (answers as any[]) : [];
       const safe = arr.map((x) => (x === "A" || x === "B" || x === "C" || x === "D" ? x : ""));

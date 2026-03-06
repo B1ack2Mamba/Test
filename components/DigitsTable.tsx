@@ -24,6 +24,10 @@ export function DigitsTable({ result }: { result: ScoreResult }) {
     if (kind === "usk_v1") return (result as any).total || 10;
     if (kind === "16pf_v1") return 10;
     if (kind === "belbin_v1") return 70;
+    if (kind === "emin_v1") {
+      const d = (result as any).meta?.maxByFactor?.[tag];
+      return Number.isFinite(d) ? Number(d) : null;
+    }
     return null;
   };
 
@@ -71,6 +75,10 @@ export function DigitsTable({ result }: { result: ScoreResult }) {
                 // USK / 16PF: show sten-like 0..10 values.
                 const base = `${r.count}/10`;
                 return raw !== null && raw !== undefined ? `${base} (сырые: ${raw})` : base;
+              }
+              if (kind === "emin_v1") {
+                if (typeof denom === "number") return `${r.count}/${denom}`;
+                return String(r.count);
               }
               // Percent-based tests.
               if (typeof r.percent === "number") {

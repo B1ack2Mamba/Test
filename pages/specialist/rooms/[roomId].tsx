@@ -642,6 +642,23 @@ ${pickedSide === "B" ? "✅ " : ""}Вариант 2: ${bText || "—"}`
       });
     }
 
+
+    // emin_v1 (ЭМИН, Д.В. Люсин) — 46 утверждений, ответы 0..3
+    if (attemptTest.type === "emin_v1") {
+      const arr: any[] = Array.isArray((attempt as any)?.answers?.emin)
+        ? (attempt as any).answers.emin
+        : Array.isArray((attempt as any)?.answers)
+          ? ((attempt as any).answers as any[])
+          : [];
+      const labels = ["Совсем не согласен", "Скорее не согласен", "Скорее согласен", "Полностью согласен"];
+      return (attemptTest.questions || []).map((q: any, i: number) => {
+        const v = Number(arr[i]);
+        const idx = Number.isFinite(v) ? Math.max(0, Math.min(3, Math.round(v))) : null;
+        const answer = idx === null ? "Ответ: —" : `Ответ: ${idx} — ${labels[idx]}`;
+        return { title: `${i + 1}. ${safeText(q?.text || "")}`, answer };
+      });
+    }
+
     if (attemptTest.type !== "pair_sum5_v1" && attemptTest.type !== "pair_split_v1") {
       return [] as { title: string; answer: string }[];
     }
