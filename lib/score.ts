@@ -608,7 +608,18 @@ export function scoreLearningTypology(test: LearningTypologyTestV1, answers: Arr
     if (!choice) return;
     const opt = (q.options || []).find((o: any) => String(o?.code || "").toUpperCase() === choice);
     if (!opt) throw new Error(`Нет варианта ${choice} для вопроса #${idx + 1}`);
-    const optTags = Array.isArray(opt?.tags) ? (opt.tags as LearningTypologyTag[]) : [];
+    let optTags = Array.isArray(opt?.tags) ? ([...opt.tags] as LearningTypologyTag[]) : [];
+
+    // Compatibility fix for older JSON/DB seeds:
+    // Q20 "Ваш девиз по жизни" was once digitized with swapped A/D tags.
+    // Correct mapping from the source key:
+    // A -> PRA, B -> OBS, C -> THE, D -> EXP.
+    const order = Number((q as any)?.order ?? idx + 1);
+    if (order === 20) {
+      if (choice === "A") optTags = ["PRA"];
+      if (choice === "D") optTags = ["EXP"];
+    }
+
     for (const tag of optTags) {
       if (counts[tag] === undefined) continue;
       counts[tag] = (counts[tag] ?? 0) + 1;

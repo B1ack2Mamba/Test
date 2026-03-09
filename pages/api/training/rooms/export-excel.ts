@@ -68,7 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     roomTests = (data ?? []) as any[];
   }
 
-  const testSlugs = roomTests.map((r) => String(r.test_slug)).filter((s) => s !== "16pf-b");
+  const roomTestSlugs = roomTests.map((r) => String(r.test_slug)).filter(Boolean);
 
   // Participants
   const { data: membersData, error: memErr } = await supabaseAdmin
@@ -85,16 +85,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // NOTE: user_id is UUID in our schema. Do NOT use placeholder values like "__none__" in .in(),
   // otherwise Postgres will throw: invalid input syntax for type uuid.
   const progressData: any[] = [];
-  if (participantIds.length && testSlugs.length) {
+  if (participantIds.length) {
     const { data, error: progErr } = await supabaseAdmin
       .from("training_progress")
       .select("room_id,user_id,test_slug,attempt_id")
       .eq("room_id", roomId)
-      .in("user_id", participantIds)
-      .in("test_slug", testSlugs);
+      .in("user_id", participantIds);
     if (progErr) return res.status(500).json({ ok: false, error: progErr.message });
     progressData.push(...(data ?? []));
   }
+
+  const completedSlugs = [...new Set((progressData ?? []).map((p: any) => String(p?.test_slug || "")).filter(Boolean))];
+  const orderedExportSlugs = [...new Set([...roomTestSlugs, ...completedSlugs])];
+  const roomTestsForExport = orderedExportSlugs.map((slug, idx) => {
+    const existing = (roomTests || []).find((r: any) => String(r?.test_slug) === slug);
+    return existing || { room_id: roomId, test_slug: slug, is_enabled: true, sort_order: idx };
+  });
 
   const attemptIds = (progressData ?? []).map((p: any) => p.attempt_id).filter(Boolean) as string[];
   const { data: attemptsData, error: attErr } = attemptIds.length
@@ -133,7 +139,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Load test JSONs (for dynamic schemas)
   const testsJson: Record<string, any> = {};
   await Promise.all(
-    testSlugs.map(async (slug) => {
+    orderedExportSlugs.map(async (slug) => {
       try {
         const t = await loadTestJsonBySlugAdmin(supabaseAdmin as any, slug);
         if (t) testsJson[slug] = t;
@@ -159,7 +165,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   };
 
   // Helper: try infer schema from test json or results.
-  for (const rt of roomTests) {
+  for (const rt of roomTestsForExport) {
     const slug = String(rt.test_slug);
     const t = testsJson[slug];
     const title = String(t?.title || slug);
@@ -797,7 +803,7 @@ ${roleToName[r] || r}`,
     const statCols = [
       { key: "idx", header: "№", width: 5 },
       { key: "name", header: "ФИО", width: 30 },
-      ...roomTests.map((rt: any) => ({
+      ...roomTestsForExport.map((rt: any) => ({
         key: String(rt.test_slug),
         header: String(testsJson[String(rt.test_slug)]?.title || rt.test_slug),
         width: 18,
@@ -813,7 +819,7 @@ ${roleToName[r] || r}`,
         const rowCells: string[] = [];
         rowCells.push(cellXml(r.idx, "sCell", { type: "Number" }));
         rowCells.push(cellXml(r.name, "sName", { type: "String" }));
-        for (const rt of roomTests) {
+        for (const rt of roomTestsForExport) {
           const slug = String(rt.test_slug);
           const has = !!resultByUserSlug.get(`${r.user_id}:${slug}`);
           const v = has ? 1 : 0;
@@ -842,10 +848,10 @@ ${roleToName[r] || r}`,
   const fileName = `${roomName}`.replace(/[\\/:*?"<>|]+/g, " ").trim() || "room";
 
   const extraSheets = [
-    testSlugs.includes("16pf-a") ? build16PFAnswersSheetXml("16pf-a", "16PF-A ответы") : "",
-    testSlugs.includes("16pf-b") ? build16PFAnswersSheetXml("16pf-b", "16PF-B ответы") : "",
-    testSlugs.includes("belbin") ? buildBelbinAnswersSheetXml("belbin", "Белбин ответы") : "",
-    testSlugs.includes("situational-guidance") ? buildSituationalGuidanceAnswersSheetXml("situational-guidance", "Ситуативное руководство ответы") : "",
+    orderedExportSlugs.includes("16pf-a") ? build16PFAnswersSheetXml("16pf-a", "16PF-A ответы") : "",
+    orderedExportSlugs.includes("16pf-b") ? build16PFAnswersSheetXml("16pf-b", "16PF-B ответы") : "",
+    orderedExportSlugs.includes("belbin") ? buildBelbinAnswersSheetXml("belbin", "Белбин ответы") : "",
+    orderedExportSlugs.includes("situational-guidance") ? buildSituationalGuidanceAnswersSheetXml("situational-guidance", "Ситуативное руководство ответы") : "",
   ].join("\n");
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>

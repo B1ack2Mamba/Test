@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
+import { hashPassword } from "@/lib/password";
 import { isSpecialistUser } from "@/lib/specialist";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -11,16 +12,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!isSpecialistUser(user)) return res.status(403).json({ ok: false, error: "Forbidden" });
 
-  const { room_id, name } = (req.body || {}) as any;
+  const { room_id, name, password } = (req.body || {}) as any;
   const roomId = String(room_id || "").trim();
-  const roomName = String(name || "").trim();
+  const roomName = typeof name === "string" ? String(name).trim() : "";
+  const roomPwd = typeof password === "string" ? String(password).trim() : "";
 
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
-  if (!roomName) return res.status(400).json({ ok: false, error: "Название комнаты обязательно" });
+  if (!roomName && !roomPwd) return res.status(400).json({ ok: false, error: "Нужно указать название комнаты или новый пароль" });
 
   const { data: room, error: roomErr } = await supabaseAdmin
     .from("training_rooms")
-    .select("id,created_by")
+    .select("id,created_by,name")
     .eq("id", roomId)
     .maybeSingle();
 
@@ -28,13 +30,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!room) return res.status(404).json({ ok: false, error: "Комната не найдена" });
   if (room.created_by && room.created_by !== user.id) return res.status(403).json({ ok: false, error: "Forbidden" });
 
+  const patch: Record<string, any> = {};
+  if (roomName) patch.name = roomName;
+  else patch.name = String((room as any)?.name || "").trim();
+
+  if (!patch.name) return res.status(400).json({ ok: false, error: "Название комнаты обязательно" });
+
+  if (roomPwd) {
+    try {
+      patch.password_hash = hashPassword(roomPwd);
+    } catch (e: any) {
+      return res.status(400).json({ ok: false, error: e?.message || "Bad password" });
+    }
+  }
+
   const { data, error } = await supabaseAdmin
     .from("training_rooms")
-    .update({ name: roomName })
+    .update(patch)
     .eq("id", roomId)
     .select("id,name")
     .single();
 
   if (error) return res.status(500).json({ ok: false, error: error.message });
-  return res.status(200).json({ ok: true, room: data });
+  return res.status(200).json({ ok: true, room: data, password_updated: Boolean(roomPwd) });
 }

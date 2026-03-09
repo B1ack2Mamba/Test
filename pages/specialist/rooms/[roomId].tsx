@@ -430,6 +430,8 @@ export default function SpecialistRoom({ tests }: Props) {
   const [cells, setCells] = useState<Record<string, any>>({});
   const [roomName, setRoomName] = useState<string>("Комната");
   const [editRoomName, setEditRoomName] = useState<string>("");
+  const [editRoomPassword, setEditRoomPassword] = useState<string>("");
+  const [showRoomPassword, setShowRoomPassword] = useState(false);
   const [savingRoom, setSavingRoom] = useState(false);
   const [roomMsg, setRoomMsg] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -891,11 +893,16 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
     }
   };
 
-  const saveRoomName = async () => {
+  const saveRoomSettings = async () => {
     if (!session || !roomId) return;
     const name = editRoomName.trim();
+    const password = editRoomPassword.trim();
     if (!name) {
       setRoomMsg("Название не может быть пустым");
+      return;
+    }
+    if (!password && name === roomName) {
+      setRoomMsg("Изменений нет");
       return;
     }
     setSavingRoom(true);
@@ -904,12 +911,14 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
       const r = await fetch("/api/training/rooms/update", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ room_id: roomId, name }),
+        body: JSON.stringify({ room_id: roomId, name, password }),
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось сохранить");
       setRoomName(name);
-      setRoomMsg("Сохранено ✅");
+      setEditRoomPassword("");
+      setShowRoomPassword(false);
+      setRoomMsg(password ? "Название и пароль сохранены ✅" : "Сохранено ✅");
     } catch (e: any) {
       setRoomMsg(e?.message || "Ошибка сохранения");
     } finally {
@@ -1170,7 +1179,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
             placeholder="Название комнаты"
           />
           <button
-            onClick={saveRoomName}
+            onClick={saveRoomSettings}
             disabled={savingRoom || !editRoomName.trim()}
             className="btn btn-primary disabled:opacity-50"
           >
@@ -1178,6 +1187,26 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
           </button>
         </div>
         {roomMsg ? <div className="mt-2 text-xs text-zinc-600">{roomMsg}</div> : null}
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+          <input
+            type={showRoomPassword ? "text" : "password"}
+            value={editRoomPassword}
+            onChange={(e) => setEditRoomPassword(e.target.value)}
+            className="rounded-xl border bg-white px-3 py-2 text-sm"
+            placeholder="Новый пароль комнаты"
+          />
+          <button
+            type="button"
+            onClick={() => setShowRoomPassword((v) => !v)}
+            className="btn btn-secondary"
+          >
+            {showRoomPassword ? "Скрыть" : "Показать"}
+          </button>
+          <div className="flex items-center text-xs text-zinc-500 sm:justify-end">
+            Текущий пароль не показывается — можно задать новый.
+          </div>
+        </div>
 
         <div className="mt-4 border-t pt-4">
           <div className="text-sm font-semibold">Результаты</div>
