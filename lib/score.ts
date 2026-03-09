@@ -18,6 +18,11 @@ import type {
   EminTestV1,
   EminScale,
   EminPrimaryScale,
+  TimeManagementTestV1,
+  TimeManagementTag,
+  LearningTypologyTestV1,
+  LearningTypologyTag,
+  LearningTypologyChoice,
 } from "@/lib/testTypes";
 import { pf16PickNormGroup, pf16NormGroupLabel, pf16RawToSten, type Pf16Gender } from "@/lib/pf16Norms";
 
@@ -30,7 +35,7 @@ export type ScoreRow = {
 };
 
 export type ScoreResult = {
-  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1" | "situational_guidance_v1" | "belbin_v1" | "16pf_v1" | "emin_v1";
+  kind: "forced_pair_v1" | "pair_sum5_v1" | "color_types_v1" | "usk_v1" | "situational_guidance_v1" | "belbin_v1" | "16pf_v1" | "emin_v1" | "time_management_v1" | "learning_typology_v1";
   title?: string;
   summary?: string;
   total: number;
@@ -499,6 +504,167 @@ export function scoreColorTypes(test: ColorTypesTestV1, answers: ColorTypesAnswe
       b,
       contributions: { q1: c1, q2: c2, q3: c3, q4: c4, q5: c5, q6: c6 },
       keys: { q3: k3, q4: k4, q5: k5, q6: k6 },
+    },
+  };
+}
+
+
+// ===================== Time management / Time perception =====================
+
+export function scoreTimeManagement(test: TimeManagementTestV1, answers: TimeManagementTag[]): ScoreResult {
+  const tags: TimeManagementTag[] = Array.isArray(test.scoring?.tags)
+    ? (test.scoring.tags as any)
+    : (["L", "P", "C"] as any);
+  const tagToName = (test.scoring?.tag_to_name || {}) as Record<string, string>;
+  const thresholds = test.scoring?.thresholds_count || { high_min: 6, medium_min: 4 };
+  const blendCloseDelta = Number.isFinite(Number(test.scoring?.blend_close_delta)) ? Number(test.scoring?.blend_close_delta) : 1;
+
+  const counts = Object.fromEntries(tags.map((t) => [t, 0])) as Record<TimeManagementTag, number>;
+  const total = test.questions?.length ?? answers?.length ?? 0;
+  const safe: TimeManagementTag[] = [];
+
+  for (const raw of answers || []) {
+    const t = String(raw || "").toUpperCase();
+    if (t === "L" || t === "P" || t === "C") {
+      counts[t as TimeManagementTag] = (counts[t as TimeManagementTag] ?? 0) + 1;
+      safe.push(t as TimeManagementTag);
+    }
+  }
+
+  const percents = Object.fromEntries(
+    tags.map((t) => [t, total ? Math.round(((counts[t] ?? 0) / total) * 100) : 0])
+  ) as Record<TimeManagementTag, number>;
+
+  const levelFor = (count: number) => {
+    if (count >= (thresholds.high_min ?? 6)) return "высокий";
+    if (count >= (thresholds.medium_min ?? 4)) return "средний";
+    return "низкий";
+  };
+
+  const ranked: ScoreRow[] = tags.map((t) => ({
+    tag: t,
+    style: tagToName[t] || t,
+    count: counts[t] ?? 0,
+    percent: percents[t] ?? 0,
+    level: levelFor(counts[t] ?? 0),
+  }));
+
+  const sorted = [...ranked].sort((a, b) => Number(b.count ?? 0) - Number(a.count ?? 0));
+  const topCount = Number(sorted[0]?.count ?? 0);
+  const secondCount = Number(sorted[1]?.count ?? 0);
+  const leaders = sorted.filter((r) => Number(r.count ?? 0) === topCount).map((r) => String(r.tag));
+  const mixedLeaders = leaders.length > 1
+    ? leaders
+    : sorted.filter((r) => topCount - Number(r.count ?? 0) <= blendCloseDelta && Number(r.count ?? 0) > 0).map((r) => String(r.tag));
+  const blend = [...new Set((mixedLeaders.length ? mixedLeaders : leaders).sort())].join("");
+  const maxByFactor = Object.fromEntries(tags.map((t) => [t, total])) as Record<string, number>;
+
+  return {
+    kind: "time_management_v1",
+    total,
+    counts: counts as any,
+    percents: percents as any,
+    ranked,
+    meta: {
+      maxByFactor,
+      topCount,
+      secondCount,
+      leaders,
+      mixedLeaders,
+      dominant: leaders[0] || null,
+      blend,
+      blendCloseDelta,
+      answered: safe.length,
+    },
+  };
+}
+
+
+export function scoreLearningTypology(test: LearningTypologyTestV1, answers: Array<LearningTypologyChoice | "">): ScoreResult {
+  const tags: LearningTypologyTag[] = Array.isArray(test.scoring?.tags)
+    ? (test.scoring.tags as any)
+    : (["OBS", "EXP", "PRA", "THE"] as any);
+  const tagToName = (test.scoring?.tag_to_name || {}) as Record<string, string>;
+  const thresholds = test.scoring?.thresholds_count || { dominant_min: 9, high_min: 7, medium_min: 5 };
+  const blendCloseDelta = Number.isFinite(Number(test.scoring?.blend_close_delta)) ? Number(test.scoring?.blend_close_delta) : 1;
+
+  const counts = Object.fromEntries(tags.map((t) => [t, 0])) as Record<LearningTypologyTag, number>;
+  const maxByFactor = Object.fromEntries(tags.map((t) => [t, 0])) as Record<LearningTypologyTag, number>;
+  const total = test.questions?.length ?? answers?.length ?? 0;
+  const safe: string[] = [];
+
+  for (const q of test.questions || []) {
+    for (const tag of tags) {
+      if ((q.options || []).some((opt: any) => Array.isArray(opt?.tags) && opt.tags.includes(tag))) {
+        maxByFactor[tag] = (maxByFactor[tag] ?? 0) + 1;
+      }
+    }
+  }
+
+  (test.questions || []).forEach((q, idx) => {
+    const raw = String(answers?.[idx] || "").toUpperCase();
+    const choice = raw === "A" || raw === "B" || raw === "C" || raw === "D" ? (raw as LearningTypologyChoice) : "";
+    safe.push(choice);
+    if (!choice) return;
+    const opt = (q.options || []).find((o: any) => String(o?.code || "").toUpperCase() === choice);
+    if (!opt) throw new Error(`Нет варианта ${choice} для вопроса #${idx + 1}`);
+    const optTags = Array.isArray(opt?.tags) ? (opt.tags as LearningTypologyTag[]) : [];
+    for (const tag of optTags) {
+      if (counts[tag] === undefined) continue;
+      counts[tag] = (counts[tag] ?? 0) + 1;
+    }
+  });
+
+  const levelFor = (count: number) => {
+    if (count >= (thresholds.dominant_min ?? 9)) return "доминирующий";
+    if (count >= (thresholds.high_min ?? 7)) return "высокий";
+    if (count >= (thresholds.medium_min ?? 5)) return "средний";
+    return "низкий";
+  };
+
+  const percents = Object.fromEntries(
+    tags.map((t) => {
+      const max = Number(maxByFactor[t] ?? total ?? 0);
+      return [t, max > 0 ? Math.round(((counts[t] ?? 0) / max) * 100) : 0];
+    })
+  ) as Record<LearningTypologyTag, number>;
+
+  const ranked: ScoreRow[] = tags.map((t) => ({
+    tag: t,
+    style: tagToName[t] || t,
+    count: counts[t] ?? 0,
+    percent: percents[t] ?? 0,
+    level: levelFor(counts[t] ?? 0),
+  }));
+
+  const sorted = [...ranked].sort((a, b) => Number(b.count ?? 0) - Number(a.count ?? 0));
+  const topCount = Number(sorted[0]?.count ?? 0);
+  const secondCount = Number(sorted[1]?.count ?? 0);
+  const leaders = sorted.filter((r) => Number(r.count ?? 0) === topCount).map((r) => String(r.tag));
+  const mixedLeaders =
+    leaders.length > 1
+      ? leaders
+      : sorted.filter((r) => topCount - Number(r.count ?? 0) <= blendCloseDelta && Number(r.count ?? 0) > 0).map((r) => String(r.tag));
+  const blend = [...new Set((mixedLeaders.length ? mixedLeaders : leaders).sort())].join("+");
+
+  return {
+    kind: "learning_typology_v1",
+    total,
+    counts: counts as any,
+    percents: percents as any,
+    ranked,
+    meta: {
+      maxByFactor,
+      topCount,
+      secondCount,
+      leaders,
+      mixedLeaders,
+      dominant: leaders[0] || null,
+      blend,
+      blendCloseDelta,
+      answered: safe.filter(Boolean).length,
+      rawChoices: safe,
+      totalAwardedPoints: Object.values(counts).reduce((acc, n) => acc + Number(n || 0), 0),
     },
   };
 }

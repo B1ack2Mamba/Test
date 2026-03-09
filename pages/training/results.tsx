@@ -120,6 +120,11 @@ export default function TrainingResults() {
                           return Number.isFinite(d) ? Number(d) : null;
                         }
                         if (result.kind === "usk_v1") return (result as any).total || 10;
+                        if (result.kind === "time_management_v1") return (result as any).total || 14;
+                        if (result.kind === "learning_typology_v1") {
+                          const d = (result as any).meta?.maxByFactor?.[r.tag];
+                          return Number.isFinite(d) ? Number(d) : ((result as any).total || 20);
+                        }
                         if (result.kind === "16pf_v1") return 10;
                         if (result.kind === "belbin_v1") return (result as any).total || 70;
                         return null;

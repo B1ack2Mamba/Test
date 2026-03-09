@@ -1,9 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
 import { loadTestJsonBySlugAdmin } from "@/lib/loadTestAdmin";
-import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance, scoreBelbin, scoreEmin } from "@/lib/score";
+import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance, scoreBelbin, scoreEmin, scoreTimeManagement, scoreLearningTypology } from "@/lib/score";
 import { ensureRoomTests } from "@/lib/trainingRoomTests";
-import type { Tag } from "@/lib/testTypes";
+import type { Tag, TimeManagementTag, LearningTypologyChoice } from "@/lib/testTypes";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -118,6 +118,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       result = scoreEmin(test as any, safe as any);
       answersJson = { emin: safe };
+
+    } else if (test.type === "time_management_v1") {
+      const arr = Array.isArray(answers) ? (answers as any[]) : (Array.isArray(answers?.chosen) ? answers.chosen : []);
+      const safe = (arr as any[]).map((v) => {
+        const t = String(v || "").toUpperCase();
+        return t === "L" || t === "P" || t === "C" ? (t as TimeManagementTag) : "";
+      });
+      const chosen = safe.filter(Boolean) as TimeManagementTag[];
+      result = scoreTimeManagement(test as any, chosen as any);
+      answersJson = { chosen: safe };
+
+    } else if (test.type === "learning_typology_v1") {
+      const arr = Array.isArray(answers) ? (answers as any[]) : (Array.isArray(answers?.chosen) ? answers.chosen : []);
+      const safe = (arr as any[]).map((v) => {
+        const t = String(v || "").toUpperCase();
+        return t === "A" || t === "B" || t === "C" || t === "D" ? (t as LearningTypologyChoice) : "";
+      });
+      result = scoreLearningTypology(test as any, safe as any);
+      answersJson = { chosen: safe };
 
     } else if (test.type === "situational_guidance_v1") {
       const arr = Array.isArray(answers) ? (answers as any[]) : [];

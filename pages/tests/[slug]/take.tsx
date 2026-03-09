@@ -11,10 +11,15 @@ import type {
   USKTestV1,
   PF16TestV1,
   SituationalGuidanceTestV1,
+  TimeManagementTestV1,
+  TimeManagementTag,
+  LearningTypologyTestV1,
+  LearningTypologyTag,
+  LearningTypologyChoice,
   Tag,
   ABC,
 } from "@/lib/testTypes";
-import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance, scoreBelbin } from "@/lib/score";
+import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance, scoreBelbin, scoreTimeManagement, scoreLearningTypology } from "@/lib/score";
 import { useSession } from "@/lib/useSession";
 import { PAYMENTS_UI_ENABLED } from "@/lib/payments";
 import { saveAttempt, updateAttempt } from "@/lib/localHistory";
@@ -1507,6 +1512,211 @@ function PF16Form({ test }: { test: PF16TestV1 }) {
     </Layout>
   );
 }
+function TimeManagementForm({ test }: { test: TimeManagementTestV1 }) {
+  const router = useRouter();
+  const { user } = useSession();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [chosen, setChosen] = useState<(TimeManagementTag | "")[]>(() => Array(test.questions?.length ?? 0).fill(""));
+
+  useEffect(() => {
+    const d: any = getSessionDraft<any>(test.slug);
+    const arr = Array.isArray(d) ? d : Array.isArray(d?.chosen) ? d.chosen : Array.isArray(d?.tm) ? d.tm : null;
+    if (arr && Array.isArray(arr)) {
+      const next = arr.slice(0, test.questions.length).map((v: any) => {
+        const t = String(v || "").toUpperCase();
+        return t === "L" || t === "P" || t === "C" ? (t as TimeManagementTag) : "";
+      });
+      while (next.length < test.questions.length) next.push("");
+      setChosen(next as any);
+    }
+  }, [test.slug, test.questions.length]);
+
+  const answered = useMemo(() => chosen.filter(Boolean).length, [chosen]);
+  const canSubmit = answered === test.questions.length;
+
+  const save = (next: (TimeManagementTag | "")[]) => {
+    setChosen(next);
+    setSessionDraft(test.slug, { chosen: next });
+  };
+
+  const submit = async () => {
+    if (!canSubmit || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = scoreTimeManagement(test as any, chosen.filter(Boolean) as TimeManagementTag[]);
+      const userId = user?.id || "guest";
+      if (typeof window !== "undefined") {
+        saveAttempt(userId, test.slug, res);
+        window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
+        window.sessionStorage.removeItem(authorKey(test.slug));
+        router.push(`/tests/${test.slug}/result`);
+      }
+    } catch (e: any) {
+      setError(e?.message || "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Layout title={test.title}>
+      <div className="card">
+        <div className="text-sm text-slate-700">{test.instructions || "Выберите по одному варианту в каждом пункте."}</div>
+        <div className="mt-2 text-xs text-slate-600">Прогресс: {answered}/{test.questions.length}</div>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        {(test.questions || []).map((q, idx) => {
+          const cur = chosen[idx] || "";
+          return (
+            <div key={idx} className="card">
+              <div className="mb-3 text-sm font-medium text-slate-700">{idx + 1}. {String(q.text || "")}</div>
+              <div className="grid gap-2">
+                {q.options.map((o, optIdx) => {
+                  const tag = String(o.tag || "").toUpperCase();
+                  const active = cur === tag;
+                  return (
+                    <button
+                      key={`${idx}:${tag}:${optIdx}`}
+                      type="button"
+                      onClick={() => {
+                        const next = [...chosen];
+                        next[idx] = tag === "L" || tag === "P" || tag === "C" ? (tag as TimeManagementTag) : "";
+                        save(next);
+                      }}
+                      className={cls(active)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-sm">{o.text}</div>
+                        <div className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] ${active ? "border-indigo-400 bg-indigo-100 text-indigo-900" : "border-slate-200 bg-white text-slate-500"}`}>
+                          {tag}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 flex justify-end">
+        <button type="button" onClick={submit} disabled={!canSubmit || busy} className="btn btn-primary">
+          {busy ? "Сохраняем…" : buttonLabel(test)}
+        </button>
+      </div>
+
+      {error ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
+    </Layout>
+  );
+}
+
+
+function LearningTypologyForm({ test }: { test: LearningTypologyTestV1 }) {
+  const router = useRouter();
+  const { user } = useSession();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [chosen, setChosen] = useState<(LearningTypologyChoice | "")[]>(() => Array(test.questions?.length ?? 0).fill(""));
+
+  useEffect(() => {
+    const d: any = getSessionDraft<any>(test.slug);
+    const arr = Array.isArray(d) ? d : Array.isArray(d?.chosen) ? d.chosen : Array.isArray(d?.learning) ? d.learning : null;
+    if (arr && Array.isArray(arr)) {
+      const next = arr.slice(0, test.questions.length).map((v: any) => {
+        const t = String(v || "").toUpperCase();
+        return t === "A" || t === "B" || t === "C" || t === "D" ? (t as LearningTypologyChoice) : "";
+      });
+      while (next.length < test.questions.length) next.push("");
+      setChosen(next as any);
+    }
+  }, [test.slug, test.questions.length]);
+
+  const answered = useMemo(() => chosen.filter(Boolean).length, [chosen]);
+  const canSubmit = answered === test.questions.length;
+
+  const save = (next: (LearningTypologyChoice | "")[]) => {
+    setChosen(next);
+    setSessionDraft(test.slug, { chosen: next });
+  };
+
+  const submit = async () => {
+    if (!canSubmit || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = scoreLearningTypology(test as any, chosen as any);
+      const userId = user?.id || "guest";
+      if (typeof window !== "undefined") {
+        saveAttempt(userId, test.slug, res);
+        window.sessionStorage.setItem(resultKey(test.slug), JSON.stringify(res));
+        window.sessionStorage.removeItem(authorKey(test.slug));
+        router.push(`/tests/${test.slug}/result`);
+      }
+    } catch (e: any) {
+      setError(e?.message || "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Layout title={test.title}>
+      <div className="card">
+        <div className="text-sm text-slate-700">{test.instructions || "Выберите по одному варианту в каждом пункте."}</div>
+        <div className="mt-2 text-xs text-slate-600">Прогресс: {answered}/{test.questions.length}</div>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        {(test.questions || []).map((q, idx) => {
+          const cur = chosen[idx] || "";
+          return (
+            <div key={idx} className="card">
+              <div className="mb-3 text-sm font-medium text-slate-700">{idx + 1}. {String(q.text || "")}</div>
+              <div className="grid gap-2">
+                {q.options.map((o, optIdx) => {
+                  const code = String(o.code || "").toUpperCase();
+                  const active = cur === code;
+                  return (
+                    <button
+                      key={`${idx}:${code}:${optIdx}`}
+                      type="button"
+                      onClick={() => {
+                        const next = [...chosen];
+                        next[idx] = code === "A" || code === "B" || code === "C" || code === "D" ? (code as LearningTypologyChoice) : "";
+                        save(next);
+                      }}
+                      className={cls(active)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-sm">{o.text}</div>
+                        <div className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] ${active ? "border-indigo-400 bg-indigo-100 text-indigo-900" : "border-slate-200 bg-white text-slate-500"}`}>
+                          {code}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 flex justify-end">
+        <button type="button" onClick={submit} disabled={!canSubmit || busy} className="btn btn-primary">
+          {busy ? "Сохраняем…" : buttonLabel(test)}
+        </button>
+      </div>
+
+      {error ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
+    </Layout>
+  );
+}
+
 export default function TakeTest({ test }: { test: AnyTest }) {
   // В редких случаях хочется очистить черновик вручную (например, при смене теста)
   const router = useRouter();
@@ -1527,6 +1737,10 @@ export default function TakeTest({ test }: { test: AnyTest }) {
         <BelbinForm test={test as any} />
       ) : test.type === "16pf_v1" ? (
         <PF16Form test={test as PF16TestV1} />
+      ) : test.type === "time_management_v1" ? (
+        <TimeManagementForm test={test as TimeManagementTestV1} />
+      ) : test.type === "learning_typology_v1" ? (
+        <LearningTypologyForm test={test as LearningTypologyTestV1} />
       ) : (
         <Layout title={test.title}>
           <div className="card">

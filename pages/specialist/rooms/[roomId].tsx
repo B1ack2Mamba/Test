@@ -400,7 +400,7 @@ function Digits({ result }: { result: ScoreResult }) {
               </>
             ) : (
               <div className="text-sm font-medium">
-                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-md border bg-white text-[11px] text-zinc-700">
+                <span className="mr-2 inline-flex min-w-10 items-center justify-center rounded-md border bg-white px-2 py-0.5 text-[11px] text-zinc-700">
                   {String(r.tag)}
                 </span>
                 {r.style}
@@ -659,6 +659,46 @@ ${pickedSide === "B" ? "✅ " : ""}Вариант 2: ${bText || "—"}`
       });
     }
 
+    // time_management_v1 (Тайм-менеджмент) — один выбор из 3 вариантов (L/P/C)
+    if (attemptTest.type === "time_management_v1") {
+      const arr: any[] = Array.isArray((attempt as any)?.answers?.chosen)
+        ? (attempt as any).answers.chosen
+        : Array.isArray((attempt as any)?.answers)
+          ? ((attempt as any).answers as any[])
+          : [];
+      return (attemptTest.questions || []).map((q: any, i: number) => {
+        const chosen = String(arr[i] || "").toUpperCase();
+        const options = Array.isArray(q?.options) ? q.options : [];
+        const picked = options.find((o: any) => String(o?.tag || "").toUpperCase() === chosen);
+        const answer = chosen && picked
+          ? `Выбран вариант: ${chosen}
+
+${String(picked?.text || "")}`
+          : "Выбран вариант: —";
+        return { title: `${i + 1}. ${safeText(q?.text || "")}`, answer };
+      });
+    }
+
+
+    // learning_typology_v1 (Типология личности обучения) — выбор A/B/C/D
+    if (attemptTest.type === "learning_typology_v1") {
+      const arr: any[] = Array.isArray((attempt as any)?.answers?.chosen)
+        ? (attempt as any).answers.chosen
+        : Array.isArray((attempt as any)?.answers)
+          ? ((attempt as any).answers as any[])
+          : [];
+      return (attemptTest.questions || []).map((q: any, i: number) => {
+        const chosen = String(arr[i] || "").toUpperCase();
+        const options = Array.isArray(q?.options) ? q.options : [];
+        const picked = options.find((o: any) => String(o?.code || "").toUpperCase() === chosen);
+        const answer = chosen && picked
+          ? `Выбран вариант: ${chosen}
+
+${String(picked?.text || "")}`
+          : "Выбран вариант: —";
+        return { title: `${i + 1}. ${safeText(q?.text || "")}`, answer };
+      });
+    }
     if (attemptTest.type !== "pair_sum5_v1" && attemptTest.type !== "pair_split_v1") {
       return [] as { title: string; answer: string }[];
     }

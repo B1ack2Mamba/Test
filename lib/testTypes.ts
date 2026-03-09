@@ -287,6 +287,96 @@ export type EminTestV1 = {
 };
 
 
+
+
+// ===================== Time management / Time perception =====================
+
+export type TimeManagementTag = "L" | "P" | "C";
+
+export type TimeManagementOption = {
+  tag: TimeManagementTag;
+  text: string;
+};
+
+export type TimeManagementQuestion = {
+  order: number;
+  text: string;
+  options: [TimeManagementOption, TimeManagementOption, TimeManagementOption];
+};
+
+export type TimeManagementScoring = {
+  tags: TimeManagementTag[];
+  tag_to_name: Record<TimeManagementTag, string>;
+  thresholds_count?: {
+    high_min: number;
+    medium_min: number;
+  };
+  blend_close_delta?: number;
+};
+
+export type TimeManagementTestV1 = {
+  slug: string;
+  title: string;
+  description?: string;
+  instructions?: string;
+  type: "time_management_v1";
+  pricing?: {
+    interpretation_rub?: number;
+    details_rub?: number;
+  };
+  has_interpretation?: boolean;
+  questions: TimeManagementQuestion[];
+  scoring: TimeManagementScoring;
+};
+
+
+
+
+
+// ===================== Learning typology / Learning styles =====================
+
+export type LearningTypologyTag = "OBS" | "EXP" | "PRA" | "THE";
+export type LearningTypologyChoice = "A" | "B" | "C" | "D";
+
+export type LearningTypologyOption = {
+  code: LearningTypologyChoice;
+  text: string;
+  /** One option can support one or several styles (for paired binary items). */
+  tags: LearningTypologyTag[];
+};
+
+export type LearningTypologyQuestion = {
+  order: number;
+  text: string;
+  options: LearningTypologyOption[];
+};
+
+export type LearningTypologyScoring = {
+  tags: LearningTypologyTag[];
+  tag_to_name: Record<LearningTypologyTag, string>;
+  thresholds_count?: {
+    dominant_min: number;
+    high_min: number;
+    medium_min: number;
+  };
+  blend_close_delta?: number;
+};
+
+export type LearningTypologyTestV1 = {
+  slug: string;
+  title: string;
+  description?: string;
+  instructions?: string;
+  type: "learning_typology_v1";
+  pricing?: {
+    interpretation_rub?: number;
+    details_rub?: number;
+  };
+  has_interpretation?: boolean;
+  questions: LearningTypologyQuestion[];
+  scoring: LearningTypologyScoring;
+};
+
 // ===================== Belbin Team Roles =====================
 
 export type BelbinLetter = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H";
@@ -376,4 +466,6 @@ export type AnyTest =
   | SituationalGuidanceTestV1
   | BelbinTestV1
   | PF16TestV1
-  | EminTestV1;
+  | EminTestV1
+  | TimeManagementTestV1
+  | LearningTypologyTestV1;

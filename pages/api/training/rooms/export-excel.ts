@@ -282,6 +282,35 @@ ${roleToName[r] || r}`,
       continue;
     }
 
+    // Тайм-менеджмент
+    if (type === "time_management_v1" || slug === "time-management") {
+      const tagToName = (t?.scoring?.tag_to_name || {}) as Record<string, string>;
+      const sub: ColDef[] = ["L", "P", "C"].flatMap((tag) => ([
+        {
+          key: `${slug}:${tag}`,
+          header2: tagToName[tag] || tag,
+          group: title,
+          test_slug: slug,
+          width: 24,
+          fromResult: (r) => r?.counts?.[tag] ?? null,
+        },
+        {
+          key: `${slug}:${tag}:level`,
+          header2: `${tag} уровень`,
+          group: title,
+          test_slug: slug,
+          width: 14,
+          fromResult: (r) => {
+            const arr = Array.isArray(r?.ranked) ? (r.ranked as any[]) : [];
+            const row = arr.find((x) => String((x as any)?.tag) === String(tag));
+            return (row as any)?.level ?? null;
+          },
+        }
+      ]));
+      pushGroup(title, sub);
+      continue;
+    }
+
     // ЭМИН (эмоциональный интеллект, Люсин)
     if (type === "emin_v1" || slug === "emin") {
       const scaleToName = (t?.scoring?.scale_to_name || {}) as Record<string, string>;
@@ -302,6 +331,37 @@ ${roleToName[r] || r}`,
           group: title,
           test_slug: slug,
           width: 14,
+          fromResult: (r) => {
+            const arr = Array.isArray(r?.ranked) ? (r.ranked as any[]) : [];
+            const row = arr.find((x) => String((x as any)?.tag) === String(sc));
+            return (row as any)?.level ?? null;
+          },
+        });
+      }
+      pushGroup(title, sub);
+      continue;
+    }
+
+    // Типология личности обучения
+    if (type === "learning_typology_v1" || slug === "learning-typology") {
+      const tagToName = (t?.scoring?.tag_to_name || {}) as Record<string, string>;
+      const order = ["OBS", "EXP", "PRA", "THE"];
+      const sub: ColDef[] = [];
+      for (const sc of order) {
+        sub.push({
+          key: `${slug}:${sc}`,
+          header2: tagToName[sc] || sc,
+          group: title,
+          test_slug: slug,
+          width: 22,
+          fromResult: (r) => r?.counts?.[sc] ?? null,
+        });
+        sub.push({
+          key: `${slug}:${sc}:level`,
+          header2: `${sc} уровень`,
+          group: title,
+          test_slug: slug,
+          width: 16,
           fromResult: (r) => {
             const arr = Array.isArray(r?.ranked) ? (r.ranked as any[]) : [];
             const row = arr.find((x) => String((x as any)?.tag) === String(sc));

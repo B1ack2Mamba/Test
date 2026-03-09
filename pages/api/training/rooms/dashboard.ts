@@ -22,7 +22,7 @@ function miniFromResult(result: any): string {
     const b = sorted[1];
     const denomFor = (row: any) => {
       if (!row) return null;
-      if (r.kind === "forced_pair_v1" || r.kind === "color_types_v1" || r.kind === "usk_v1") return r.total;
+      if (r.kind === "forced_pair_v1" || r.kind === "color_types_v1" || r.kind === "usk_v1" || r.kind === "time_management_v1" || r.kind === "learning_typology_v1") return r.total;
       if (r.kind === "pair_sum5_v1") {
         const m = (r as any).meta?.maxByFactor;
         const d = m?.[row.tag];

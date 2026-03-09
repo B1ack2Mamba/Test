@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import { getTestBySlug } from "@/lib/loadTests";
-import type { AnyTest, ABC } from "@/lib/testTypes";
+import type { AnyTest, ABC, TimeManagementTag, LearningTypologyChoice } from "@/lib/testTypes";
 import { useSession } from "@/lib/useSession";
 
 function cls(active: boolean) {
@@ -146,6 +146,12 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
   // ЭМИН (Люсин): 46 утверждений, ответы 0..3
   const [emin, setEmin] = useState<(number | null)[]>(() => Array(test.questions?.length ?? 0).fill(null));
 
+  // Тайм-менеджмент: выбор одного из 3 вариантов (L/P/C)
+  const [tm, setTm] = useState<(TimeManagementTag | "")[]>(() => Array(test.questions?.length ?? 0).fill(""));
+
+  // Типология личности обучения: выбор A/B/C/D, в некоторых пунктах только 2 варианта
+  const [lt, setLt] = useState<(LearningTypologyChoice | "")[]>(() => Array(test.questions?.length ?? 0).fill(""));
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     // Wait for router to provide the real roomId before reading the draft.
@@ -219,6 +225,38 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
           setEmin(full);
         }
       }
+
+      // Тайм-менеджмент: draft is stored as chosen tags L/P/C (or { chosen:[...] }).
+      if (test.type === "time_management_v1") {
+        const arr = Array.isArray(d) ? (d as any[]) : Array.isArray(d?.chosen) ? (d.chosen as any[]) : Array.isArray(d?.tm) ? (d.tm as any[]) : null;
+        if (arr) {
+          const safe = arr
+            .map((v) => {
+              const t = String(v || "").toUpperCase();
+              return t === "L" || t === "P" || t === "C" ? (t as TimeManagementTag) : "";
+            })
+            .slice(0, test.questions?.length ?? 0);
+          const full = Array(test.questions?.length ?? 0).fill("") as (TimeManagementTag | "")[];
+          for (let i = 0; i < safe.length; i++) full[i] = safe[i];
+          setTm(full);
+        }
+      }
+
+      // Типология личности обучения: draft is stored as chosen A/B/C/D (or { chosen:[...] }).
+      if (test.type === "learning_typology_v1") {
+        const arr = Array.isArray(d) ? (d as any[]) : Array.isArray(d?.chosen) ? (d.chosen as any[]) : Array.isArray(d?.learning) ? (d.learning as any[]) : null;
+        if (arr) {
+          const safe = arr
+            .map((v) => {
+              const t = String(v || "").toUpperCase();
+              return t === "A" || t === "B" || t === "C" || t === "D" ? (t as LearningTypologyChoice) : "";
+            })
+            .slice(0, test.questions?.length ?? 0);
+          const full = Array(test.questions?.length ?? 0).fill("") as (LearningTypologyChoice | "")[];
+          for (let i = 0; i < safe.length; i++) full[i] = safe[i];
+          setLt(full);
+        }
+      }
     } catch {
       // ignore
     }
@@ -268,6 +306,12 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
     if (test.type === "emin_v1") {
       return emin.filter((v) => v !== null).length;
     }
+    if (test.type === "time_management_v1") {
+      return tm.filter(Boolean).length;
+    }
+    if (test.type === "learning_typology_v1") {
+      return lt.filter(Boolean).length;
+    }
     if (test.type === "situational_guidance_v1") {
       return sg.filter(Boolean).length;
     }
@@ -275,7 +319,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
       return forced.filter(Boolean).length;
     }
     return leftPoints.filter((v) => v !== null).length;
-  }, [test.type, forced, leftPoints, colorDraft, pf16, emin, sg, belbin]);
+  }, [test.type, forced, leftPoints, colorDraft, pf16, emin, tm, lt, sg, belbin]);
 
   const totalRequired = test.type === "color_types_v1" ? 6 : test.type === "belbin_v1" ? (test.questions?.length ?? 7) : (test.questions?.length ?? 0);
   const pf16AgeOk = typeof pf16Age === "number" && Number.isFinite(pf16Age) && pf16Age >= 16 && pf16Age <= 70;
@@ -325,6 +369,10 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                 ? (belbin as any)
               : test.type === "emin_v1"
                 ? (emin.map((v) => (v === null ? 0 : Number(v))) as number[])
+              : test.type === "time_management_v1"
+                ? (tm.map((v) => (v || "")) as any)
+              : test.type === "learning_typology_v1"
+                ? (lt.map((v) => (v || "")) as any)
               : (leftPoints.map((v) => Number(v)) as number[]);
 
       const r = await fetch("/api/training/attempts/submit", {
@@ -401,6 +449,26 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
       if (typeof window !== "undefined") {
         if (!roomId) return;
         window.sessionStorage.setItem(`training:${roomId}:draft:${test.slug}`, JSON.stringify({ emin: next }));
+      }
+    } catch {}
+  };
+
+  const saveTimeDraft = (next: (TimeManagementTag | "")[]) => {
+    setTm(next);
+    try {
+      if (typeof window !== "undefined") {
+        if (!roomId) return;
+        window.sessionStorage.setItem(`training:${roomId}:draft:${test.slug}`, JSON.stringify({ chosen: next }));
+      }
+    } catch {}
+  };
+
+  const saveLearningDraft = (next: (LearningTypologyChoice | "")[]) => {
+    setLt(next);
+    try {
+      if (typeof window !== "undefined") {
+        if (!roomId) return;
+        window.sessionStorage.setItem(`training:${roomId}:draft:${test.slug}`, JSON.stringify({ chosen: next }));
       }
     } catch {}
   };
@@ -615,6 +683,108 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
                         <div className="text-sm">{o.label}</div>
                       </button>
                     ))}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        ) : test.type === "time_management_v1" ? (
+          <>
+            <details className="card">
+              <summary className="cursor-pointer text-sm font-medium text-zinc-800">
+                Инструкция (нажми, чтобы раскрыть)
+              </summary>
+              <div className="mt-3 text-sm text-slate-700">
+                В каждом вопросе выбери один вариант. Тест покажет, какой стиль обращения со временем у тебя выражен сильнее.
+              </div>
+              <div className="mt-2 text-xs text-slate-600">
+                L — линейный, P — параллельный, C — циклический стиль. В интерфейсе показываются только формулировки ответов.
+              </div>
+            </details>
+
+            {(test.questions || []).map((q: any, idx: number) => {
+              const chosen = tm[idx] || "";
+              const options = Array.isArray(q?.options) ? q.options : [];
+              return (
+                <div key={idx} className="card">
+                  <div className="mb-3 text-sm font-medium text-slate-700">
+                    {idx + 1}. {String(q?.text || "")}
+                  </div>
+                  <div className="grid gap-2">
+                    {options.map((o: any, optIdx: number) => {
+                      const tag = String(o?.tag || "").toUpperCase();
+                      const isActive = chosen === tag;
+                      return (
+                        <button
+                          key={`${idx}:${tag}:${optIdx}`}
+                          type="button"
+                          className={cls(isActive)}
+                          onClick={() => {
+                            const next = [...tm];
+                            next[idx] = tag === "L" || tag === "P" || tag === "C" ? (tag as TimeManagementTag) : "";
+                            saveTimeDraft(next);
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="text-sm">{String(o?.text || "")}</div>
+                            <div className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] ${isActive ? "border-indigo-400 bg-indigo-100 text-indigo-900" : "border-slate-200 bg-white text-slate-500"}`}>
+                              {tag || "—"}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        ) : test.type === "learning_typology_v1" ? (
+          <>
+            <details className="card">
+              <summary className="cursor-pointer text-sm font-medium text-zinc-800">
+                Инструкция (нажми, чтобы раскрыть)
+              </summary>
+              <div className="mt-3 text-sm text-slate-700">
+                Выбирай по одному варианту в каждом вопросе. Тест показывает, какой стиль обучения и освоения опыта выражен у тебя сильнее.
+              </div>
+              <div className="mt-2 text-xs text-slate-600">
+                Стили считаются автоматически: наблюдатель, экспериментатор, практик и теоретик. В интерфейсе участнику показываются только формулировки ответов.
+              </div>
+            </details>
+
+            {(test.questions || []).map((q: any, idx: number) => {
+              const chosen = lt[idx] || "";
+              const options = Array.isArray(q?.options) ? q.options : [];
+              return (
+                <div key={idx} className="card">
+                  <div className="mb-3 text-sm font-medium text-slate-700">
+                    {idx + 1}. {String(q?.text || "")}
+                  </div>
+                  <div className="grid gap-2">
+                    {options.map((o: any, optIdx: number) => {
+                      const code = String(o?.code || "").toUpperCase();
+                      const isActive = chosen === code;
+                      return (
+                        <button
+                          key={`${idx}:${code}:${optIdx}`}
+                          type="button"
+                          className={cls(isActive)}
+                          onClick={() => {
+                            const next = [...lt];
+                            next[idx] = code === "A" || code === "B" || code === "C" || code === "D" ? (code as LearningTypologyChoice) : "";
+                            saveLearningDraft(next);
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="text-sm">{String(o?.text || "")}</div>
+                            <div className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] ${isActive ? "border-indigo-400 bg-indigo-100 text-indigo-900" : "border-slate-200 bg-white text-slate-500"}`}>
+                              {code || "—"}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               );
