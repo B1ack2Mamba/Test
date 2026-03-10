@@ -12,13 +12,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!isSpecialistUser(user)) return res.status(403).json({ ok: false, error: "Forbidden" });
 
-  const { room_id, name, password } = (req.body || {}) as any;
+  const body = (req.body || {}) as any;
+  const { room_id, name, password } = body;
   const roomId = String(room_id || "").trim();
   const roomName = typeof name === "string" ? String(name).trim() : "";
   const roomPwd = typeof password === "string" ? String(password).trim() : "";
+  const hasAnalysisPrompt = Object.prototype.hasOwnProperty.call(body, "analysis_prompt");
+  const roomAnalysisPrompt = hasAnalysisPrompt && typeof body.analysis_prompt === "string"
+    ? String(body.analysis_prompt).replace(/\r\n/g, "\n")
+    : "";
 
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
-  if (!roomName && !roomPwd) return res.status(400).json({ ok: false, error: "Нужно указать название комнаты или новый пароль" });
+  if (!roomName && !roomPwd && !hasAnalysisPrompt) {
+    return res.status(400).json({ ok: false, error: "Нужно указать название комнаты, новый пароль или промпт анализа" });
+  }
 
   const { data: room, error: roomErr } = await supabaseAdmin
     .from("training_rooms")
@@ -44,6 +51,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  if (hasAnalysisPrompt) {
+    patch.analysis_prompt = roomAnalysisPrompt;
+  }
+
   const { data, error } = await supabaseAdmin
     .from("training_rooms")
     .update(patch)
@@ -51,6 +62,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .select("id,name")
     .single();
 
-  if (error) return res.status(500).json({ ok: false, error: error.message });
+  if (error) {
+    if (/analysis_prompt/i.test(error.message || "")) {
+      return res.status(500).json({
+        ok: false,
+        error: "В базе нет поля analysis_prompt. Выполните SQL миграцию supabase/training_rooms_analysis_prompt.sql и повторите.",
+      });
+    }
+    return res.status(500).json({ ok: false, error: error.message });
+  }
   return res.status(200).json({ ok: true, room: data, password_updated: Boolean(roomPwd) });
 }

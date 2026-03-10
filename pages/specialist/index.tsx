@@ -153,6 +153,11 @@ export default function SpecialistHome() {
     <Layout title="Кабинет специалиста">
       <div className="mb-4 card text-sm text-zinc-700">
         Здесь вы создаёте комнаты тренинга, наблюдаете участников и открываете результаты в цифрах.
+        <div className="mt-3">
+          <Link href="/specialist/analysis" className="btn btn-secondary btn-sm">
+            Перейти в AI-аналитику клиентов
+          </Link>
+        </div>
       </div>
 
       <div className="mb-6 card">
@@ -208,6 +213,14 @@ export default function SpecialistHome() {
                   Тренинг-режим: цифры участникам
                 </div>
               ) : null}
+            </Link>
+
+            <Link
+              href={`/specialist/analysis?room_id=${encodeURIComponent(r.id)}`}
+              className="btn btn-secondary w-full sm:w-auto sm:min-h-[34px] sm:rounded-lg sm:px-3 sm:py-1.5 sm:text-[13px]"
+              title="AI-аналитика"
+            >
+              AI-аналитика
             </Link>
 
             <button

@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
-import { ensureRoomTests, enabledRoomTests } from "@/lib/trainingRoomTests";
+import { enabledRoomTests, getRoomTestsSafe } from "@/lib/trainingRoomTests";
 import { isSpecialistUser } from "@/lib/specialist";
 import type { ScoreResult } from "@/lib/score";
 
@@ -64,15 +64,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .maybeSingle();
   if (memErr || !member || member.role !== "specialist") return res.status(403).json({ ok: false, error: "Forbidden" });
 
-  const { data: room, error: roomErr } = await supabaseAdmin
-    .from("training_rooms")
-    .select("id,name,created_by_email,is_active,created_at")
-    .eq("id", roomId)
-    .maybeSingle();
+  const sb: any = supabaseAdmin as any;
+  const selectRoom = async (withPrompt: boolean) => {
+    const sel = withPrompt
+      ? "id,name,created_by_email,is_active,created_at,analysis_prompt"
+      : "id,name,created_by_email,is_active,created_at";
+    return await sb.from("training_rooms").select(sel).eq("id", roomId).maybeSingle();
+  };
+
+  let { data: room, error: roomErr } = await selectRoom(true);
+  if (roomErr && /analysis_prompt/i.test(roomErr.message || "")) {
+    ({ data: room, error: roomErr } = await selectRoom(false));
+  }
   if (roomErr || !room) return res.status(404).json({ ok: false, error: "Room not found" });
 
   try {
-    const roomTests = await ensureRoomTests(supabaseAdmin as any, roomId);
+    const roomTests = await getRoomTestsSafe(supabaseAdmin as any, roomId);
     const enabled = enabledRoomTests(roomTests);
     const enabledSlugs = enabled.map((r) => r.test_slug);
 

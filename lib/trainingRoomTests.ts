@@ -22,13 +22,14 @@ async function fetchPublishedTestSlugs(supabaseAdmin: SupabaseClient): Promise<s
 
 /**
  * Ensure training_room_tests rows exist for all published tests.
- * - If room has zero rows -> initialize with all published tests enabled and ordered.
- * - If new tests appear -> append them.
- * - If tests were removed -> delete stale rows.
+ *
+ * Important dev/perf behavior:
+ * - FIRST read existing rows for the room.
+ * - If rows already exist, return them immediately and do NOT touch `public.tests`.
+ *   This keeps the specialist room fast even when remote Supabase is flaky/timeouts.
+ * - Only query `public.tests` when the room has zero rows and really needs initialization.
  */
 export async function ensureRoomTests(supabaseAdmin: SupabaseClient, roomId: string): Promise<RoomTestRow[]> {
-  const published = await fetchPublishedTestSlugs(supabaseAdmin);
-
   const { data: existing, error: exErr } = await supabaseAdmin
     .from("training_room_tests")
     .select("room_id,test_slug,is_enabled,sort_order,required,deadline_at")
@@ -38,53 +39,24 @@ export async function ensureRoomTests(supabaseAdmin: SupabaseClient, roomId: str
   if (exErr) throw exErr;
 
   const rows = (existing ?? []) as any[];
-  const existingSlugs = new Set(rows.map((r) => String(r.test_slug)));
+  if (rows.length > 0) return rows as any;
 
-  // init empty
-  if (rows.length === 0) {
-    const inserts = published.map((slug, i) => ({
-      room_id: roomId,
-      test_slug: slug,
-      is_enabled: true,
-      sort_order: i,
-      required: false,
-      deadline_at: null,
-    }));
-    if (inserts.length) {
-      const { error: insErr } = await supabaseAdmin.from("training_room_tests").insert(inserts);
-      if (insErr) throw insErr;
-    }
-  } else {
-    // delete stale rows
-    const publishedSet = new Set(published);
-    const stale = rows.filter((r) => !publishedSet.has(String(r.test_slug))).map((r) => String(r.test_slug));
-    if (stale.length) {
-      const { error: delErr } = await supabaseAdmin
-        .from("training_room_tests")
-        .delete()
-        .eq("room_id", roomId)
-        .in("test_slug", stale);
-      if (delErr) throw delErr;
-    }
+  // Empty room: initialize from published tests.
+  const published = await fetchPublishedTestSlugs(supabaseAdmin);
+  const inserts = published.map((slug, i) => ({
+    room_id: roomId,
+    test_slug: slug,
+    is_enabled: true,
+    sort_order: i,
+    required: false,
+    deadline_at: null,
+  }));
 
-    // append missing tests
-    const missing = published.filter((s) => !existingSlugs.has(s));
-    if (missing.length) {
-      const maxOrder = rows.reduce((m, r) => Math.max(m, Number(r.sort_order) || 0), 0);
-      const inserts = missing.map((slug, i) => ({
-        room_id: roomId,
-        test_slug: slug,
-        is_enabled: true,
-        sort_order: maxOrder + 1 + i,
-        required: false,
-        deadline_at: null,
-      }));
-      const { error: insErr } = await supabaseAdmin.from("training_room_tests").insert(inserts);
-      if (insErr) throw insErr;
-    }
+  if (inserts.length) {
+    const { error: insErr } = await supabaseAdmin.from("training_room_tests").insert(inserts);
+    if (insErr) throw insErr;
   }
 
-  // return current rows (sorted)
   const { data: after, error: aftErr } = await supabaseAdmin
     .from("training_room_tests")
     .select("room_id,test_slug,is_enabled,sort_order,required,deadline_at")
@@ -92,6 +64,19 @@ export async function ensureRoomTests(supabaseAdmin: SupabaseClient, roomId: str
     .order("sort_order", { ascending: true });
   if (aftErr) throw aftErr;
   return (after ?? []) as any;
+}
+
+export async function getRoomTestsSafe(supabaseAdmin: SupabaseClient, roomId: string): Promise<RoomTestRow[]> {
+  try {
+    return await ensureRoomTests(supabaseAdmin, roomId);
+  } catch {
+    const { data } = await supabaseAdmin
+      .from("training_room_tests")
+      .select("room_id,test_slug,is_enabled,sort_order,required,deadline_at")
+      .eq("room_id", roomId)
+      .order("sort_order", { ascending: true });
+    return ((data ?? []) as any[]);
+  }
 }
 
 export function sortRoomTests(rows: RoomTestRow[]) {

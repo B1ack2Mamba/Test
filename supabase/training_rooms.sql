@@ -15,6 +15,7 @@ create table if not exists public.training_rooms (
   is_active boolean not null default true,
   -- Training mode: if true, participants can see numeric results in "Мои результаты" (digits-only).
   participants_can_see_digits boolean not null default false,
+  analysis_prompt text,
   created_at timestamptz not null default now()
 );
 

@@ -18,14 +18,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const selectRoom = async (withFlag: boolean) => {
     const sel = withFlag
-      ? "id,name,created_by_email,is_active,participants_can_see_digits"
-      : "id,name,created_by_email,is_active";
+      ? "id,name,created_by_email,is_active,participants_can_see_digits,analysis_prompt"
+      : "id,name,created_by_email,is_active,analysis_prompt";
     return await sb.from("training_rooms").select(sel).eq("id", roomId).maybeSingle();
   };
 
   let { data: room, error } = await selectRoom(true);
-  if (error && /participants_can_see_digits/i.test(error.message)) {
+  if (error && /(participants_can_see_digits|analysis_prompt)/i.test(error.message || "")) {
     ({ data: room, error } = await selectRoom(false));
+    if (error && /analysis_prompt/i.test(error.message || "")) {
+      const sb: any = supabaseAdmin as any;
+      ({ data: room, error } = await sb.from("training_rooms").select("id,name,created_by_email,is_active").eq("id", roomId).maybeSingle());
+    }
   }
 
   if (error || !room) return res.status(404).json({ ok: false, error: "Room not found" });
@@ -46,6 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       created_by_email: room.created_by_email ?? null,
       is_active: room.is_active,
       participants_can_see_digits: Boolean((room as any)?.participants_can_see_digits),
+      analysis_prompt: typeof (room as any)?.analysis_prompt === "string" ? (room as any).analysis_prompt : "",
     },
     member: member ? { role: member.role, display_name: member.display_name } : null,
   });
