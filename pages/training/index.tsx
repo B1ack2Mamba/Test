@@ -16,6 +16,7 @@ export default function TrainingHome() {
   const [joinPwd, setJoinPwd] = useState<string>("");
   const [joinBusy, setJoinBusy] = useState(false);
   const [joinError, setJoinError] = useState("");
+  const [joinConsent, setJoinConsent] = useState(false);
 
   const NAME_KEY = "training_display_name_v1";
 
@@ -77,7 +78,7 @@ export default function TrainingHome() {
       const r = await fetch("/api/training/rooms/join", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ room_id: joinRoomId, password: joinPwd, display_name: joinName }),
+        body: JSON.stringify({ room_id: joinRoomId, password: joinPwd, display_name: joinName, personal_data_consent: joinConsent }),
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось войти");
@@ -152,6 +153,7 @@ export default function TrainingHome() {
                     setJoinRoomId(room.id);
                     setJoinPwd("");
                     setJoinError("");
+                    setJoinConsent(false);
                   }}
                   className="btn btn-secondary btn-sm w-full sm:w-auto"
                 >
@@ -170,9 +172,31 @@ export default function TrainingHome() {
                   <div className="text-xs font-medium text-zinc-700">Пароль комнаты</div>
                   <input value={joinPwd} onChange={(e) => setJoinPwd(e.target.value)} className="input" placeholder="Пароль от тренера" />
                 </div>
+                <label className="mt-1 flex items-start gap-2 rounded-xl border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={joinConsent}
+                    onChange={(e) => setJoinConsent(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-zinc-300"
+                  />
+                  <span>
+                    Я даю согласие на обработку моих персональных данных для участия в тестировании, обработки результатов и предоставления их специалисту.
+                  </span>
+                </label>
+                <div className="-mt-1 text-xs leading-5 text-zinc-500">
+                  Продолжая, вы подтверждаете, что ознакомились с{' '}
+                  <Link href="/legal/privacy" className="underline underline-offset-2 hover:text-zinc-700">
+                    Политикой обработки персональных данных
+                  </Link>{' '}
+                  и{' '}
+                  <Link href="/legal/personal-data-consent" className="underline underline-offset-2 hover:text-zinc-700">
+                    Согласием на обработку персональных данных
+                  </Link>
+                  .
+                </div>
                 {joinError ? <div className="text-sm text-red-600">{joinError}</div> : null}
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <button onClick={join} disabled={joinBusy || !joinPwd || !joinName} className="btn btn-primary w-full sm:w-auto">
+                  <button onClick={join} disabled={joinBusy || !joinPwd || !joinName || !joinConsent} className="btn btn-primary w-full sm:w-auto">
                     {joinBusy ? "Входим…" : "Войти"}
                   </button>
                   <button
