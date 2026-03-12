@@ -31,25 +31,18 @@ export default function TrainingDone() {
       setNextStatus("loading");
       try {
         const headers = { authorization: `Bearer ${session!.access_token}` };
+        const bootstrapRes = await fetch(`/api/training/rooms/bootstrap?room_id=${encodeURIComponent(roomId)}`, { headers });
+        const bootstrapJson: any = await bootstrapRes.json().catch(() => ({}));
 
-        const [testsRes, progRes] = await Promise.all([
-          fetch(`/api/training/rooms/tests/get?room_id=${encodeURIComponent(roomId)}`, { headers }),
-          fetch(`/api/training/progress/my?room_id=${encodeURIComponent(roomId)}`, { headers }),
-        ]);
+        if (!bootstrapRes.ok || !bootstrapJson?.ok) throw new Error(bootstrapJson?.error || "Не удалось загрузить данные комнаты");
 
-        const testsJson: any = await testsRes.json().catch(() => ({}));
-        const progJson: any = await progRes.json().catch(() => ({}));
-
-        if (!testsRes.ok || !testsJson?.ok) throw new Error(testsJson?.error || "Не удалось загрузить список тестов");
-        if (!progRes.ok || !progJson?.ok) throw new Error(progJson?.error || "Не удалось загрузить прогресс");
-
-        const roomTests = Array.isArray(testsJson.room_tests) ? testsJson.room_tests : [];
+        const roomTests = Array.isArray(bootstrapJson.room_tests) ? bootstrapJson.room_tests : [];
         const ordered = [...roomTests]
           .filter((r: any) => !!r && (r.is_enabled === undefined ? true : !!r.is_enabled))
           .sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0))
           .map((r: any) => String(r.test_slug));
 
-        const progress = Array.isArray(progJson.progress) ? progJson.progress : [];
+        const progress = Array.isArray(bootstrapJson.progress) ? bootstrapJson.progress : [];
         const completed = new Set(
           progress
             .filter((p: any) => !!p && !!p.completed_at)

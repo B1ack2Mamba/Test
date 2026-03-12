@@ -266,7 +266,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
     if (!session || !roomId || !test?.slug) return;
     (async () => {
       try {
-        const r = await fetch(`/api/training/rooms/tests/get?room_id=${encodeURIComponent(roomId)}`, {
+        const r = await fetch(`/api/training/rooms/bootstrap?room_id=${encodeURIComponent(roomId)}`, {
           headers: { authorization: `Bearer ${session.access_token}` },
         });
         const j = await r.json();

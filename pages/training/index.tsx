@@ -198,7 +198,10 @@ export default function TrainingHome() {
                   <div className="text-xs font-medium text-zinc-700">Пароль комнаты</div>
                   <input value={joinPwd} onChange={(e) => setJoinPwd(e.target.value)} onClick={(e) => e.stopPropagation()} className="input" placeholder="Пароль от тренера" />
                 </div>
-                <label className="mt-1 flex items-start gap-2 rounded-xl border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-700">
+                <label
+                  className="mt-1 flex items-start gap-2 rounded-xl border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-700"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <input
                     type="checkbox"
                     checked={joinConsent}

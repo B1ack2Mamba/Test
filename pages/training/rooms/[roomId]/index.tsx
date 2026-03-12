@@ -80,35 +80,16 @@ export default function TrainingRoom({ tests }: Props) {
     setLoading(true);
     setErr("");
     try {
-      const r = await fetch(`/api/training/rooms/get?room_id=${encodeURIComponent(roomId)}`, {
+      const r = await fetch(`/api/training/rooms/bootstrap?room_id=${encodeURIComponent(roomId)}`, {
         headers: { authorization: `Bearer ${session.access_token}` },
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить комнату");
       setRoom(j.room);
       setMember(j.member);
-      if (!j.member) {
-        setProgress([]);
-        setRoomTests([]);
-        if (!joinName && j.prefill_display_name) setJoinName(String(j.prefill_display_name));
-        return;
-      }
-
-      const pr = await fetch(`/api/training/progress/my?room_id=${encodeURIComponent(roomId)}`, {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      });
-      const pj = await pr.json();
-      if (!pr.ok || !pj?.ok) throw new Error(pj?.error || "Не удалось загрузить прогресс");
-      setProgress(pj.progress || []);
-
-      const tr = await fetch(`/api/training/rooms/tests/get?room_id=${encodeURIComponent(roomId)}`, {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      });
-      const tj = await tr.json();
-      if (tr.ok && tj?.ok) {
-        setRoomTests(tj.room_tests || []);
-      }
-
+      setProgress(Array.isArray(j.progress) ? j.progress : []);
+      setRoomTests(Array.isArray(j.room_tests) ? j.room_tests : []);
+      if (!j.member && !joinName && j.prefill_display_name) setJoinName(String(j.prefill_display_name));
     } catch (e: any) {
       setErr(e?.message || "Ошибка");
     } finally {
