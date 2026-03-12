@@ -10,7 +10,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!auth) return;
   const { user, supabaseAdmin } = auth;
 
-  const { room_id, password, display_name } = (req.body || {}) as any;
+  const { room_id, password, display_name, personal_data_consent } = (req.body || {}) as any;
   const roomId = String(room_id || "").trim();
   const pwd = String(password || "").trim();
   const name = String(display_name || "").trim();
@@ -18,6 +18,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
   if (!pwd) return res.status(400).json({ ok: false, error: "Пароль обязателен" });
   if (!name) return res.status(400).json({ ok: false, error: "Имя обязательно" });
+  if (!Boolean(personal_data_consent)) {
+    return res.status(400).json({ ok: false, error: "Нужно подтвердить согласие на обработку персональных данных" });
+  }
 
   const { data: room, error: roomErr } = await supabaseAdmin
     .from("training_rooms")
@@ -34,20 +37,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const role = isSpecialistUser(user) ? "specialist" : "participant";
 
-  const { data: member, error } = await supabaseAdmin
-    .from("training_room_members")
-    .upsert(
-      {
-        room_id: roomId,
-        user_id: user.id,
-        display_name: name,
-        role,
-        last_seen: new Date().toISOString(),
-      },
-      { onConflict: "room_id,user_id" }
-    )
-    .select("id,room_id,user_id,display_name,role,joined_at,last_seen")
-    .single();
+  const consentAt = new Date().toISOString();
+  const basePayload: any = {
+    room_id: roomId,
+    user_id: user.id,
+    display_name: name,
+    role,
+    last_seen: consentAt,
+  };
+
+  const upsertMember = async (withConsentCols: boolean) => {
+    const payload: any = { ...basePayload };
+    if (withConsentCols) {
+      payload.personal_data_consent = true;
+      payload.personal_data_consent_at = consentAt;
+    }
+    return await supabaseAdmin
+      .from("training_room_members")
+      .upsert(payload, { onConflict: "room_id,user_id" })
+      .select("id,room_id,user_id,display_name,role,joined_at,last_seen")
+      .single();
+  };
+
+  let { data: member, error } = await upsertMember(true);
+  if (error && /personal_data_consent(_at)?/i.test(error.message || "")) {
+    ({ data: member, error } = await upsertMember(false));
+  }
 
   if (error) return res.status(500).json({ ok: false, error: error.message });
 
