@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
-import { getTrainingRoomSession, saveTrainingRoomSession } from "@/lib/trainingRoomSession";
 
 type Room = { id: string; name: string; created_at: string; created_by_email: string | null; is_joined?: boolean };
 
@@ -73,8 +72,7 @@ export default function TrainingHome() {
 
 
   const openRoom = (room: Room) => {
-    const localSession = getTrainingRoomSession(room.id);
-    if (room.is_joined || localSession) {
+    if (room.is_joined) {
       window.location.href = `/training/rooms/${encodeURIComponent(room.id)}`;
       return;
     }
@@ -98,7 +96,6 @@ export default function TrainingHome() {
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось войти");
       const safeName = String(joinName || "").trim();
       saveNameLocal(safeName);
-      saveTrainingRoomSession(joinRoomId, safeName, true);
       window.location.href = `/training/rooms/${encodeURIComponent(joinRoomId)}`;
     } catch (e: any) {
       setJoinError(e?.message || "Ошибка");
@@ -147,8 +144,7 @@ export default function TrainingHome() {
         </div>
 
         {rooms.map((room) => {
-          const localSession = getTrainingRoomSession(room.id);
-          const canOpenDirect = Boolean(room.is_joined || localSession);
+          const canOpenDirect = Boolean(room.is_joined);
           return (
           <div
             key={room.id}
@@ -169,22 +165,7 @@ export default function TrainingHome() {
                 <div className="mt-1 text-xs text-zinc-500">
                   {room.created_by_email ? `Создатель: ${room.created_by_email}` : ""}
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  {canOpenDirect ? (
-                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
-                      Можно открыть сразу
-                    </span>
-                  ) : (
-                    <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 font-medium text-zinc-600">
-                      Нужен пароль тренера
-                    </span>
-                  )}
-                  {localSession ? (
-                    <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-medium text-sky-700">
-                      Активная сессия ~ 3 часа
-                    </span>
-                  ) : null}
-                </div>
+                {/* production UI: no extra session/status badges here */}
               </div>
 
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">

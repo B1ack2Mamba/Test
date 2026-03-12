@@ -1,15 +1,15 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { requireUser } from "@/lib/serverAuth";
+import { requireTrainingRoomAccess } from "@/lib/trainingRoomServerSession";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
-  const auth = await requireUser(req, res);
-  if (!auth) return;
-  const { user, supabaseAdmin } = auth;
-
   const roomId = String(req.query.room_id || "").trim();
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
+
+  const access = await requireTrainingRoomAccess(req, res, roomId);
+  if (!access) return;
+  const { user, supabaseAdmin } = access;
 
   const { data, error } = await supabaseAdmin
     .from("training_progress")

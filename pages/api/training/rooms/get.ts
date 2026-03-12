@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
+import { getTrainingRoomServerSession } from "@/lib/trainingRoomServerSession";
+import { isSpecialistUser } from "@/lib/specialist";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -11,9 +13,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const roomId = String(req.query.room_id || "").trim();
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
 
-  // Relax typing: many projects ship with locally generated Supabase types that
-  // may lag behind DB migrations. Using `any` prevents Next.js typecheck errors
-  // like GenericStringError/ParserError when selecting optional columns.
   const sb: any = supabaseAdmin as any;
 
   const selectRoom = async (withFlag: boolean) => {
@@ -27,20 +26,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (error && /(participants_can_see_digits|analysis_prompt)/i.test(error.message || "")) {
     ({ data: room, error } = await selectRoom(false));
     if (error && /analysis_prompt/i.test(error.message || "")) {
-      const sb: any = supabaseAdmin as any;
       ({ data: room, error } = await sb.from("training_rooms").select("id,name,created_by_email,is_active").eq("id", roomId).maybeSingle());
     }
   }
 
   if (error || !room) return res.status(404).json({ ok: false, error: "Room not found" });
 
-  // check membership
   const { data: member } = await supabaseAdmin
     .from("training_room_members")
     .select("role,display_name")
     .eq("room_id", roomId)
     .eq("user_id", user.id)
     .maybeSingle();
+
+  let effectiveMember = member ? { role: member.role, display_name: member.display_name } : null;
+  let requiresRejoin = false;
+  let prefillDisplayName = member?.display_name || null;
+
+  if (member && !(member.role === "specialist" && isSpecialistUser(user))) {
+    const sessionState = await getTrainingRoomServerSession(req, supabaseAdmin as any, { roomId, userId: user.id });
+    if (sessionState.error) return res.status(500).json({ ok: false, error: sessionState.error });
+    if (!sessionState.tableMissing && !sessionState.row) {
+      effectiveMember = null;
+      requiresRejoin = true;
+    }
+  }
 
   return res.status(200).json({
     ok: true,
@@ -52,6 +62,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       participants_can_see_digits: Boolean((room as any)?.participants_can_see_digits),
       analysis_prompt: typeof (room as any)?.analysis_prompt === "string" ? (room as any).analysis_prompt : "",
     },
-    member: member ? { role: member.role, display_name: member.display_name } : null,
+    member: effectiveMember,
+    requires_rejoin: requiresRejoin,
+    prefill_display_name: prefillDisplayName,
   });
 }

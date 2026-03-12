@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { requireUser } from "@/lib/serverAuth";
+import { requireTrainingRoomAccess } from "@/lib/trainingRoomServerSession";
 import { loadTestJsonBySlugAdmin } from "@/lib/loadTestAdmin";
 import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance, scoreBelbin, scoreEmin, scoreTimeManagement, scoreLearningTypology } from "@/lib/score";
 import { ensureRoomTests } from "@/lib/trainingRoomTests";
@@ -8,10 +8,6 @@ import type { Tag, TimeManagementTag, LearningTypologyChoice } from "@/lib/testT
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
-  const auth = await requireUser(req, res);
-  if (!auth) return;
-  const { user, supabaseAdmin } = auth;
-
   const { room_id, test_slug, answers } = (req.body || {}) as any;
   const roomId = String(room_id || "").trim();
   const slug = String(test_slug || "").trim();
@@ -19,15 +15,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
   if (!slug) return res.status(400).json({ ok: false, error: "test_slug is required" });
 
-  // must be member
-  const { data: member, error: memErr } = await supabaseAdmin
-    .from("training_room_members")
-    .select("id,role,display_name")
-    .eq("room_id", roomId)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (memErr || !member) return res.status(403).json({ ok: false, error: "Сначала войдите в комнату" });
+  const access = await requireTrainingRoomAccess(req, res, roomId);
+  if (!access) return;
+  const { user, supabaseAdmin, member } = access;
 
   // room-specific enabled tests
   try {

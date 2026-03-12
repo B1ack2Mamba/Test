@@ -4,7 +4,6 @@ import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
 import type { AnyTest } from "@/lib/testTypes";
-import { getTrainingRoomSession, saveTrainingRoomSession } from "@/lib/trainingRoomSession";
 
 type Props = { tests: AnyTest[] };
 
@@ -73,13 +72,8 @@ export default function TrainingRoom({ tests }: Props) {
 
   useEffect(() => {
     if (!roomId || !member?.display_name) return;
-    saveTrainingRoomSession(roomId, member.display_name, true);
     if (!joinName) setJoinName(member.display_name);
-    if (!joinConsent) {
-      const local = getTrainingRoomSession(roomId);
-      if (local?.consent) setJoinConsent(true);
-    }
-  }, [roomId, member?.display_name]);
+  }, [roomId, member?.display_name, joinName]);
 
   const load = async () => {
     if (!session || !roomId) return;
@@ -93,6 +87,12 @@ export default function TrainingRoom({ tests }: Props) {
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить комнату");
       setRoom(j.room);
       setMember(j.member);
+      if (!j.member) {
+        setProgress([]);
+        setRoomTests([]);
+        if (!joinName && j.prefill_display_name) setJoinName(String(j.prefill_display_name));
+        return;
+      }
 
       const pr = await fetch(`/api/training/progress/my?room_id=${encodeURIComponent(roomId)}`, {
         headers: { authorization: `Bearer ${session.access_token}` },
@@ -173,7 +173,6 @@ export default function TrainingRoom({ tests }: Props) {
       setMember({ role: j.member.role, display_name: j.member.display_name });
       const safeName = String(j.member.display_name || joinName);
       saveNameLocal(safeName);
-      saveTrainingRoomSession(roomId, safeName, true);
       setJoinPwd("");
       await load();
     } catch (e: any) {

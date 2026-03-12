@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
 import { verifyPassword } from "@/lib/password";
 import { isSpecialistUser } from "@/lib/specialist";
+import { createTrainingRoomServerSession, setTrainingRoomSessionCookie } from "@/lib/trainingRoomServerSession";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -66,5 +67,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (error) return res.status(500).json({ ok: false, error: error.message });
 
-  return res.status(200).json({ ok: true, member });
+  const roomSession = await createTrainingRoomServerSession(supabaseAdmin as any, {
+    roomId,
+    userId: user.id,
+    displayName: name,
+    role,
+  });
+
+  if (roomSession.ok) {
+    setTrainingRoomSessionCookie(res, roomId, roomSession.token, roomSession.expiresAt);
+  } else if (!("tableMissing" in roomSession && roomSession.tableMissing)) {
+    return res.status(500).json({ ok: false, error: ("error" in roomSession ? roomSession.error : undefined) || "Не удалось создать сессию комнаты" });
+  }
+
+  return res.status(200).json({
+    ok: true,
+    member,
+    room_session_expires_at: roomSession.ok ? roomSession.expiresAt : null,
+    room_session_enabled: roomSession.ok,
+  });
 }
