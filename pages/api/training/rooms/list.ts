@@ -7,7 +7,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const auth = await requireUser(req, res);
   if (!auth) return;
 
-  const { supabaseAdmin } = auth;
+  const { user, supabaseAdmin } = auth;
 
   const { data, error } = await supabaseAdmin
     .from("training_rooms")
@@ -17,6 +17,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (error) return res.status(500).json({ ok: false, error: error.message });
 
+  const roomIds = (data ?? []).map((r: any) => String(r.id));
+  let joinedSet = new Set<string>();
+
+  if (roomIds.length) {
+    const { data: memberships } = await supabaseAdmin
+      .from("training_room_members")
+      .select("room_id")
+      .eq("user_id", user.id)
+      .in("room_id", roomIds);
+
+    joinedSet = new Set((memberships ?? []).map((m: any) => String(m.room_id)));
+  }
+
   return res.status(200).json({
     ok: true,
     rooms: (data ?? []).map((r: any) => ({
@@ -24,6 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       name: r.name,
       created_at: r.created_at,
       created_by_email: r.created_by_email ?? null,
+      is_joined: joinedSet.has(String(r.id)),
     })),
   });
 }

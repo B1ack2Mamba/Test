@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
 import type { AnyTest } from "@/lib/testTypes";
+import { getTrainingRoomSession, saveTrainingRoomSession } from "@/lib/trainingRoomSession";
 
 type Props = { tests: AnyTest[] };
 
@@ -69,6 +70,16 @@ export default function TrainingRoom({ tests }: Props) {
       setRenameValue(member.display_name);
     }
   }, [member?.display_name]);
+
+  useEffect(() => {
+    if (!roomId || !member?.display_name) return;
+    saveTrainingRoomSession(roomId, member.display_name, true);
+    if (!joinName) setJoinName(member.display_name);
+    if (!joinConsent) {
+      const local = getTrainingRoomSession(roomId);
+      if (local?.consent) setJoinConsent(true);
+    }
+  }, [roomId, member?.display_name]);
 
   const load = async () => {
     if (!session || !roomId) return;
@@ -160,7 +171,9 @@ export default function TrainingRoom({ tests }: Props) {
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось войти");
       setMember({ role: j.member.role, display_name: j.member.display_name });
-      saveNameLocal(String(j.member.display_name || joinName));
+      const safeName = String(j.member.display_name || joinName);
+      saveNameLocal(safeName);
+      saveTrainingRoomSession(roomId, safeName, true);
       setJoinPwd("");
       await load();
     } catch (e: any) {
@@ -308,11 +321,11 @@ export default function TrainingRoom({ tests }: Props) {
             </label>
             <div className="-mt-1 text-xs leading-5 text-zinc-500">
               Продолжая, вы подтверждаете, что ознакомились с{' '}
-              <Link href="/legal/privacy" className="underline underline-offset-2 hover:text-zinc-700">
+              <Link href="/legal/privacy" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-zinc-700">
                 Политикой обработки персональных данных
               </Link>{' '}
               и{' '}
-              <Link href="/legal/personal-data-consent" className="underline underline-offset-2 hover:text-zinc-700">
+              <Link href="/legal/personal-data-consent" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-zinc-700">
                 Согласием на обработку персональных данных
               </Link>
               .

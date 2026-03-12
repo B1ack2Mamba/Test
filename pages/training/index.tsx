@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
+import { getTrainingRoomSession, saveTrainingRoomSession } from "@/lib/trainingRoomSession";
 
-type Room = { id: string; name: string; created_at: string; created_by_email: string | null };
+type Room = { id: string; name: string; created_at: string; created_by_email: string | null; is_joined?: boolean };
 
 export default function TrainingHome() {
   const { session, user } = useSession();
@@ -70,6 +71,19 @@ export default function TrainingHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canLoad]);
 
+
+  const openRoom = (room: Room) => {
+    const localSession = getTrainingRoomSession(room.id);
+    if (room.is_joined || localSession) {
+      window.location.href = `/training/rooms/${encodeURIComponent(room.id)}`;
+      return;
+    }
+    setJoinRoomId(room.id);
+    setJoinPwd("");
+    setJoinError("");
+    setJoinConsent(false);
+  };
+
   const join = async () => {
     if (!session) return;
     setJoinError("");
@@ -82,8 +96,9 @@ export default function TrainingHome() {
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось войти");
-      saveNameLocal(String(joinName || "").trim());
-      // go to room
+      const safeName = String(joinName || "").trim();
+      saveNameLocal(safeName);
+      saveTrainingRoomSession(joinRoomId, safeName, true);
       window.location.href = `/training/rooms/${encodeURIComponent(joinRoomId)}`;
     } catch (e: any) {
       setJoinError(e?.message || "Ошибка");
@@ -131,33 +146,63 @@ export default function TrainingHome() {
           </div>
         </div>
 
-        {rooms.map((room) => (
-          <div key={room.id} className="card">
+        {rooms.map((room) => {
+          const localSession = getTrainingRoomSession(room.id);
+          const canOpenDirect = Boolean(room.is_joined || localSession);
+          return (
+          <div
+            key={room.id}
+            className="card cursor-pointer transition hover:border-zinc-300 hover:bg-white/90"
+            role="button"
+            tabIndex={0}
+            onClick={() => openRoom(room)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openRoom(room);
+              }
+            }}
+          >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="text-lg font-semibold">{room.name}</div>
                 <div className="mt-1 text-xs text-zinc-500">
                   {room.created_by_email ? `Создатель: ${room.created_by_email}` : ""}
                 </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  {canOpenDirect ? (
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
+                      Можно открыть сразу
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 font-medium text-zinc-600">
+                      Нужен пароль тренера
+                    </span>
+                  )}
+                  {localSession ? (
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-medium text-sky-700">
+                      Активная сессия ~ 3 часа
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <Link
                   href="/training/my-results"
+                  onClick={(e) => e.stopPropagation()}
                   className="btn btn-secondary btn-sm w-full sm:w-auto"
                 >
                   Мои результаты
                 </Link>
                 <button
-                  onClick={() => {
-                    setJoinRoomId(room.id);
-                    setJoinPwd("");
-                    setJoinError("");
-                    setJoinConsent(false);
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openRoom(room);
                   }}
                   className="btn btn-secondary btn-sm w-full sm:w-auto"
                 >
-                  Войти
+                  {canOpenDirect ? "Открыть" : "Войти"}
                 </button>
               </div>
             </div>
@@ -166,17 +211,18 @@ export default function TrainingHome() {
               <div className="mt-3 grid gap-2 card-soft p-3">
                 <div className="grid gap-1">
                   <div className="text-xs font-medium text-zinc-700">Ваше имя в комнате</div>
-                  <input value={joinName} onChange={(e) => setJoinName(e.target.value)} className="input" placeholder="Например: Алекс" />
+                  <input value={joinName} onChange={(e) => setJoinName(e.target.value)} onClick={(e) => e.stopPropagation()} className="input" placeholder="Например: Алекс" />
                 </div>
                 <div className="grid gap-1">
                   <div className="text-xs font-medium text-zinc-700">Пароль комнаты</div>
-                  <input value={joinPwd} onChange={(e) => setJoinPwd(e.target.value)} className="input" placeholder="Пароль от тренера" />
+                  <input value={joinPwd} onChange={(e) => setJoinPwd(e.target.value)} onClick={(e) => e.stopPropagation()} className="input" placeholder="Пароль от тренера" />
                 </div>
                 <label className="mt-1 flex items-start gap-2 rounded-xl border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-700">
                   <input
                     type="checkbox"
                     checked={joinConsent}
                     onChange={(e) => setJoinConsent(e.target.checked)}
+                    onClick={(e) => e.stopPropagation()}
                     className="mt-1 h-4 w-4 rounded border-zinc-300"
                   />
                   <span>
@@ -185,22 +231,22 @@ export default function TrainingHome() {
                 </label>
                 <div className="-mt-1 text-xs leading-5 text-zinc-500">
                   Продолжая, вы подтверждаете, что ознакомились с{' '}
-                  <Link href="/legal/privacy" className="underline underline-offset-2 hover:text-zinc-700">
+                  <Link href="/legal/privacy" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-zinc-700">
                     Политикой обработки персональных данных
                   </Link>{' '}
                   и{' '}
-                  <Link href="/legal/personal-data-consent" className="underline underline-offset-2 hover:text-zinc-700">
+                  <Link href="/legal/personal-data-consent" onClick={(e) => e.stopPropagation()} className="underline underline-offset-2 hover:text-zinc-700">
                     Согласием на обработку персональных данных
                   </Link>
                   .
                 </div>
                 {joinError ? <div className="text-sm text-red-600">{joinError}</div> : null}
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <button onClick={join} disabled={joinBusy || !joinPwd || !joinName || !joinConsent} className="btn btn-primary w-full sm:w-auto">
+                  <button onClick={(e) => { e.stopPropagation(); join(); }} disabled={joinBusy || !joinPwd || !joinName || !joinConsent} className="btn btn-primary w-full sm:w-auto">
                     {joinBusy ? "Входим…" : "Войти"}
                   </button>
                   <button
-                    onClick={() => setJoinRoomId("")}
+                    onClick={(e) => { e.stopPropagation(); setJoinRoomId(""); }}
                     className="btn btn-secondary w-full sm:w-auto"
                   >
                     Отмена
@@ -209,7 +255,8 @@ export default function TrainingHome() {
               </div>
             ) : null}
           </div>
-        ))}
+          );
+        })}
 
         {rooms.length === 0 && !loading ? (
           <div className="card text-sm text-zinc-600">
