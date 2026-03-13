@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
 import { isSpecialistUser } from "@/lib/specialist";
+import { retryTransientApi, setNoStore } from "@/lib/apiHardening";
 
 function trimText(s: any, maxLen = 1400) {
   const t = String(s ?? "").trim();
@@ -148,32 +149,49 @@ async function callDeepseek(prompt: string): Promise<string> {
   if (!key) throw new Error("DEEPSEEK_API_KEY is missing");
   const base = (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1").replace(/\/$/, "");
   const model = process.env.DEEPSEEK_MODEL || "deepseek-chat";
+  const timeoutMs = Math.max(15_000, Number(process.env.DEEPSEEK_TIMEOUT_MS || 60_000));
 
-  const r = await fetch(`${base}/chat/completions`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: "Ты помогаешь специалисту собрать единый психологический портрет клиента по данным нескольких тестов." },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.45,
-      max_tokens: 3200,
-    }),
-  });
+  return await retryTransientApi<string>(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const r = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: "Ты помогаешь специалисту собрать единый психологический портрет клиента по данным нескольких тестов." },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.45,
+          max_tokens: 3200,
+        }),
+        signal: controller.signal,
+      });
 
-  const j = await r.json().catch(() => null);
-  const text = j?.choices?.[0]?.message?.content;
-  if (!r.ok || !text) {
-    throw new Error(j?.error?.message || `DeepSeek error (${r.status})`);
-  }
-  return String(text).trim();
+      const j = await r.json().catch(() => null);
+      const text = j?.choices?.[0]?.message?.content;
+      if (!r.ok || !text) {
+        const msg = String(j?.error?.message || `DeepSeek error (${r.status})`);
+        if (r.status === 429 || r.status >= 500) throw new Error(msg);
+        throw new Error(msg);
+      }
+      return String(text).trim();
+    } catch (e: any) {
+      if (e?.name === "AbortError") {
+        throw new Error(`DeepSeek timeout after ${timeoutMs}ms`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }, { attempts: 2, delayMs: 350 });
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  setNoStore(res);
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
-  res.setHeader("Cache-Control", "no-store");
 
   const auth = await requireUser(req, res, { requireEmail: true });
   if (!auth) return;
@@ -186,30 +204,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const forceRegen = Boolean(force);
   if (!attemptId) return res.status(400).json({ ok: false, error: "attempt_id is required" });
 
-  const { data: anchorAttempt, error: aErr } = await supabaseAdmin
-    .from("training_attempts")
-    .select("id,room_id,user_id,test_slug")
-    .eq("id", attemptId)
-    .maybeSingle();
+  const { data: anchorAttempt, error: aErr } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_attempts")
+      .select("id,room_id,user_id,test_slug")
+      .eq("id", attemptId)
+      .maybeSingle(),
+    { attempts: 2, delayMs: 150 }
+  );
   if (aErr || !anchorAttempt) return res.status(404).json({ ok: false, error: "Attempt not found" });
 
-  const { data: specialistMember, error: mErr } = await supabaseAdmin
-    .from("training_room_members")
-    .select("role")
-    .eq("room_id", anchorAttempt.room_id)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: specialistMember, error: mErr } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_room_members")
+      .select("role")
+      .eq("room_id", anchorAttempt.room_id)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    { attempts: 2, delayMs: 150 }
+  );
   if (mErr || !specialistMember || specialistMember.role !== "specialist") {
     return res.status(403).json({ ok: false, error: "Forbidden" });
   }
 
   if (!forceRegen) {
-    const { data: cachedRow } = await supabaseAdmin
-      .from("training_attempt_interpretations")
-      .select("text")
-      .eq("attempt_id", attemptId)
-      .eq("kind", "full_profile")
-      .maybeSingle();
+    const { data: cachedRow } = await retryTransientApi<any>(
+      () => supabaseAdmin
+        .from("training_attempt_interpretations")
+        .select("text")
+        .eq("attempt_id", attemptId)
+        .eq("kind", "full_profile")
+        .maybeSingle(),
+      { attempts: 2, delayMs: 150 }
+    );
     if (cachedRow?.text) {
       return res.status(200).json({ ok: true, text: String(cachedRow.text), cached: true });
     }
@@ -218,29 +245,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const sb: any = supabaseAdmin as any;
   let room: any = null;
   let roomErr: any = null;
-  ({ data: room, error: roomErr } = await sb.from("training_rooms").select("id,name,analysis_prompt").eq("id", anchorAttempt.room_id).maybeSingle());
+  ({ data: room, error: roomErr } = await retryTransientApi<any>(
+    () => sb.from("training_rooms").select("id,name,analysis_prompt").eq("id", anchorAttempt.room_id).maybeSingle(),
+    { attempts: 2, delayMs: 150 }
+  ));
   if (roomErr && /analysis_prompt/i.test(roomErr.message || "")) {
-    ({ data: room, error: roomErr } = await sb.from("training_rooms").select("id,name").eq("id", anchorAttempt.room_id).maybeSingle());
+    ({ data: room, error: roomErr } = await retryTransientApi<any>(
+      () => sb.from("training_rooms").select("id,name").eq("id", anchorAttempt.room_id).maybeSingle(),
+      { attempts: 2, delayMs: 150 }
+    ));
   }
   if (roomErr || !room) return res.status(404).json({ ok: false, error: "Комната не найдена" });
 
   const roomName = String(room?.name || "Комната");
   const customPrompt = typeof room?.analysis_prompt === "string" ? String(room.analysis_prompt) : "";
 
-  const { data: participantMember } = await supabaseAdmin
-    .from("training_room_members")
-    .select("display_name")
-    .eq("room_id", anchorAttempt.room_id)
-    .eq("user_id", anchorAttempt.user_id)
-    .maybeSingle();
+  const { data: participantMember } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_room_members")
+      .select("display_name")
+      .eq("room_id", anchorAttempt.room_id)
+      .eq("user_id", anchorAttempt.user_id)
+      .maybeSingle(),
+    { attempts: 2, delayMs: 150 }
+  );
   const participantName = String(participantMember?.display_name || "Участник");
 
-  const { data: progressRows, error: pErr } = await supabaseAdmin
-    .from("training_progress")
-    .select("test_slug,attempt_id,completed_at")
-    .eq("room_id", anchorAttempt.room_id)
-    .eq("user_id", anchorAttempt.user_id)
-    .not("completed_at", "is", null);
+  const { data: progressRows, error: pErr } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_progress")
+      .select("test_slug,attempt_id,completed_at")
+      .eq("room_id", anchorAttempt.room_id)
+      .eq("user_id", anchorAttempt.user_id)
+      .not("completed_at", "is", null),
+    { attempts: 2, delayMs: 150 }
+  );
   if (pErr) return res.status(500).json({ ok: false, error: pErr.message });
 
   const progressList = (progressRows || []).filter((r: any) => !!r.attempt_id);
@@ -249,24 +288,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ ok: false, error: "У клиента нет завершённых тестов в этой комнате" });
   }
 
-  const { data: attemptsData, error: atErr } = await supabaseAdmin
-    .from("training_attempts")
-    .select("id,test_slug,result,created_at")
-    .in("id", attemptIds);
+  const { data: attemptsData, error: atErr } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_attempts")
+      .select("id,test_slug,result,created_at")
+      .in("id", attemptIds),
+    { attempts: 2, delayMs: 150 }
+  );
   if (atErr) return res.status(500).json({ ok: false, error: atErr.message });
 
-  const { data: testRows } = await supabaseAdmin
-    .from("tests")
-    .select("slug,title")
-    .in("slug", Array.from(new Set(progressList.map((r: any) => String(r.test_slug)))));
+  const { data: testRows } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("tests")
+      .select("slug,title")
+      .in("slug", Array.from(new Set(progressList.map((r: any) => String(r.test_slug))))),
+    { attempts: 2, delayMs: 150 }
+  );
   const testTitleBySlug = new Map<string, string>();
   for (const row of testRows || []) testTitleBySlug.set(String((row as any).slug), String((row as any).title || (row as any).slug));
 
-  const { data: interpRows } = await supabaseAdmin
-    .from("training_attempt_interpretations")
-    .select("attempt_id,kind,text")
-    .in("attempt_id", attemptIds)
-    .in("kind", ["keys_ai"]);
+  const { data: interpRows } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_attempt_interpretations")
+      .select("attempt_id,kind,text")
+      .in("attempt_id", attemptIds)
+      .in("kind", ["keys_ai"]),
+    { attempts: 2, delayMs: 150 }
+  );
   const interpByAttempt = new Map<string, string>();
   for (const row of interpRows || []) {
     interpByAttempt.set(String((row as any).attempt_id), String((row as any).text || ""));
@@ -304,9 +352,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const text = await callDeepseek(prompt);
 
-    await supabaseAdmin
-      .from("training_attempt_interpretations")
-      .upsert({ attempt_id: attemptId, kind: "full_profile", text }, { onConflict: "attempt_id,kind" });
+    await retryTransientApi<any>(
+      () => supabaseAdmin
+        .from("training_attempt_interpretations")
+        .upsert({ attempt_id: attemptId, kind: "full_profile", text }, { onConflict: "attempt_id,kind" }),
+      { attempts: 2, delayMs: 150 }
+    );
 
     return res.status(200).json({ ok: true, text, cached: false });
   } catch (e: any) {

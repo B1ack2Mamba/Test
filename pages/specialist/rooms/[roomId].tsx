@@ -488,6 +488,9 @@ export default function SpecialistRoom({ tests }: Props) {
   const roomTestsDraftRef = useRef<any[]>([]);
   const loadInFlightRef = useRef(false);
   const mountedRef = useRef(true);
+  const exportLockRef = useRef(false);
+  const exportAbortRef = useRef<AbortController | null>(null);
+  const exportMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     roomTestsRef.current = roomTests;
@@ -501,6 +504,8 @@ export default function SpecialistRoom({ tests }: Props) {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      exportAbortRef.current?.abort();
+      if (exportMsgTimerRef.current) clearTimeout(exportMsgTimerRef.current);
     };
   }, []);
 
@@ -1129,6 +1134,16 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
 
   const exportExcel = async () => {
     if (!session || !roomId) return;
+    if (exportLockRef.current) {
+      setExportMsg("Экспорт уже выполняется…");
+      if (exportMsgTimerRef.current) clearTimeout(exportMsgTimerRef.current);
+      exportMsgTimerRef.current = setTimeout(() => setExportMsg(""), 1800);
+      return;
+    }
+    exportLockRef.current = true;
+    const controller = new AbortController();
+    exportAbortRef.current?.abort();
+    exportAbortRef.current = controller;
     setExportBusy(true);
     setExportMsg("");
     try {
@@ -1136,6 +1151,8 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ room_id: roomId }),
+        cache: "no-store",
+        signal: controller.signal,
       });
       if (!r.ok) {
         const j = await r.json().catch(() => null);
@@ -1144,7 +1161,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      const safe = (roomName || "room").replace(/[\\/:*?"<>|]+/g, " ").trim() || "room";
+      const safe = (roomName || "room").replace(/[\/:*?"<>|]+/g, " ").trim() || "room";
       const d = new Date();
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -1156,10 +1173,14 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
       a.remove();
       URL.revokeObjectURL(url);
       setExportMsg("Файл скачан ✅");
-      setTimeout(() => setExportMsg(""), 2500);
+      if (exportMsgTimerRef.current) clearTimeout(exportMsgTimerRef.current);
+      exportMsgTimerRef.current = setTimeout(() => setExportMsg(""), 2500);
     } catch (e: any) {
+      if (e?.name === "AbortError") return;
       setExportMsg(e?.message || "Ошибка");
     } finally {
+      exportLockRef.current = false;
+      exportAbortRef.current = null;
       setExportBusy(false);
     }
   };

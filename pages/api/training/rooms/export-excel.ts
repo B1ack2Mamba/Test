@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
+import { retryTransientApi, setNoStore } from "@/lib/apiHardening";
 import { ensureRoomTests, sortRoomTests } from "@/lib/trainingRoomTests";
 import { loadTestJsonBySlugAdmin } from "@/lib/loadTestAdmin";
 
@@ -25,6 +26,7 @@ type ColDef = {
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  setNoStore(res);
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   const auth = await requireUser(req, res);
@@ -36,22 +38,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
 
   // Must be specialist in the room.
-  const { data: selfMem, error: selfMemErr } = await supabaseAdmin
-    .from("training_room_members")
-    .select("id,role")
-    .eq("room_id", roomId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: selfMem, error: selfMemErr } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_room_members")
+      .select("id,role")
+      .eq("room_id", roomId)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    { attempts: 2, delayMs: 150 }
+  );
   if (selfMemErr || !selfMem || String((selfMem as any).role) !== "specialist") {
     return res.status(403).json({ ok: false, error: "Нет доступа" });
   }
 
   // Room name
-  const { data: room, error: roomErr } = await supabaseAdmin
-    .from("training_rooms")
-    .select("id,name")
-    .eq("id", roomId)
-    .maybeSingle();
+  const { data: room, error: roomErr } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_rooms")
+      .select("id,name")
+      .eq("id", roomId)
+      .maybeSingle(),
+    { attempts: 2, delayMs: 150 }
+  );
   if (roomErr || !room) return res.status(404).json({ ok: false, error: "Комната не найдена" });
   const roomName = String((room as any).name || "Комната");
 
@@ -60,22 +68,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     roomTests = sortRoomTests(await ensureRoomTests(supabaseAdmin as any, roomId)) as any[];
   } catch {
-    const { data } = await supabaseAdmin
-      .from("training_room_tests")
-      .select("room_id,test_slug,is_enabled,sort_order,required,deadline_at")
-      .eq("room_id", roomId)
-      .order("sort_order", { ascending: true });
+    const { data } = await retryTransientApi<any>(
+      () => supabaseAdmin
+        .from("training_room_tests")
+        .select("room_id,test_slug,is_enabled,sort_order,required,deadline_at")
+        .eq("room_id", roomId)
+        .order("sort_order", { ascending: true }),
+      { attempts: 2, delayMs: 150 }
+    );
     roomTests = (data ?? []) as any[];
   }
 
   const roomTestSlugs = roomTests.map((r) => String(r.test_slug)).filter(Boolean);
 
   // Participants
-  const { data: membersData, error: memErr } = await supabaseAdmin
-    .from("training_room_members")
-    .select("user_id,display_name,role,joined_at")
-    .eq("room_id", roomId)
-    .order("joined_at", { ascending: true });
+  const { data: membersData, error: memErr } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_room_members")
+      .select("user_id,display_name,role,joined_at")
+      .eq("room_id", roomId)
+      .order("joined_at", { ascending: true }),
+    { attempts: 2, delayMs: 150 }
+  );
   if (memErr) return res.status(500).json({ ok: false, error: memErr.message });
 
   const participants = (membersData ?? []).filter((m: any) => String(m.role) === "participant") as any[];
@@ -86,11 +100,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // otherwise Postgres will throw: invalid input syntax for type uuid.
   const progressData: any[] = [];
   if (participantIds.length) {
-    const { data, error: progErr } = await supabaseAdmin
-      .from("training_progress")
-      .select("room_id,user_id,test_slug,attempt_id")
-      .eq("room_id", roomId)
-      .in("user_id", participantIds);
+    const { data, error: progErr } = await retryTransientApi<any>(
+      () => supabaseAdmin
+        .from("training_progress")
+        .select("room_id,user_id,test_slug,attempt_id")
+        .eq("room_id", roomId)
+        .in("user_id", participantIds),
+      { attempts: 2, delayMs: 150 }
+    );
     if (progErr) return res.status(500).json({ ok: false, error: progErr.message });
     progressData.push(...(data ?? []));
   }
@@ -104,10 +121,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const attemptIds = (progressData ?? []).map((p: any) => p.attempt_id).filter(Boolean) as string[];
   const { data: attemptsData, error: attErr } = attemptIds.length
-    ? await supabaseAdmin
-        .from("training_attempts")
-        .select("id,user_id,test_slug,result,answers")
-        .in("id", attemptIds)
+    ? await retryTransientApi<any>(
+        () => supabaseAdmin
+          .from("training_attempts")
+          .select("id,user_id,test_slug,result,answers")
+          .in("id", attemptIds),
+        { attempts: 2, delayMs: 150 }
+      )
     : ({ data: [], error: null } as any);
   if (attErr) return res.status(500).json({ ok: false, error: attErr.message });
 

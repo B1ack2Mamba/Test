@@ -74,11 +74,22 @@ export default function SpecialistAnalysisPage() {
   const [portraitBusy, setPortraitBusy] = useState(false);
   const roomsReqRef = useRef(0);
   const dashboardReqRef = useRef(0);
+  const portraitReqRef = useRef(0);
+  const portraitLockRef = useRef(false);
+  const portraitAbortRef = useRef<AbortController | null>(null);
+  const portraitMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!roomIdFromQuery) return;
     setSelectedRoomId(roomIdFromQuery);
   }, [roomIdFromQuery]);
+
+  useEffect(() => {
+    return () => {
+      portraitAbortRef.current?.abort();
+      if (portraitMsgTimerRef.current) clearTimeout(portraitMsgTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!session) return;
@@ -155,6 +166,12 @@ export default function SpecialistAnalysisPage() {
     };
   }, [session?.access_token, selectedRoomId]);
 
+  useEffect(() => {
+    portraitAbortRef.current?.abort();
+    portraitLockRef.current = false;
+    setPortraitBusy(false);
+  }, [selectedRoomId, selectedUserId]);
+
   const participants = useMemo(
     () => ((dashboard?.members || []) as Member[]).filter((m) => m.role === "participant"),
     [dashboard?.members]
@@ -190,6 +207,7 @@ export default function SpecialistAnalysisPage() {
       const r = await fetch("/api/training/rooms/update", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
         body: JSON.stringify({
           room_id: selectedRoomId,
           name: dashboard.room.name,
@@ -210,6 +228,17 @@ export default function SpecialistAnalysisPage() {
 
   const generatePortrait = async (force = false) => {
     if (!session || !anchorAttemptId) return;
+    if (portraitLockRef.current) {
+      setPortraitMsg("Портрет уже собирается…");
+      if (portraitMsgTimerRef.current) clearTimeout(portraitMsgTimerRef.current);
+      portraitMsgTimerRef.current = setTimeout(() => setPortraitMsg(""), 1800);
+      return;
+    }
+    portraitLockRef.current = true;
+    portraitAbortRef.current?.abort();
+    const controller = new AbortController();
+    portraitAbortRef.current = controller;
+    const reqId = ++portraitReqRef.current;
     setPortraitBusy(true);
     setPortraitMsg("");
     try {
@@ -217,16 +246,26 @@ export default function SpecialistAnalysisPage() {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ attempt_id: anchorAttemptId, force }),
+        cache: "no-store",
+        signal: controller.signal,
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось собрать портрет");
+      if (reqId !== portraitReqRef.current) return;
       setPortrait(String(j.text || ""));
       setPortraitMsg(j.cached && !force ? "Открыт сохранённый портрет ✅" : "Портрет собран ✅");
-      setTimeout(() => setPortraitMsg(""), 2500);
+      if (portraitMsgTimerRef.current) clearTimeout(portraitMsgTimerRef.current);
+      portraitMsgTimerRef.current = setTimeout(() => setPortraitMsg(""), 2500);
     } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      if (reqId !== portraitReqRef.current) return;
       setPortraitMsg(e?.message || "Ошибка");
     } finally {
-      setPortraitBusy(false);
+      if (reqId === portraitReqRef.current) {
+        portraitLockRef.current = false;
+        portraitAbortRef.current = null;
+        setPortraitBusy(false);
+      }
     }
   };
 
