@@ -25,6 +25,7 @@ export default function TrainingRoom({ tests }: Props) {
   // Room-specific test settings (enabled/order/etc.)
   const [roomTests, setRoomTests] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [bootChecked, setBootChecked] = useState(false);
   const [err, setErr] = useState("");
 
   // join form (if not joined)
@@ -94,11 +95,13 @@ export default function TrainingRoom({ tests }: Props) {
       setErr(e?.message || "Ошибка");
     } finally {
       setLoading(false);
+      setBootChecked(true);
     }
   };
 
   useEffect(() => {
     if (!session || !roomId) return;
+    setBootChecked(false);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token, roomId]);
@@ -193,6 +196,9 @@ export default function TrainingRoom({ tests }: Props) {
     }
   };
 
+
+  const checkingRoomAccess = !!session && !!user && !!roomId && !bootChecked;
+
   if (!session || !user) {
     return (
       <Layout title="Комната тренинга">
@@ -277,7 +283,9 @@ export default function TrainingRoom({ tests }: Props) {
           </div>
         </div>
 
-        {!member ? (
+        {checkingRoomAccess ? (
+          <div className="mt-4 card-soft p-4 text-sm text-zinc-600">Проверяем доступ к комнате…</div>
+        ) : !member ? (
           <div className="mt-4 grid gap-2 card-soft p-3">
             <div className="text-sm font-medium">Войти в комнату</div>
             <div className="grid gap-1">
@@ -326,7 +334,9 @@ export default function TrainingRoom({ tests }: Props) {
         )}
       </div>
 
-      {member ? (
+      {checkingRoomAccess ? (
+        <div className="card text-sm text-zinc-600">Проверяем доступ и загружаем тесты…</div>
+      ) : member ? (
         <div className="grid gap-3">
           {enabledTests.map((t) => {
             const pr = bySlug.get(t.slug);
