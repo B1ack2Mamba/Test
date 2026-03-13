@@ -454,6 +454,7 @@ export default function SpecialistRoom({ tests }: Props) {
   const [savingRoom, setSavingRoom] = useState(false);
   const [roomMsg, setRoomMsg] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [resultsLoading, setResultsLoading] = useState(false);
   const [err, setErr] = useState("");
 
   // modal
@@ -486,7 +487,8 @@ export default function SpecialistRoom({ tests }: Props) {
 
   const roomTestsRef = useRef<any[]>([]);
   const roomTestsDraftRef = useRef<any[]>([]);
-  const loadInFlightRef = useRef(false);
+  const shellLoadInFlightRef = useRef(false);
+  const resultsLoadInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const exportLockRef = useRef(false);
   const exportAbortRef = useRef<AbortController | null>(null);
@@ -509,24 +511,23 @@ export default function SpecialistRoom({ tests }: Props) {
     };
   }, []);
 
-  const load = useCallback(async (opts?: { silent?: boolean; signal?: AbortSignal }) => {
-    if (!session || !roomId || loadInFlightRef.current) return;
-    loadInFlightRef.current = true;
-    if (opts?.silent) setRefreshing(true);
-    else setLoading(true);
+  const loadShell = useCallback(async (opts?: { silent?: boolean; signal?: AbortSignal }) => {
+    if (!session || !roomId || shellLoadInFlightRef.current) return;
+    shellLoadInFlightRef.current = true;
+    if (!opts?.silent) setLoading(true);
     setErr("");
     try {
-      const dashRes = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(roomId)}`, {
+      const shellRes = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(roomId)}&mode=shell`, {
         headers: { authorization: `Bearer ${session.access_token}` },
         cache: "no-store",
         signal: opts?.signal,
       });
-      const dashJson = await dashRes.json();
-      if (!dashRes.ok || !dashJson?.ok) throw new Error(dashJson?.error || "Не удалось загрузить комнату");
+      const shellJson = await shellRes.json();
+      if (!shellRes.ok || !shellJson?.ok) throw new Error(shellJson?.error || "Не удалось загрузить комнату");
       if (!mountedRef.current) return;
 
-      const name = dashJson.room?.name || "Комната";
-      const incomingRoomTests = dashJson.room_tests || [];
+      const name = shellJson.room?.name || "Комната";
+      const incomingRoomTests = shellJson.room_tests || [];
       const currentBase = normalizeRoomTestsDraft(Array.isArray(roomTestsRef.current) && roomTestsRef.current.length ? roomTestsRef.current : incomingRoomTests);
       const currentDraft = normalizeRoomTestsDraft(Array.isArray(roomTestsDraftRef.current) && roomTestsDraftRef.current.length ? roomTestsDraftRef.current : currentBase);
       const draftDirty = !sameRoomTestsRows(currentDraft, currentBase);
@@ -534,25 +535,53 @@ export default function SpecialistRoom({ tests }: Props) {
       setRoomName(name);
       setEditRoomName((prev) => (prev ? prev : name));
       setRoomMsg("");
-
-      setMembers(dashJson.members || []);
-      setProgress(dashJson.progress || []);
       setRoomTests(incomingRoomTests);
       if (!draftDirty) setRoomTestsDraft(incomingRoomTests);
-      setCells(dashJson.cells || {});
       if (!draftDirty) setRoomTestsMsg("");
       setBootstrapped(true);
     } catch (e: any) {
       if (e?.name === "AbortError") return;
       if (mountedRef.current) setErr(e?.message || "Ошибка");
     } finally {
-      loadInFlightRef.current = false;
+      shellLoadInFlightRef.current = false;
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [roomId, session]);
+
+  const loadResults = useCallback(async (opts?: { silent?: boolean; signal?: AbortSignal }) => {
+    if (!session || !roomId || resultsLoadInFlightRef.current) return;
+    resultsLoadInFlightRef.current = true;
+    if (opts?.silent) setRefreshing(true);
+    else setResultsLoading(true);
+    setErr("");
+    try {
+      const dashRes = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(roomId)}&mode=results`, {
+        headers: { authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+        signal: opts?.signal,
+      });
+      const dashJson = await dashRes.json();
+      if (!dashRes.ok || !dashJson?.ok) throw new Error(dashJson?.error || "Не удалось загрузить результаты комнаты");
+      if (!mountedRef.current) return;
+      setMembers(dashJson.members || []);
+      setProgress(dashJson.progress || []);
+      setCells(dashJson.cells || {});
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      if (mountedRef.current) setErr(e?.message || "Ошибка");
+    } finally {
+      resultsLoadInFlightRef.current = false;
       if (mountedRef.current) {
-        setLoading(false);
         setRefreshing(false);
+        setResultsLoading(false);
       }
     }
   }, [roomId, session]);
+
+  const load = useCallback(async (opts?: { silent?: boolean; signal?: AbortSignal }) => {
+    await loadShell(opts);
+    await loadResults(opts);
+  }, [loadResults, loadShell]);
 
   useEffect(() => {
     if (!session || !roomId) return;
@@ -560,25 +589,27 @@ export default function SpecialistRoom({ tests }: Props) {
     const controller = new AbortController();
     let stopped = false;
 
-    const tick = async (silent: boolean) => {
+    const refreshResults = async (silent: boolean) => {
       if (stopped) return;
-      await load({ silent, signal: controller.signal });
+      await loadResults({ silent, signal: controller.signal });
     };
 
     const loop = async () => {
       if (stopped) return;
       if (typeof document === "undefined" || document.visibilityState === "visible") {
-        await tick(true);
+        await refreshResults(true);
       }
       if (!stopped) timer = setTimeout(loop, 12_000);
     };
 
-    tick(false);
+    loadShell({ silent: false, signal: controller.signal }).then(() => {
+      if (!stopped) refreshResults(false);
+    });
     timer = setTimeout(loop, 12_000);
 
     const onVisible = () => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        tick(true);
+        refreshResults(true);
       }
     };
 
@@ -590,7 +621,7 @@ export default function SpecialistRoom({ tests }: Props) {
       if (timer) clearTimeout(timer);
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [load, roomId, session]);
+  }, [loadResults, loadShell, roomId, session]);
 
   const byUserTest = useMemo(() => {
     const m = new Map<string, Progress>();
@@ -1272,12 +1303,13 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
         <Link href="/specialist" className="text-sm font-medium text-zinc-900 underline">
           ← К комнатам
         </Link>
-        <button onClick={() => load()} disabled={loading || refreshing} className="btn btn-secondary btn-sm">
-          {loading ? "Загрузка…" : refreshing ? "Обновляем…" : "Обновить"}
+        <button onClick={() => load()} disabled={loading || resultsLoading || refreshing} className="btn btn-secondary btn-sm">
+          {loading ? "Загрузка…" : resultsLoading || refreshing ? "Обновляем…" : "Обновить"}
         </button>
       </div>
 
-      {loading && !bootstrapped ? <div className="mb-3 card text-sm text-zinc-600">Загружаем комнату и результаты…</div> : null}
+      {loading && !bootstrapped ? <div className="mb-3 card text-sm text-zinc-600">Загружаем комнату…</div> : null}
+      {bootstrapped && resultsLoading && !refreshing ? <div className="mb-3 card text-sm text-zinc-600">Загружаем результаты комнаты…</div> : null}
       {err ? <div className="mb-3 card text-sm text-red-600">{err}</div> : null}
 
       <div className="mb-4 card">

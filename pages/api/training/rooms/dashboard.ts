@@ -44,7 +44,6 @@ function miniFromResult(result: any): string {
   return "";
 }
 
-
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -59,18 +58,15 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null
   }
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  setNoStore(res);
-  if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
-
+async function getAuthorizedRoom(req: NextApiRequest, res: NextApiResponse, roomId: string) {
   const auth = await requireUser(req, res, { requireEmail: true });
-  if (!auth) return;
+  if (!auth) return null;
   const { user, supabaseAdmin } = auth;
 
-  if (!isSpecialistUser(user)) return res.status(403).json({ ok: false, error: "Forbidden" });
-
-  const roomId = String(req.query.room_id || "").trim();
-  if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
+  if (!isSpecialistUser(user)) {
+    res.status(403).json({ ok: false, error: "Forbidden" });
+    return null;
+  }
 
   const sb: any = supabaseAdmin as any;
   const selectRoom = async (withPrompt: boolean) => {
@@ -97,18 +93,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   ]);
 
   const { data: member, error: memErr } = memberResp;
-  if (memErr || !member || member.role !== "specialist") return res.status(403).json({ ok: false, error: "Forbidden" });
+  if (memErr || !member || member.role !== "specialist") {
+    res.status(403).json({ ok: false, error: "Forbidden" });
+    return null;
+  }
 
   let { data: room, error: roomErr } = firstRoomResp;
   if (roomErr && /analysis_prompt/i.test(roomErr.message || "")) {
     ({ data: room, error: roomErr } = await selectRoom(false));
   }
-  if (roomErr || !room) return res.status(404).json({ ok: false, error: "Room not found" });
+  if (roomErr || !room) {
+    res.status(404).json({ ok: false, error: "Room not found" });
+    return null;
+  }
+
+  return { user, supabaseAdmin, room };
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  setNoStore(res);
+  if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
+
+  const roomId = String(req.query.room_id || "").trim();
+  const mode = String(req.query.mode || "full").trim().toLowerCase();
+  if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
+
+  const ctx = await getAuthorizedRoom(req, res, roomId);
+  if (!ctx) return;
+  const { supabaseAdmin, room } = ctx;
 
   try {
     const roomTests = await getRoomTestsSafe(supabaseAdmin as any, roomId);
     const enabled = enabledRoomTests(roomTests);
     const enabledSlugs = enabled.map((r) => r.test_slug);
+
+    if (mode === "shell") {
+      return res.status(200).json({
+        ok: true,
+        room,
+        room_tests: roomTests,
+        enabled_test_slugs: enabledSlugs,
+      });
+    }
 
     const [membersResp, progressResp] = await Promise.all([
       retryTransientApi<any>(
@@ -202,9 +228,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({
       ok: true,
       room,
-      members,
       room_tests: roomTests,
       enabled_test_slugs: enabledSlugs,
+      members,
       progress: progressData ?? [],
       cells,
       stats: {
