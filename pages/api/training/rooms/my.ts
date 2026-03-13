@@ -1,8 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
+import { retryTransientApi, setNoStore } from "@/lib/apiHardening";
 import { isSpecialistUser } from "@/lib/specialist";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  setNoStore(res);
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   const auth = await requireUser(req, res, { requireEmail: true });
@@ -18,11 +20,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Try to include optional column participants_can_see_digits (may be missing on older DBs).
   const trySelect = async (withFlag: boolean) => {
     const sel = withFlag ? "id,name,created_at,is_active,participants_can_see_digits" : "id,name,created_at,is_active";
-    return await sb
-      .from("training_rooms")
-      .select(sel)
-      .eq("created_by", user.id)
-      .order("created_at", { ascending: false });
+    return await retryTransientApi<any>(
+      () => sb
+        .from("training_rooms")
+        .select(sel)
+        .eq("created_by", user.id)
+        .order("created_at", { ascending: false }),
+      { attempts: 2, delayMs: 150 }
+    );
   };
 
   let { data, error } = await trySelect(true);

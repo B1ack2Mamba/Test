@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
@@ -72,6 +72,8 @@ export default function SpecialistAnalysisPage() {
   const [portrait, setPortrait] = useState("");
   const [portraitMsg, setPortraitMsg] = useState("");
   const [portraitBusy, setPortraitBusy] = useState(false);
+  const roomsReqRef = useRef(0);
+  const dashboardReqRef = useRef(0);
 
   useEffect(() => {
     if (!roomIdFromQuery) return;
@@ -82,24 +84,26 @@ export default function SpecialistAnalysisPage() {
     if (!session) return;
     let cancelled = false;
     const loadRooms = async () => {
+      const reqId = ++roomsReqRef.current;
       setRoomsLoading(true);
       setRoomsErr("");
       try {
         const r = await fetch("/api/training/rooms/my", {
           headers: { authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
         });
         const j = await r.json();
         if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить комнаты");
-        if (cancelled) return;
+        if (cancelled || reqId !== roomsReqRef.current) return;
         const nextRooms = (j.rooms || []) as Room[];
         setRooms(nextRooms);
         if (!selectedRoomId && !roomIdFromQuery && nextRooms.length) {
           setSelectedRoomId(nextRooms[0].id);
         }
       } catch (e: any) {
-        if (!cancelled) setRoomsErr(e?.message || "Ошибка");
+        if (!cancelled && reqId === roomsReqRef.current) setRoomsErr(e?.message || "Ошибка");
       } finally {
-        if (!cancelled) setRoomsLoading(false);
+        if (!cancelled && reqId === roomsReqRef.current) setRoomsLoading(false);
       }
     };
     loadRooms();
@@ -115,6 +119,7 @@ export default function SpecialistAnalysisPage() {
     }
     let cancelled = false;
     const loadDashboard = async () => {
+      const reqId = ++dashboardReqRef.current;
       setDashLoading(true);
       setDashErr("");
       setPortrait("");
@@ -122,10 +127,11 @@ export default function SpecialistAnalysisPage() {
       try {
         const r = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(selectedRoomId)}`, {
           headers: { authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
         });
         const j = await r.json();
         if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить аналитику комнаты");
-        if (cancelled) return;
+        if (cancelled || reqId !== dashboardReqRef.current) return;
         setDashboard(j);
         const prompt = typeof j?.room?.analysis_prompt === "string" ? String(j.room.analysis_prompt) : "";
         setPromptDraft(prompt);
@@ -135,12 +141,12 @@ export default function SpecialistAnalysisPage() {
           return participants[0]?.user_id || "";
         });
       } catch (e: any) {
-        if (!cancelled) {
+        if (!cancelled && reqId === dashboardReqRef.current) {
           setDashboard(null);
           setDashErr(e?.message || "Ошибка");
         }
       } finally {
-        if (!cancelled) setDashLoading(false);
+        if (!cancelled && reqId === dashboardReqRef.current) setDashLoading(false);
       }
     };
     loadDashboard();

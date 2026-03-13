@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
@@ -24,22 +24,27 @@ export default function SpecialistHome() {
   const [digitsEnabled, setDigitsEnabled] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
+  const loadReqRef = useRef(0);
 
   const load = async () => {
     if (!session) return;
+    const reqId = ++loadReqRef.current;
     setLoading(true);
     setErr("");
     try {
       const r = await fetch("/api/training/rooms/my", {
         headers: { authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить комнаты");
+      if (reqId !== loadReqRef.current) return;
       setRooms(j.rooms || []);
     } catch (e: any) {
+      if (reqId !== loadReqRef.current) return;
       setErr(e?.message || "Ошибка");
     } finally {
-      setLoading(false);
+      if (reqId === loadReqRef.current) setLoading(false);
     }
   };
 

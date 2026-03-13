@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
@@ -26,6 +26,25 @@ type Progress = {
   completed_at: string | null;
   attempt_id: string | null;
 };
+
+function normalizeRoomTestsDraft(rows: any[]) {
+  const sorted = [...rows].sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+  return sorted.map((r: any, i: number) => ({ ...r, sort_order: i }));
+}
+
+function sameRoomTestsRows(a: any[], b: any[]) {
+  const left = normalizeRoomTestsDraft(Array.isArray(a) ? a : []);
+  const right = normalizeRoomTestsDraft(Array.isArray(b) ? b : []);
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    const l = left[i];
+    const r = right[i];
+    if (String(l?.test_slug || "") !== String(r?.test_slug || "")) return false;
+    if (!!l?.is_enabled !== !!r?.is_enabled) return false;
+    if ((Number(l?.sort_order) || 0) !== (Number(r?.sort_order) || 0)) return false;
+  }
+  return true;
+}
 
 function Digits({ result }: { result: ScoreResult }) {
   const kind = result.kind;
@@ -462,43 +481,111 @@ export default function SpecialistRoom({ tests }: Props) {
 
   const [copyBusy, setCopyBusy] = useState(false);
   const [copyMsg2, setCopyMsg2] = useState<string>("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(false);
 
-  const load = async () => {
-    if (!session || !roomId) return;
-    setLoading(true);
+  const roomTestsRef = useRef<any[]>([]);
+  const roomTestsDraftRef = useRef<any[]>([]);
+  const loadInFlightRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    roomTestsRef.current = roomTests;
+  }, [roomTests]);
+
+  useEffect(() => {
+    roomTestsDraftRef.current = roomTestsDraft;
+  }, [roomTestsDraft]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const load = useCallback(async (opts?: { silent?: boolean; signal?: AbortSignal }) => {
+    if (!session || !roomId || loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
+    if (opts?.silent) setRefreshing(true);
+    else setLoading(true);
     setErr("");
     try {
       const dashRes = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(roomId)}`, {
         headers: { authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+        signal: opts?.signal,
       });
       const dashJson = await dashRes.json();
       if (!dashRes.ok || !dashJson?.ok) throw new Error(dashJson?.error || "Не удалось загрузить комнату");
+      if (!mountedRef.current) return;
 
       const name = dashJson.room?.name || "Комната";
+      const incomingRoomTests = dashJson.room_tests || [];
+      const currentBase = normalizeRoomTestsDraft(Array.isArray(roomTestsRef.current) && roomTestsRef.current.length ? roomTestsRef.current : incomingRoomTests);
+      const currentDraft = normalizeRoomTestsDraft(Array.isArray(roomTestsDraftRef.current) && roomTestsDraftRef.current.length ? roomTestsDraftRef.current : currentBase);
+      const draftDirty = !sameRoomTestsRows(currentDraft, currentBase);
+
       setRoomName(name);
       setEditRoomName((prev) => (prev ? prev : name));
       setRoomMsg("");
 
       setMembers(dashJson.members || []);
       setProgress(dashJson.progress || []);
-      setRoomTests(dashJson.room_tests || []);
-      setRoomTestsDraft(dashJson.room_tests || []);
+      setRoomTests(incomingRoomTests);
+      if (!draftDirty) setRoomTestsDraft(incomingRoomTests);
       setCells(dashJson.cells || {});
-      setRoomTestsMsg("");
+      if (!draftDirty) setRoomTestsMsg("");
+      setBootstrapped(true);
     } catch (e: any) {
-      setErr(e?.message || "Ошибка");
+      if (e?.name === "AbortError") return;
+      if (mountedRef.current) setErr(e?.message || "Ошибка");
     } finally {
-      setLoading(false);
+      loadInFlightRef.current = false;
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  };
+  }, [roomId, session]);
 
   useEffect(() => {
     if (!session || !roomId) return;
-    load();
-    const id = setInterval(load, 10_000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.access_token, roomId]);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const controller = new AbortController();
+    let stopped = false;
+
+    const tick = async (silent: boolean) => {
+      if (stopped) return;
+      await load({ silent, signal: controller.signal });
+    };
+
+    const loop = async () => {
+      if (stopped) return;
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        await tick(true);
+      }
+      if (!stopped) timer = setTimeout(loop, 12_000);
+    };
+
+    tick(false);
+    timer = setTimeout(loop, 12_000);
+
+    const onVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        tick(true);
+      }
+    };
+
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      stopped = true;
+      controller.abort();
+      if (timer) clearTimeout(timer);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [load, roomId, session]);
 
   const byUserTest = useMemo(() => {
     const m = new Map<string, Progress>();
@@ -525,6 +612,13 @@ export default function SpecialistRoom({ tests }: Props) {
       .map((r: any) => testsBySlug.get(String(r.test_slug)))
       .filter(Boolean) as AnyTest[];
   }, [orderedRoomTests, testsBySlug]);
+
+
+  const roomTestsDirty = useMemo(() => {
+    const base = normalizeRoomTestsDraft(Array.isArray(roomTests) ? roomTests : []);
+    const draft = normalizeRoomTestsDraft(Array.isArray(roomTestsDraft) && roomTestsDraft.length ? roomTestsDraft : roomTests);
+    return !sameRoomTestsRows(base, draft);
+  }, [roomTests, roomTestsDraft]);
 
   const participants = useMemo(() => {
     const selfId = user?.id;
@@ -926,11 +1020,6 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
     }
   };
 
-  
-  const normalizeRoomTestsDraft = (rows: any[]) => {
-    const sorted = [...rows].sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
-    return sorted.map((r: any, i: number) => ({ ...r, sort_order: i }));
-  };
 
   const moveRoomTest = (slug: string, dir: -1 | 1) => {
     setRoomTestsDraft((prev) => {
@@ -971,7 +1060,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
       setRoomTestsMsg("Сохранено ✅");
       setTimeout(() => setRoomTestsMsg(""), 2500);
       // refresh dashboard cells (mini + sent flags)
-      load();
+      load({ silent: true });
     } catch (e: any) {
       setRoomTestsMsg(e?.message || "Ошибка");
     } finally {
@@ -1162,11 +1251,12 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
         <Link href="/specialist" className="text-sm font-medium text-zinc-900 underline">
           ← К комнатам
         </Link>
-        <button onClick={load} disabled={loading} className="btn btn-secondary btn-sm">
-          {loading ? "…" : "Обновить"}
+        <button onClick={() => load()} disabled={loading || refreshing} className="btn btn-secondary btn-sm">
+          {loading ? "Загрузка…" : refreshing ? "Обновляем…" : "Обновить"}
         </button>
       </div>
 
+      {loading && !bootstrapped ? <div className="mb-3 card text-sm text-zinc-600">Загружаем комнату и результаты…</div> : null}
       {err ? <div className="mb-3 card text-sm text-red-600">{err}</div> : null}
 
       <div className="mb-4 card">
@@ -1251,13 +1341,14 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
           </div>
           <button
             onClick={saveRoomTests}
-            disabled={savingRoomTests}
+            disabled={savingRoomTests || !roomTestsDirty}
             className="btn btn-primary disabled:opacity-50"
           >
             {savingRoomTests ? "…" : "Сохранить"}
           </button>
         </div>
 
+        {roomTestsDirty ? <div className="mt-2 text-xs text-amber-700">Есть несохранённые изменения в составе или порядке тестов.</div> : null}
         {roomTestsMsg ? <div className="mt-2 text-xs text-zinc-600">{roomTestsMsg}</div> : null}
 
         <div className="mt-3 overflow-auto">

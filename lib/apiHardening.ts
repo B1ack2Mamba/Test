@@ -17,7 +17,7 @@ export function isTransientErrorMessage(message: string) {
   return TRANSIENT_PATTERNS.some((re) => re.test(String(message || "")));
 }
 
-export async function retryTransientApi<T>(fn: () => Promise<T>, opts?: { attempts?: number; delayMs?: number }) {
+export async function retryTransientApi<T>(fn: () => PromiseLike<T> | T, opts?: { attempts?: number; delayMs?: number }) {
   const attempts = Math.max(1, Number(opts?.attempts || 2));
   const delayMs = Math.max(0, Number(opts?.delayMs || 120));
   let lastErr: any = null;

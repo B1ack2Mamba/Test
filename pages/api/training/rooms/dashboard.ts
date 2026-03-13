@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
+import { retryTransientApi, setNoStore } from "@/lib/apiHardening";
 import { enabledRoomTests, getRoomTestsSafe } from "@/lib/trainingRoomTests";
 import { isSpecialistUser } from "@/lib/specialist";
 import type { ScoreResult } from "@/lib/score";
@@ -44,6 +45,7 @@ function miniFromResult(result: any): string {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  setNoStore(res);
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   const auth = await requireUser(req, res, { requireEmail: true });
@@ -56,12 +58,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
 
   // must be a specialist member
-  const { data: member, error: memErr } = await supabaseAdmin
-    .from("training_room_members")
-    .select("role")
-    .eq("room_id", roomId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: member, error: memErr } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_room_members")
+      .select("role")
+      .eq("room_id", roomId)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    { attempts: 2, delayMs: 150 }
+  );
   if (memErr || !member || member.role !== "specialist") return res.status(403).json({ ok: false, error: "Forbidden" });
 
   const sb: any = supabaseAdmin as any;
@@ -69,7 +74,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const sel = withPrompt
       ? "id,name,created_by_email,is_active,created_at,analysis_prompt"
       : "id,name,created_by_email,is_active,created_at";
-    return await sb.from("training_rooms").select(sel).eq("id", roomId).maybeSingle();
+    return await retryTransientApi<any>(
+      () => sb.from("training_rooms").select(sel).eq("id", roomId).maybeSingle(),
+      { attempts: 2, delayMs: 150 }
+    );
   };
 
   let { data: room, error: roomErr } = await selectRoom(true);
@@ -83,11 +91,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const enabled = enabledRoomTests(roomTests);
     const enabledSlugs = enabled.map((r) => r.test_slug);
 
-    const { data: membersData, error: membersErr } = await supabaseAdmin
-      .from("training_room_members")
-      .select("id,user_id,display_name,role,joined_at,last_seen")
-      .eq("room_id", roomId)
-      .order("joined_at", { ascending: true });
+    const [membersResp, progressResp] = await Promise.all([
+      retryTransientApi<any>(
+        () => supabaseAdmin
+          .from("training_room_members")
+          .select("id,user_id,display_name,role,joined_at,last_seen")
+          .eq("room_id", roomId)
+          .order("joined_at", { ascending: true }),
+        { attempts: 2, delayMs: 150 }
+      ),
+      retryTransientApi<any>(
+        () => supabaseAdmin
+          .from("training_progress")
+          .select("room_id,user_id,test_slug,started_at,completed_at,attempt_id")
+          .eq("room_id", roomId)
+          .in("test_slug", enabledSlugs.length ? enabledSlugs : ["__none__"]),
+        { attempts: 2, delayMs: 150 }
+      ),
+    ]);
+
+    const { data: membersData, error: membersErr } = membersResp;
     if (membersErr) return res.status(500).json({ ok: false, error: membersErr.message });
 
     const now = Date.now();
@@ -97,32 +120,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       online: m.last_seen ? now - new Date(m.last_seen).getTime() < onlineWindowMs : false,
     }));
 
-    const { data: progressData, error: progErr } = await supabaseAdmin
-      .from("training_progress")
-      .select("room_id,user_id,test_slug,started_at,completed_at,attempt_id")
-      .eq("room_id", roomId)
-      .in("test_slug", enabledSlugs.length ? enabledSlugs : ["__none__"]);
+    const { data: progressData, error: progErr } = progressResp;
     if (progErr) return res.status(500).json({ ok: false, error: progErr.message });
 
-    const attemptIds = (progressData ?? [])
+    const attemptIds = Array.from(new Set((progressData ?? [])
       .map((p: any) => p.attempt_id)
-      .filter(Boolean) as string[];
+      .filter(Boolean))) as string[];
 
-    const { data: attemptsData, error: attErr } = attemptIds.length
-      ? await supabaseAdmin
-          .from("training_attempts")
-          .select("id,user_id,test_slug,result,created_at")
-          .in("id", attemptIds)
-      : { data: [], error: null } as any;
+    const [attemptsResp, sharedResp] = attemptIds.length
+      ? await Promise.all([
+          retryTransientApi<any>(
+            () => supabaseAdmin
+              .from("training_attempts")
+              .select("id,user_id,test_slug,result,created_at")
+              .in("id", attemptIds),
+            { attempts: 2, delayMs: 150 }
+          ),
+          retryTransientApi<any>(
+            () => supabaseAdmin
+              .from("training_attempt_interpretations")
+              .select("attempt_id")
+              .in("attempt_id", attemptIds)
+              .eq("kind", "shared"),
+            { attempts: 2, delayMs: 150 }
+          ),
+        ])
+      : ([{ data: [], error: null }, { data: [], error: null }] as any);
+
+    const { data: attemptsData, error: attErr } = attemptsResp;
     if (attErr) return res.status(500).json({ ok: false, error: attErr.message });
 
-    const { data: sharedData, error: shErr } = attemptIds.length
-      ? await supabaseAdmin
-          .from("training_attempt_interpretations")
-          .select("attempt_id")
-          .in("attempt_id", attemptIds)
-          .eq("kind", "shared")
-      : { data: [], error: null } as any;
+    const { data: sharedData, error: shErr } = sharedResp;
     if (shErr) return res.status(500).json({ ok: false, error: shErr.message });
 
     const sharedSet = new Set((sharedData ?? []).map((r: any) => String(r.attempt_id)));
@@ -145,6 +173,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
     }
 
+    const participantCount = members.filter((m: any) => m.role === "participant").length;
+    const completedCount = Array.from(new Set((progressData ?? []).filter((p: any) => !!p.completed_at).map((p: any) => String(p.user_id)))).length;
+
     return res.status(200).json({
       ok: true,
       room,
@@ -153,6 +184,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       enabled_test_slugs: enabledSlugs,
       progress: progressData ?? [],
       cells,
+      stats: {
+        participant_count: participantCount,
+        completed_participant_count: completedCount,
+        attempt_count: attemptIds.length,
+      },
     });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || "Dashboard failed" });
