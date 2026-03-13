@@ -46,6 +46,17 @@ function sameRoomTestsRows(a: any[], b: any[]) {
   return true;
 }
 
+function buildFallbackRoomTests(tests: AnyTest[]) {
+  return tests.map((t, i) => ({
+    room_id: "",
+    test_slug: t.slug,
+    is_enabled: true,
+    sort_order: i,
+    required: false,
+    deadline_at: null,
+  }));
+}
+
 function Digits({ result }: { result: ScoreResult }) {
   const kind = result.kind;
   const [showTabidze, setShowTabidze] = useState(false);
@@ -484,6 +495,7 @@ export default function SpecialistRoom({ tests }: Props) {
   const [copyMsg2, setCopyMsg2] = useState<string>("");
   const [refreshing, setRefreshing] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
+  const [roomTestsOpen, setRoomTestsOpen] = useState(true);
 
   const roomTestsRef = useRef<any[]>([]);
   const roomTestsDraftRef = useRef<any[]>([]);
@@ -493,6 +505,8 @@ export default function SpecialistRoom({ tests }: Props) {
   const exportLockRef = useRef(false);
   const exportAbortRef = useRef<AbortController | null>(null);
   const exportMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fallbackRoomTests = useMemo(() => buildFallbackRoomTests(tests), [tests]);
 
   useEffect(() => {
     roomTestsRef.current = roomTests;
@@ -527,7 +541,9 @@ export default function SpecialistRoom({ tests }: Props) {
       if (!mountedRef.current) return;
 
       const name = shellJson.room?.name || "Комната";
-      const incomingRoomTests = shellJson.room_tests || [];
+      const incomingRoomTests = Array.isArray(shellJson.room_tests) && shellJson.room_tests.length
+        ? shellJson.room_tests
+        : fallbackRoomTests;
       const currentBase = normalizeRoomTestsDraft(Array.isArray(roomTestsRef.current) && roomTestsRef.current.length ? roomTestsRef.current : incomingRoomTests);
       const currentDraft = normalizeRoomTestsDraft(Array.isArray(roomTestsDraftRef.current) && roomTestsDraftRef.current.length ? roomTestsDraftRef.current : currentBase);
       const draftDirty = !sameRoomTestsRows(currentDraft, currentBase);
@@ -538,6 +554,7 @@ export default function SpecialistRoom({ tests }: Props) {
       setRoomTests(incomingRoomTests);
       if (!draftDirty) setRoomTestsDraft(incomingRoomTests);
       if (!draftDirty) setRoomTestsMsg("");
+      if (!(Array.isArray(shellJson.room_tests) && shellJson.room_tests.length)) setRoomTestsOpen(true);
       setBootstrapped(true);
     } catch (e: any) {
       if (e?.name === "AbortError") return;
@@ -546,7 +563,7 @@ export default function SpecialistRoom({ tests }: Props) {
       shellLoadInFlightRef.current = false;
       if (mountedRef.current) setLoading(false);
     }
-  }, [roomId, session]);
+  }, [fallbackRoomTests, roomId, session]);
 
   const loadResults = useCallback(async (opts?: { silent?: boolean; signal?: AbortSignal }) => {
     if (!session || !roomId || resultsLoadInFlightRef.current) return;
@@ -638,9 +655,9 @@ export default function SpecialistRoom({ tests }: Props) {
   }, [tests]);
 
   const orderedRoomTests = useMemo(() => {
-    const base = Array.isArray(roomTests) && roomTests.length ? roomTests : tests.map((t, i) => ({ test_slug: t.slug, is_enabled: true, sort_order: i }));
+    const base = Array.isArray(roomTests) && roomTests.length ? roomTests : fallbackRoomTests;
     return [...base].sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
-  }, [roomTests, tests]);
+  }, [fallbackRoomTests, roomTests]);
 
   const enabledTests = useMemo(() => {
     return orderedRoomTests
@@ -651,10 +668,11 @@ export default function SpecialistRoom({ tests }: Props) {
 
 
   const roomTestsDirty = useMemo(() => {
-    const base = normalizeRoomTestsDraft(Array.isArray(roomTests) ? roomTests : []);
-    const draft = normalizeRoomTestsDraft(Array.isArray(roomTestsDraft) && roomTestsDraft.length ? roomTestsDraft : roomTests);
+    const baseSource = Array.isArray(roomTests) && roomTests.length ? roomTests : fallbackRoomTests;
+    const base = normalizeRoomTestsDraft(baseSource);
+    const draft = normalizeRoomTestsDraft(Array.isArray(roomTestsDraft) && roomTestsDraft.length ? roomTestsDraft : baseSource);
     return !sameRoomTestsRows(base, draft);
-  }, [roomTests, roomTestsDraft]);
+  }, [fallbackRoomTests, roomTests, roomTestsDraft]);
 
   const participants = useMemo(() => {
     const selfId = user?.id;
@@ -1059,7 +1077,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
 
   const moveRoomTest = (slug: string, dir: -1 | 1) => {
     setRoomTestsDraft((prev) => {
-      const rows = normalizeRoomTestsDraft(Array.isArray(prev) && prev.length ? prev : roomTests);
+      const rows = normalizeRoomTestsDraft(Array.isArray(prev) && prev.length ? prev : (Array.isArray(roomTests) && roomTests.length ? roomTests : fallbackRoomTests));
       const i = rows.findIndex((r: any) => String(r.test_slug) === slug);
       const j = i + dir;
       if (i < 0 || j < 0 || j >= rows.length) return rows;
@@ -1073,14 +1091,14 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
 
   const toggleRoomTest = (slug: string) => {
     setRoomTestsDraft((prev) => {
-      const rows = normalizeRoomTestsDraft(Array.isArray(prev) && prev.length ? prev : roomTests);
+      const rows = normalizeRoomTestsDraft(Array.isArray(prev) && prev.length ? prev : (Array.isArray(roomTests) && roomTests.length ? roomTests : fallbackRoomTests));
       return rows.map((r: any) => (String(r.test_slug) === slug ? { ...r, is_enabled: !r.is_enabled } : r));
     });
   };
 
   const saveRoomTests = async () => {
     if (!session || !roomId) return;
-    const rows = normalizeRoomTestsDraft(Array.isArray(roomTestsDraft) && roomTestsDraft.length ? roomTestsDraft : roomTests);
+    const rows = normalizeRoomTestsDraft(Array.isArray(roomTestsDraft) && roomTestsDraft.length ? roomTestsDraft : (Array.isArray(roomTests) && roomTests.length ? roomTests : fallbackRoomTests));
     setSavingRoomTests(true);
     setRoomTestsMsg("");
     try {
@@ -1388,25 +1406,42 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
 
       <div className="mb-4 card">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold">Тесты комнаты</div>
-            <div className="mt-1 text-xs text-zinc-600">Выберите, какие тесты доступны участникам этой комнаты, и порядок отображения.</div>
-          </div>
           <button
-            onClick={saveRoomTests}
-            disabled={savingRoomTests || !roomTestsDirty}
-            className="btn btn-primary disabled:opacity-50"
+            type="button"
+            onClick={() => setRoomTestsOpen((v) => !v)}
+            className="flex min-w-0 items-center gap-2 text-left"
           >
-            {savingRoomTests ? "…" : "Сохранить"}
+            <div className="text-lg leading-none text-zinc-500">{roomTestsOpen ? "▾" : "▸"}</div>
+            <div>
+              <div className="text-sm font-semibold">Тесты комнаты</div>
+              <div className="mt-1 text-xs text-zinc-600">Выберите, какие тесты доступны участникам этой комнаты, и порядок отображения.</div>
+            </div>
           </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setRoomTestsOpen((v) => !v)}
+              className="btn btn-secondary"
+            >
+              {roomTestsOpen ? "Скрыть" : "Показать"}
+            </button>
+            <button
+              onClick={saveRoomTests}
+              disabled={savingRoomTests || !roomTestsDirty}
+              className="btn btn-primary disabled:opacity-50"
+            >
+              {savingRoomTests ? "…" : "Сохранить"}
+            </button>
+          </div>
         </div>
 
         {roomTestsDirty ? <div className="mt-2 text-xs text-amber-700">Есть несохранённые изменения в составе или порядке тестов.</div> : null}
         {roomTestsMsg ? <div className="mt-2 text-xs text-zinc-600">{roomTestsMsg}</div> : null}
 
+        {roomTestsOpen ? (
         <div className="mt-3 overflow-auto">
           <div className="min-w-[700px] grid gap-2">
-            {(normalizeRoomTestsDraft(Array.isArray(roomTestsDraft) && roomTestsDraft.length ? roomTestsDraft : roomTests) as any[])
+            {(normalizeRoomTestsDraft(Array.isArray(roomTestsDraft) && roomTestsDraft.length ? roomTestsDraft : (Array.isArray(roomTests) && roomTests.length ? roomTests : fallbackRoomTests)) as any[])
               .filter((rt: any) => String(rt?.test_slug) !== "16pf-b")
               .map((rt: any, idx: number) => {
               const t = testsBySlug.get(String(rt.test_slug));
@@ -1458,6 +1493,9 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
             })}
           </div>
         </div>
+        ) : (
+          <div className="mt-3 text-xs text-zinc-500">Список тестов скрыт. Нажмите «Показать», чтобы открыть состав и порядок тестов комнаты.</div>
+        )}
       </div>
 
       <div className="mb-4 card text-sm text-zinc-700">
