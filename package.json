@@ -13,7 +13,8 @@
     "cap:ios": "npx cap add ios",
     "cap:open:ios": "npx cap open ios",
     "load:room:dashboard": "node scripts/load-room-dashboard.mjs",
-    "load:room:submit": "node scripts/load-room-submit.mjs"
+    "load:room:submit": "node scripts/load-room-submit.mjs",
+    "load:room:participants": "node scripts/load-room-participants.mjs"
   },
   "dependencies": {
     "next": "15.5.7",

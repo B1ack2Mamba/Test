@@ -1,0 +1,14 @@
+HTTP/1.1 401 Unauthorized
+Cache-Control: no-store, max-age=0, must-revalidate
+Content-Length: 57
+Content-Type: application/json; charset=utf-8
+Date: Fri, 13 Mar 2026 08:45:57 GMT
+Etag: "jst9emtcrr1l"
+Expires: 0
+Pragma: no-cache
+Server: Vercel
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Matched-Path: /api/training/rooms/join
+X-Vercel-Cache: MISS
+X-Vercel-Id: arn1::iad1::czkwl-1773391557181-a4107251bd48
+

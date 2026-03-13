@@ -1,50 +1,115 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { createClient } from "@supabase/supabase-js";
+import { randomBytes } from "node:crypto";
 import { requireUser } from "@/lib/serverAuth";
 import { verifyPassword } from "@/lib/password";
 import { isSpecialistUser } from "@/lib/specialist";
 import { createTrainingRoomServerSession, setTrainingRoomSessionCookie } from "@/lib/trainingRoomServerSession";
-import { setNoStore } from "@/lib/apiHardening";
+import { retryTransientApi, setNoStore } from "@/lib/apiHardening";
+
+function createSupabaseAdminFromEnv() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) {
+    throw new Error("Server env missing: NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
+  }
+  return createClient(url, serviceKey, { auth: { persistSession: false } });
+}
+
+function getBearerToken(req: NextApiRequest): string | null {
+  const h = req.headers.authorization;
+  if (!h || typeof h !== "string") return null;
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  return m?.[1]?.trim() || null;
+}
+
+function makeGuestEmail(roomId: string) {
+  const safeRoom = String(roomId || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 24) || "room";
+  const suffix = `${Date.now()}-${randomBytes(6).toString("hex")}`;
+  return `guest+${safeRoom}-${suffix}@participant.local`;
+}
+
+function makeGuestPassword() {
+  return `Guest-${randomBytes(24).toString("base64url")}`;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   setNoStore(res);
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
-  const auth = await requireUser(req, res, { requireEmail: true });
-  if (!auth) return;
-  const { user, supabaseAdmin } = auth;
-
-  const { room_id, password, display_name, personal_data_consent } = (req.body || {}) as any;
+  const { room_id, password, display_name, name, personal_data_consent } = (req.body || {}) as any;
   const roomId = String(room_id || "").trim();
   const pwd = String(password || "").trim();
-  const name = String(display_name || "").trim();
+  const displayName = String(display_name || name || "").trim();
 
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
   if (!pwd) return res.status(400).json({ ok: false, error: "Пароль обязателен" });
-  if (!name) return res.status(400).json({ ok: false, error: "Имя обязательно" });
+  if (!displayName) return res.status(400).json({ ok: false, error: "Имя обязательно" });
   if (!Boolean(personal_data_consent)) {
     return res.status(400).json({ ok: false, error: "Нужно подтвердить согласие на обработку персональных данных" });
   }
 
-  const { data: room, error: roomErr } = await supabaseAdmin
-    .from("training_rooms")
-    .select("id,password_hash,is_active")
-    .eq("id", roomId)
-    .maybeSingle();
+  let supabaseAdmin;
+  try {
+    supabaseAdmin = createSupabaseAdminFromEnv();
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || "Server env missing" });
+  }
+
+  const { data: room, error: roomErr } = await retryTransientApi<any>(
+    () => (supabaseAdmin as any)
+      .from("training_rooms")
+      .select("id,password_hash,is_active")
+      .eq("id", roomId)
+      .maybeSingle(),
+    { attempts: 2, delayMs: 150 }
+  );
 
   if (roomErr || !room) return res.status(404).json({ ok: false, error: "Комната не найдена" });
   if (!room.is_active) return res.status(400).json({ ok: false, error: "Комната не активна" });
-
   if (!verifyPassword(pwd, room.password_hash)) {
     return res.status(403).json({ ok: false, error: "Неверный пароль" });
   }
 
-  const role = isSpecialistUser(user) ? "specialist" : "participant";
+  const hasBearer = Boolean(getBearerToken(req));
+
+  let userId = "";
+  let role: "participant" | "specialist" = "participant";
+  let guestCreated = false;
+
+  if (hasBearer) {
+    const auth = await requireUser(req, res, { requireEmail: true });
+    if (!auth) return;
+    userId = auth.user.id;
+    role = isSpecialistUser(auth.user) ? "specialist" : "participant";
+  } else {
+    const guestEmail = makeGuestEmail(roomId);
+    const guestPassword = makeGuestPassword();
+    const { data: created, error: createErr } = await retryTransientApi<any>(
+      () => (supabaseAdmin as any).auth.admin.createUser({
+        email: guestEmail,
+        password: guestPassword,
+        email_confirm: true,
+        user_metadata: { role: "participant", room_guest: true, display_name: displayName },
+        app_metadata: { role: "participant", room_guest: true },
+      }),
+      { attempts: 2, delayMs: 150 }
+    );
+
+    if (createErr || !created?.user?.id) {
+      return res.status(500).json({ ok: false, error: createErr?.message || "Не удалось создать гостевого участника" });
+    }
+
+    userId = String(created.user.id);
+    guestCreated = true;
+    role = "participant";
+  }
 
   const consentAt = new Date().toISOString();
   const basePayload: any = {
     room_id: roomId,
-    user_id: user.id,
-    display_name: name,
+    user_id: userId,
+    display_name: displayName,
     role,
     last_seen: consentAt,
   };
@@ -55,11 +120,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       payload.personal_data_consent = true;
       payload.personal_data_consent_at = consentAt;
     }
-    return await supabaseAdmin
-      .from("training_room_members")
-      .upsert(payload, { onConflict: "room_id,user_id" })
-      .select("id,room_id,user_id,display_name,role,joined_at,last_seen")
-      .single();
+    return await retryTransientApi<any>(
+      () => (supabaseAdmin as any)
+        .from("training_room_members")
+        .upsert(payload, { onConflict: "room_id,user_id" })
+        .select("id,room_id,user_id,display_name,role,joined_at,last_seen")
+        .single(),
+      { attempts: 2, delayMs: 150 }
+    );
   };
 
   let { data: member, error } = await upsertMember(true);
@@ -71,8 +139,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const roomSession = await createTrainingRoomServerSession(supabaseAdmin as any, {
     roomId,
-    userId: user.id,
-    displayName: name,
+    userId,
+    displayName,
     role,
   });
 
@@ -87,5 +155,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     member,
     room_session_expires_at: roomSession.ok ? roomSession.expiresAt : null,
     room_session_enabled: roomSession.ok,
+    guest_created: guestCreated,
   });
 }
