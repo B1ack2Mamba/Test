@@ -87,16 +87,32 @@ export default function TrainingHome() {
     setJoinError("");
     setJoinBusy(true);
     try {
-      const r = await fetch("/api/training/rooms/join", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ room_id: joinRoomId, password: joinPwd, display_name: joinName, personal_data_consent: joinConsent }),
-      });
-      const j = await r.json();
-      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось войти");
-      const safeName = String(joinName || "").trim();
-      saveNameLocal(safeName);
-      window.location.href = `/training/rooms/${encodeURIComponent(joinRoomId)}`;
+      const payload = { room_id: joinRoomId, password: joinPwd, display_name: joinName, personal_data_consent: joinConsent };
+      for (let attempt = 1; attempt <= 10; attempt += 1) {
+        const r = await fetch("/api/training/rooms/join", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify(payload),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && j?.ok) {
+          const safeName = String(joinName || "").trim();
+          saveNameLocal(safeName);
+          window.location.href = `/training/rooms/${encodeURIComponent(joinRoomId)}`;
+          return;
+        }
+        if (r.status === 202 && j?.queued) {
+          const retryAfter = Math.max(500, Number(j?.retry_after_ms || 1500));
+          const approx = Number(j?.approx_position || 0);
+          setJoinError(approx > 0
+            ? `Сейчас много входов. Подключаем вас в порядке очереди… Позиция примерно: ${approx}`
+            : String(j?.error || "Сейчас много входов, подключаем вас в порядке очереди…"));
+          await new Promise((resolve) => setTimeout(resolve, retryAfter));
+          continue;
+        }
+        throw new Error(j?.error || "Не удалось войти");
+      }
+      throw new Error("Слишком много одновременных входов. Попробуйте ещё раз через несколько секунд.");
     } catch (e: any) {
       setJoinError(e?.message || "Ошибка");
     } finally {

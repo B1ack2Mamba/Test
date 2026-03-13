@@ -97,23 +97,36 @@ async function main() {
       personal_data_consent: true,
     };
     try {
-      const { res, elapsed } = await timedFetch(joinTarget, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'cache-control': 'no-store',
-        },
-        body: JSON.stringify(body),
-      });
-      joinLatencies.push(elapsed);
-      joinStatuses[res.status] = (joinStatuses[res.status] || 0) + 1;
-      const cookie = parseSetCookie(res.headers.get('set-cookie'));
-      const json = await res.json().catch(() => ({}));
-      if (res.ok && cookie) cookies.push(cookie);
-      else {
-        const key = json?.error || 'missing_set_cookie';
-        joinErrors[key] = (joinErrors[key] || 0) + 1;
+      let finalElapsed = 0;
+      for (let attempt = 1; attempt <= 12; attempt += 1) {
+        const { res, elapsed } = await timedFetch(joinTarget, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'cache-control': 'no-store',
+          },
+          body: JSON.stringify(body),
+        });
+        finalElapsed += elapsed;
+        const json = await res.json().catch(() => ({}));
+        if (res.status === 202 && json?.queued) {
+          const retryAfter = Math.max(300, Number(json?.retry_after_ms || 1200));
+          await new Promise((resolve) => setTimeout(resolve, retryAfter));
+          continue;
+        }
+        joinLatencies.push(finalElapsed);
+        joinStatuses[res.status] = (joinStatuses[res.status] || 0) + 1;
+        const cookie = parseSetCookie(res.headers.get('set-cookie'));
+        if (res.ok && cookie) cookies.push(cookie);
+        else {
+          const key = json?.error || 'missing_set_cookie';
+          joinErrors[key] = (joinErrors[key] || 0) + 1;
+        }
+        return;
       }
+      joinLatencies.push(finalElapsed);
+      joinStatuses[202] = (joinStatuses[202] || 0) + 1;
+      joinErrors['join_queue_timeout'] = (joinErrors['join_queue_timeout'] || 0) + 1;
     } catch (err) {
       const key = String(err?.message || 'network_error');
       joinErrors[key] = (joinErrors[key] || 0) + 1;

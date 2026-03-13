@@ -809,6 +809,30 @@ ${pickedSide === "B" ? "✅ " : ""}Вариант 2: ${bText || "—"}`
     }
 
 
+    // usk_v1 (УСК) — ответы по шкале -3..3
+    if (attemptTest.type === "usk_v1") {
+      const arr: any[] = Array.isArray((attempt as any)?.answers?.usk)
+        ? (attempt as any).answers.usk
+        : Array.isArray((attempt as any)?.answers)
+          ? ((attempt as any).answers as any[])
+          : [];
+      const labels: Record<number, string> = {
+        [-3]: "Полностью не согласен",
+        [-2]: "Скорее не согласен",
+        [-1]: "Скорее не согласен, чем согласен",
+        [0]: "Нет ответа",
+        [1]: "Скорее согласен, чем нет",
+        [2]: "Скорее согласен",
+        [3]: "Полностью согласен",
+      };
+      return (attemptTest.questions || []).map((q: any, i: number) => {
+        const raw = Number(arr[i]);
+        const v = Number.isFinite(raw) ? Math.max(-3, Math.min(3, Math.round(raw))) : null;
+        const answer = v === null ? "Ответ: —" : `Ответ: ${v} — ${labels[v] || "—"}`;
+        return { title: `${i + 1}. ${safeText(q?.text || q?.prompt || "")}`, answer };
+      });
+    }
+
     // emin_v1 (ЭМИН, Д.В. Люсин) — 46 утверждений, ответы 0..3
     if (attemptTest.type === "emin_v1") {
       const arr: any[] = Array.isArray((attempt as any)?.answers?.emin)

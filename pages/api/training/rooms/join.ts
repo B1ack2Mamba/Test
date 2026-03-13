@@ -33,6 +33,23 @@ function makeGuestPassword() {
   return `Guest-${randomBytes(24).toString("base64url")}`;
 }
 
+function parsePositiveInt(v: any, fallback: number) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+async function countRecentRoomJoins(supabaseAdmin: any, roomId: string, windowSeconds: number) {
+  const since = new Date(Date.now() - windowSeconds * 1000).toISOString();
+  const { count, error } = await (supabaseAdmin as any)
+    .from("training_room_members")
+    .select("user_id", { count: "exact", head: true })
+    .eq("room_id", roomId)
+    .gte("joined_at", since);
+
+  if (error) return { count: 0, error };
+  return { count: Number(count || 0), error: null };
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   setNoStore(res);
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -69,6 +86,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!room.is_active) return res.status(400).json({ ok: false, error: "Комната не активна" });
   if (!verifyPassword(pwd, room.password_hash)) {
     return res.status(403).json({ ok: false, error: "Неверный пароль" });
+  }
+
+  const joinWindowSeconds = parsePositiveInt(process.env.TRAINING_JOIN_QUEUE_WINDOW_SECONDS, 8);
+  const joinThreshold = parsePositiveInt(process.env.TRAINING_JOIN_QUEUE_THRESHOLD, 80);
+  const queueRetryBaseMs = parsePositiveInt(process.env.TRAINING_JOIN_QUEUE_RETRY_MS, 1500);
+
+  const recentJoinInfo = await countRecentRoomJoins(supabaseAdmin as any, roomId, joinWindowSeconds);
+  if (!recentJoinInfo.error && recentJoinInfo.count >= joinThreshold) {
+    const overload = Math.max(0, recentJoinInfo.count - joinThreshold + 1);
+    const retryAfterMs = Math.min(8000, queueRetryBaseMs + overload * 35 + Math.floor(Math.random() * 400));
+    const approxPosition = overload;
+    return res.status(202).json({
+      ok: false,
+      queued: true,
+      error: "Сейчас много входов, подключаем вас в порядке очереди…",
+      retry_after_ms: retryAfterMs,
+      approx_position: approxPosition,
+    });
   }
 
   const hasBearer = Boolean(getBearerToken(req));
