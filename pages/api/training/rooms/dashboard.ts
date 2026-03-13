@@ -44,6 +44,21 @@ function miniFromResult(result: any): string {
   return "";
 }
 
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   setNoStore(res);
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -57,18 +72,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const roomId = String(req.query.room_id || "").trim();
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
 
-  // must be a specialist member
-  const { data: member, error: memErr } = await retryTransientApi<any>(
-    () => supabaseAdmin
-      .from("training_room_members")
-      .select("role")
-      .eq("room_id", roomId)
-      .eq("user_id", user.id)
-      .maybeSingle(),
-    { attempts: 2, delayMs: 150 }
-  );
-  if (memErr || !member || member.role !== "specialist") return res.status(403).json({ ok: false, error: "Forbidden" });
-
   const sb: any = supabaseAdmin as any;
   const selectRoom = async (withPrompt: boolean) => {
     const sel = withPrompt
@@ -76,11 +79,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : "id,name,created_by_email,is_active,created_at";
     return await retryTransientApi<any>(
       () => sb.from("training_rooms").select(sel).eq("id", roomId).maybeSingle(),
-      { attempts: 2, delayMs: 150 }
+      { attempts: 1, delayMs: 0 }
     );
   };
 
-  let { data: room, error: roomErr } = await selectRoom(true);
+  const [memberResp, firstRoomResp] = await Promise.all([
+    retryTransientApi<any>(
+      () => supabaseAdmin
+        .from("training_room_members")
+        .select("role")
+        .eq("room_id", roomId)
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      { attempts: 1, delayMs: 0 }
+    ),
+    selectRoom(true),
+  ]);
+
+  const { data: member, error: memErr } = memberResp;
+  if (memErr || !member || member.role !== "specialist") return res.status(403).json({ ok: false, error: "Forbidden" });
+
+  let { data: room, error: roomErr } = firstRoomResp;
   if (roomErr && /analysis_prompt/i.test(roomErr.message || "")) {
     ({ data: room, error: roomErr } = await selectRoom(false));
   }
@@ -98,7 +117,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .select("id,user_id,display_name,role,joined_at,last_seen")
           .eq("room_id", roomId)
           .order("joined_at", { ascending: true }),
-        { attempts: 2, delayMs: 150 }
+        { attempts: 1, delayMs: 0 }
       ),
       retryTransientApi<any>(
         () => supabaseAdmin
@@ -106,7 +125,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .select("room_id,user_id,test_slug,started_at,completed_at,attempt_id")
           .eq("room_id", roomId)
           .in("test_slug", enabledSlugs.length ? enabledSlugs : ["__none__"]),
-        { attempts: 2, delayMs: 150 }
+        { attempts: 1, delayMs: 0 }
       ),
     ]);
 
@@ -132,17 +151,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           retryTransientApi<any>(
             () => supabaseAdmin
               .from("training_attempts")
-              .select("id,user_id,test_slug,result,created_at")
+              .select("id,result")
               .in("id", attemptIds),
-            { attempts: 2, delayMs: 150 }
+            { attempts: 1, delayMs: 0 }
           ),
-          retryTransientApi<any>(
-            () => supabaseAdmin
-              .from("training_attempt_interpretations")
-              .select("attempt_id")
-              .in("attempt_id", attemptIds)
-              .eq("kind", "shared"),
-            { attempts: 2, delayMs: 150 }
+          withTimeout(
+            retryTransientApi<any>(
+              () => supabaseAdmin
+                .from("training_attempt_interpretations")
+                .select("attempt_id")
+                .in("attempt_id", attemptIds)
+                .eq("kind", "shared"),
+              { attempts: 1, delayMs: 0 }
+            ),
+            1200
           ),
         ])
       : ([{ data: [], error: null }, { data: [], error: null }] as any);
@@ -150,7 +172,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { data: attemptsData, error: attErr } = attemptsResp;
     if (attErr) return res.status(500).json({ ok: false, error: attErr.message });
 
-    const { data: sharedData, error: shErr } = sharedResp;
+    const sharedData = sharedResp && typeof sharedResp === "object" ? (sharedResp as any).data : [];
+    const shErr = sharedResp && typeof sharedResp === "object" ? (sharedResp as any).error : null;
     if (shErr) return res.status(500).json({ ok: false, error: shErr.message });
 
     const sharedSet = new Set((sharedData ?? []).map((r: any) => String(r.attempt_id)));
