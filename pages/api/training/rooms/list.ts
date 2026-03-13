@@ -1,8 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
 import { getActiveTrainingRoomSessionRoomIds } from "@/lib/trainingRoomServerSession";
+import { setNoStore } from "@/lib/apiHardening";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  setNoStore(res);
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   const auth = await requireUser(req, res);

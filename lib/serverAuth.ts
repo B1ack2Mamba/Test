@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { retryTransientApi } from "@/lib/apiHardening";
 
 export type AuthedUser = {
   id: string;
@@ -37,7 +38,7 @@ export async function requireUser(
   }
 
   const supabaseAdmin = createClient(url, serviceKey, { auth: { persistSession: false } });
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  const { data, error } = await retryTransientApi(() => supabaseAdmin.auth.getUser(token), { attempts: 2, delayMs: 150 });
   if (error || !data?.user) {
     res.status(401).json({ ok: false, error: "Invalid session" });
     return null;

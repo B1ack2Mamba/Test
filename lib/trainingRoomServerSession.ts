@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash, randomBytes } from "node:crypto";
 import { requireUser, type AuthedUser } from "@/lib/serverAuth";
 import { isSpecialistUser } from "@/lib/specialist";
+import { retryTransientApi } from "@/lib/apiHardening";
 
 export const TRAINING_ROOM_SERVER_SESSION_TTL_MS = 3 * 60 * 60 * 1000;
 const COOKIE_PREFIX = "training_room_session_v1_";
@@ -123,7 +124,20 @@ export async function createTrainingRoomServerSession(
     expires_at: expiresAt,
   };
 
-  const { error } = await (supabaseAdmin as any).from("training_room_sessions").insert(payload);
+  try {
+    await retryTransientApi(
+      () => (supabaseAdmin as any).from("training_room_sessions").delete().eq("room_id", args.roomId).eq("user_id", args.userId),
+      { attempts: 2, delayMs: 120 }
+    );
+  } catch {
+    // non-critical cleanup failure; insert below will still decide the outcome
+  }
+
+  const insertResult = await retryTransientApi<any>(
+    () => (supabaseAdmin as any).from("training_room_sessions").insert(payload),
+    { attempts: 2, delayMs: 150 }
+  );
+  const error = insertResult?.error;
   if (error) {
     if (isMissingSessionTableError(String(error.message || ""))) return { ok: false, tableMissing: true };
     return { ok: false, error: error.message || "Не удалось создать сессию комнаты" };
@@ -140,13 +154,16 @@ export async function getTrainingRoomServerSession(
   const token = parseCookies(req)[getTrainingRoomSessionCookieName(args.roomId)];
   if (!token) return { row: null };
 
-  const { data, error } = await (supabaseAdmin as any)
-    .from("training_room_sessions")
-    .select("id,room_id,user_id,role,display_name,token_hash,created_at,last_seen,expires_at")
-    .eq("room_id", args.roomId)
-    .eq("user_id", args.userId)
-    .eq("token_hash", hashToken(token))
-    .maybeSingle();
+  const { data, error } = await retryTransientApi<any>(
+    () => (supabaseAdmin as any)
+      .from("training_room_sessions")
+      .select("id,room_id,user_id,role,display_name,token_hash,created_at,last_seen,expires_at")
+      .eq("room_id", args.roomId)
+      .eq("user_id", args.userId)
+      .eq("token_hash", hashToken(token))
+      .maybeSingle(),
+    { attempts: 2, delayMs: 150 }
+  );
 
   if (error) {
     if (isMissingSessionTableError(String(error.message || ""))) return { row: null, tableMissing: true };
@@ -186,13 +203,16 @@ export async function getActiveTrainingRoomSessionRoomIds(
   const tokenHashes = candidates.map((c) => c.tokenHash);
   const wantedRoomIds = candidates.map((c) => c.roomId);
 
-  const { data, error } = await (supabaseAdmin as any)
-    .from("training_room_sessions")
-    .select("room_id,token_hash,expires_at")
-    .eq("user_id", userId)
-    .in("room_id", wantedRoomIds)
-    .in("token_hash", tokenHashes)
-    .gt("expires_at", new Date().toISOString());
+  const { data, error } = await retryTransientApi<any>(
+    () => (supabaseAdmin as any)
+      .from("training_room_sessions")
+      .select("room_id,token_hash,expires_at")
+      .eq("user_id", userId)
+      .in("room_id", wantedRoomIds)
+      .in("token_hash", tokenHashes)
+      .gt("expires_at", new Date().toISOString()),
+    { attempts: 2, delayMs: 150 }
+  );
 
   if (error) {
     if (isMissingSessionTableError(String(error.message || ""))) return { roomIds: new Set<string>(), tableMissing: true };

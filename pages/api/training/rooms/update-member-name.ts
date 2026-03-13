@@ -1,7 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireTrainingRoomAccess } from "@/lib/trainingRoomServerSession";
+import { setNoStore } from "@/lib/apiHardening";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  setNoStore(res);
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   const { room_id, display_name } = (req.body || {}) as any;

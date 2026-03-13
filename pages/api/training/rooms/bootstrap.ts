@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/serverAuth";
 import { getTrainingRoomServerSession } from "@/lib/trainingRoomServerSession";
 import { isSpecialistUser } from "@/lib/specialist";
 import { ensureRoomTests } from "@/lib/trainingRoomTests";
+import { setNoStore } from "@/lib/apiHardening";
 
 type AnyRow = Record<string, any>;
 
@@ -26,6 +27,7 @@ async function loadRoom(sb: any, roomId: string) {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  setNoStore(res);
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   const auth = await requireUser(req, res);

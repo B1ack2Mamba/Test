@@ -4,8 +4,10 @@ import { loadTestJsonBySlugAdmin } from "@/lib/loadTestAdmin";
 import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance, scoreBelbin, scoreEmin, scoreTimeManagement, scoreLearningTypology } from "@/lib/score";
 import { ensureRoomTests } from "@/lib/trainingRoomTests";
 import type { Tag, TimeManagementTag, LearningTypologyChoice } from "@/lib/testTypes";
+import { setNoStore } from "@/lib/apiHardening";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  setNoStore(res);
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   const { room_id, test_slug, answers } = (req.body || {}) as any;
@@ -30,6 +32,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // If config table doesn't exist yet, we don't block (for backward compatibility).
   }
 
+
+  // Повторная отправка уже завершённого теста не должна плодить дубли.
+  try {
+    const { data: existingProgress } = await supabaseAdmin
+      .from("training_progress")
+      .select("attempt_id,completed_at")
+      .eq("room_id", roomId)
+      .eq("user_id", user.id)
+      .eq("test_slug", slug)
+      .maybeSingle();
+
+    if (existingProgress?.attempt_id && existingProgress?.completed_at) {
+      return res.status(200).json({ ok: true, attempt_id: existingProgress.attempt_id, duplicate: true });
+    }
+  } catch {
+    // if progress lookup fails transiently, continue with normal submit path
+  }
 
   const test = await loadTestJsonBySlugAdmin(supabaseAdmin as any, slug);
   if (!test) return res.status(404).json({ ok: false, error: "Тест не найден" });

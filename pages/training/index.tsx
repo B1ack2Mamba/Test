@@ -196,7 +196,7 @@ export default function TrainingHome() {
                 </div>
                 <div className="grid gap-1">
                   <div className="text-xs font-medium text-zinc-700">Пароль комнаты</div>
-                  <input value={joinPwd} onChange={(e) => setJoinPwd(e.target.value)} onClick={(e) => e.stopPropagation()} className="input" placeholder="Пароль от тренера" />
+                  <input type="password" value={joinPwd} onChange={(e) => setJoinPwd(e.target.value)} onClick={(e) => e.stopPropagation()} className="input" placeholder="Пароль от тренера" autoComplete="current-password" />
                 </div>
                 <label
                   className="mt-1 flex items-start gap-2 rounded-xl border border-zinc-200 bg-white/70 px-3 py-2 text-sm text-zinc-700"

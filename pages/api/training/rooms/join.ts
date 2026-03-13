@@ -3,8 +3,10 @@ import { requireUser } from "@/lib/serverAuth";
 import { verifyPassword } from "@/lib/password";
 import { isSpecialistUser } from "@/lib/specialist";
 import { createTrainingRoomServerSession, setTrainingRoomSessionCookie } from "@/lib/trainingRoomServerSession";
+import { setNoStore } from "@/lib/apiHardening";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  setNoStore(res);
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   const auth = await requireUser(req, res, { requireEmail: true });
