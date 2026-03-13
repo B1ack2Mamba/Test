@@ -315,8 +315,8 @@ export default function SpecialistAnalysisPage() {
         Отдельный раздел для полного AI-портрета клиента и общего промпта комнаты. Комната остаётся чистой, а вся тяжёлая аналитика живёт здесь.
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="grid gap-4">
+      <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="grid gap-4 self-start content-start">
           <div className="card">
             <div className="flex items-center justify-between gap-3">
               <div className="text-sm font-semibold">Комнаты</div>
@@ -341,7 +341,7 @@ export default function SpecialistAnalysisPage() {
               </button>
             </div>
             {roomsErr ? <div className="mt-3 text-sm text-red-600">{roomsErr}</div> : null}
-            <div className="mt-3 grid gap-2">
+            <div className="mt-3 grid max-h-[28rem] gap-2 overflow-y-auto pr-1">
               {rooms.map((room) => {
                 const active = room.id === selectedRoomId;
                 return (
@@ -369,7 +369,7 @@ export default function SpecialistAnalysisPage() {
             <div className="text-sm font-semibold">Клиенты комнаты</div>
             {dashErr ? <div className="mt-3 text-sm text-red-600">{dashErr}</div> : null}
             {dashLoading ? <div className="mt-3 text-sm text-zinc-500">Загрузка…</div> : null}
-            <div className="mt-3 grid gap-2">
+            <div className="mt-3 grid max-h-[70vh] gap-2 overflow-y-auto pr-1">
               {participants.map((member) => {
                 const done = completedByUser.get(member.user_id) || [];
                 const active = member.user_id === selectedUserId;
@@ -399,7 +399,7 @@ export default function SpecialistAnalysisPage() {
           </div>
         </div>
 
-        <div className="grid gap-4">
+        <div className="grid gap-4 self-start content-start">
           <div className="card">
             <div className="text-lg font-semibold">{dashboard?.room?.name || "Выбери комнату"}</div>
             <div className="mt-1 text-sm text-zinc-500">Промпт задаётся для всей комнаты и применяется ко всем полным портретам клиентов.</div>
