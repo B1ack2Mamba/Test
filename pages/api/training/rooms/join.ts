@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { requireUser } from "@/lib/serverAuth";
 import { verifyPassword } from "@/lib/password";
 import { isSpecialistUser } from "@/lib/specialist";
@@ -25,7 +25,7 @@ function getBearerToken(req: NextApiRequest): string | null {
 
 function makeGuestEmail(roomId: string) {
   const safeRoom = String(roomId || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 24) || "room";
-  const suffix = `${Date.now()}-${randomBytes(6).toString("hex")}`;
+  const suffix = `${Date.now()}-${randomUUID()}-${randomBytes(4).toString("hex")}`;
   return `guest+${safeRoom}-${suffix}@participant.local`;
 }
 
@@ -83,18 +83,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     userId = auth.user.id;
     role = isSpecialistUser(auth.user) ? "specialist" : "participant";
   } else {
-    const guestEmail = makeGuestEmail(roomId);
-    const guestPassword = makeGuestPassword();
-    const { data: created, error: createErr } = await retryTransientApi<any>(
-      () => (supabaseAdmin as any).auth.admin.createUser({
+    let created: any = null;
+    let createErr: any = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const guestEmail = makeGuestEmail(roomId);
+      const guestPassword = makeGuestPassword();
+      const result = await (supabaseAdmin as any).auth.admin.createUser({
         email: guestEmail,
         password: guestPassword,
         email_confirm: true,
         user_metadata: { role: "participant", room_guest: true, display_name: displayName },
         app_metadata: { role: "participant", room_guest: true },
-      }),
-      { attempts: 2, delayMs: 150 }
-    );
+      });
+      created = result?.data || null;
+      createErr = result?.error || null;
+      if (created?.user?.id) break;
+      const msg = String(createErr?.message || "");
+      if (!/already been registered|duplicate|exists/i.test(msg)) break;
+    }
 
     if (createErr || !created?.user?.id) {
       return res.status(500).json({ ok: false, error: createErr?.message || "Не удалось создать гостевого участника" });

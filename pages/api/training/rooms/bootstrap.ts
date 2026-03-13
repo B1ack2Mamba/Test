@@ -1,7 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { requireUser } from "@/lib/serverAuth";
-import { getTrainingRoomServerSession } from "@/lib/trainingRoomServerSession";
-import { isSpecialistUser } from "@/lib/specialist";
+import { requireTrainingRoomAccess } from "@/lib/trainingRoomServerSession";
 import { ensureRoomTests } from "@/lib/trainingRoomTests";
 import { setNoStore } from "@/lib/apiHardening";
 
@@ -30,61 +28,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   setNoStore(res);
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
-  const auth = await requireUser(req, res);
-  if (!auth) return;
-  const { user, supabaseAdmin } = auth;
-
   const roomId = String(req.query.room_id || "").trim();
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
+
+  const access = await requireTrainingRoomAccess(req, res, roomId);
+  if (!access) return;
+  const { user, supabaseAdmin, member, isSpecialist: userIsSpecialist, sessionStrict } = access;
 
   const sb: any = supabaseAdmin as any;
   const { room, error } = await loadRoom(sb, roomId);
   if (error || !room) return res.status(404).json({ ok: false, error: "Room not found" });
 
-  const { data: member } = await sb
-    .from("training_room_members")
-    .select("role,display_name")
-    .eq("room_id", roomId)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  let effectiveMember = member ? { role: member.role, display_name: member.display_name } : null;
+  const effectiveMember = member ? { role: member.role, display_name: member.display_name } : null;
   const prefillDisplayName = member?.display_name || null;
-  let requiresRejoin = false;
-  let sessionStrict = false;
-  const userIsSpecialist = Boolean(member?.role === "specialist" && isSpecialistUser(user));
-
-  if (member && !userIsSpecialist) {
-    const sessionState = await getTrainingRoomServerSession(req, sb, { roomId, userId: user.id });
-    if (sessionState.error) return res.status(500).json({ ok: false, error: sessionState.error });
-    if (!sessionState.tableMissing) {
-      sessionStrict = true;
-      if (!sessionState.row) {
-        effectiveMember = null;
-        requiresRejoin = true;
-      }
-    }
-  }
+  const requiresRejoin = false;
 
   let progress: AnyRow[] = [];
   let roomTests: AnyRow[] = [];
 
-  if (effectiveMember) {
-    const { data: progressData, error: progressError } = await sb
-      .from("training_progress")
-      .select("test_slug,started_at,completed_at,attempt_id")
-      .eq("room_id", roomId)
-      .eq("user_id", user.id);
+  const { data: progressData, error: progressError } = await sb
+    .from("training_progress")
+    .select("test_slug,started_at,completed_at,attempt_id")
+    .eq("room_id", roomId)
+    .eq("user_id", user.id);
 
-    if (progressError) return res.status(500).json({ ok: false, error: progressError.message || "Не удалось загрузить прогресс" });
-    progress = progressData || [];
+  if (progressError) return res.status(500).json({ ok: false, error: progressError.message || "Не удалось загрузить прогресс" });
+  progress = progressData || [];
 
-    try {
-      const rows = await ensureRoomTests(sb, roomId);
-      roomTests = userIsSpecialist ? rows : rows.filter((r: any) => !!r.is_enabled);
-    } catch (e: any) {
-      return res.status(500).json({ ok: false, error: e?.message || "Не удалось загрузить тесты комнаты" });
-    }
+  try {
+    const rows = await ensureRoomTests(sb, roomId);
+    roomTests = userIsSpecialist ? rows : rows.filter((r: any) => !!r.is_enabled);
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || "Не удалось загрузить тесты комнаты" });
   }
 
   return res.status(200).json({

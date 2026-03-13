@@ -1,0 +1,14 @@
+{
+  "statuses": {
+    "401": 999
+  },
+  "bodies": {
+    "Missing Authorization Bearer token": 999
+  },
+  "latency_ms": {
+    "avg": 287.2,
+    "p50": 230,
+    "p95": 687,
+    "max": 1168
+  }
+}
