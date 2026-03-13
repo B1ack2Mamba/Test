@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createHash, randomBytes } from "node:crypto";
 import { requireUser, type AuthedUser } from "@/lib/serverAuth";
 import { isSpecialistUser } from "@/lib/specialist";
@@ -26,6 +26,22 @@ function hashToken(token: string) {
 
 function normalizeRoomId(roomId: string) {
   return String(roomId || "").replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function getBearerToken(req: NextApiRequest): string | null {
+  const h = req.headers.authorization;
+  if (!h || typeof h !== "string") return null;
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  return m?.[1]?.trim() || null;
+}
+
+function createSupabaseAdminFromEnv(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) {
+    throw new Error("Server env missing: NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
+  }
+  return createClient(url, serviceKey, { auth: { persistSession: false } });
 }
 
 export function getTrainingRoomSessionCookieName(roomId: string) {
@@ -222,15 +238,115 @@ export async function getActiveTrainingRoomSessionRoomIds(
   return { roomIds: new Set((data || []).map((row: any) => String(row.room_id))) };
 }
 
+export async function getTrainingRoomServerSessionByCookie(
+  req: NextApiRequest,
+  supabaseAdmin: SupabaseClient,
+  roomId: string
+): Promise<{ row: SessionRow | null; tableMissing?: boolean; error?: string }> {
+  const token = parseCookies(req)[getTrainingRoomSessionCookieName(roomId)];
+  if (!token) return { row: null };
+
+  const { data, error } = await retryTransientApi<any>(
+    () => (supabaseAdmin as any)
+      .from("training_room_sessions")
+      .select("id,room_id,user_id,role,display_name,token_hash,created_at,last_seen,expires_at")
+      .eq("room_id", roomId)
+      .eq("token_hash", hashToken(token))
+      .maybeSingle(),
+    { attempts: 2, delayMs: 150 }
+  );
+
+  if (error) {
+    if (isMissingSessionTableError(String(error.message || ""))) return { row: null, tableMissing: true };
+    return { row: null, error: error.message || "Не удалось проверить cookie-сессию комнаты" };
+  }
+
+  const row = (data || null) as SessionRow | null;
+  if (!row) return { row: null };
+  if (new Date(row.expires_at).getTime() <= Date.now()) {
+    try {
+      await (supabaseAdmin as any).from("training_room_sessions").delete().eq("token_hash", row.token_hash);
+    } catch {
+      // ignore cleanup errors
+    }
+    return { row: null };
+  }
+
+  return { row };
+}
+
 export async function requireTrainingRoomAccess(
   req: NextApiRequest,
   res: NextApiResponse,
   roomId: string,
   opts?: { requireEmail?: boolean }
 ): Promise<{ user: AuthedUser; supabaseAdmin: SupabaseClient; member: any; isSpecialist: boolean; sessionStrict: boolean } | null> {
-  const auth = await requireUser(req, res, { requireEmail: opts?.requireEmail });
-  if (!auth) return null;
-  const { user, supabaseAdmin } = auth;
+  const hasBearer = Boolean(getBearerToken(req));
+
+  if (hasBearer) {
+    const auth = await requireUser(req, res, { requireEmail: opts?.requireEmail });
+    if (!auth) return null;
+    const { user, supabaseAdmin } = auth;
+
+    const { data: member, error: memErr } = await (supabaseAdmin as any)
+      .from("training_room_members")
+      .select("id,role,display_name")
+      .eq("room_id", roomId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (memErr || !member) {
+      res.status(403).json({ ok: false, error: "Сначала войдите в комнату" });
+      return null;
+    }
+
+    const isSpecialist = member.role === "specialist" && isSpecialistUser(user);
+    if (isSpecialist) return { user, supabaseAdmin, member, isSpecialist: true, sessionStrict: false };
+
+    const sessionState = await getTrainingRoomServerSession(req, supabaseAdmin, { roomId, userId: user.id });
+    if (sessionState.error) {
+      res.status(500).json({ ok: false, error: sessionState.error });
+      return null;
+    }
+    if (sessionState.tableMissing) {
+      return { user, supabaseAdmin, member, isSpecialist: false, sessionStrict: false };
+    }
+    if (!sessionState.row) {
+      res.status(403).json({ ok: false, error: "Сессия комнаты истекла. Войдите снова.", code: "ROOM_SESSION_EXPIRED" });
+      return null;
+    }
+
+    return { user, supabaseAdmin, member, isSpecialist: false, sessionStrict: true };
+  }
+
+  let supabaseAdmin: SupabaseClient;
+  try {
+    supabaseAdmin = createSupabaseAdminFromEnv();
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e?.message || "Server env missing" });
+    return null;
+  }
+
+  const sessionState = await getTrainingRoomServerSessionByCookie(req, supabaseAdmin, roomId);
+  if (sessionState.error) {
+    res.status(500).json({ ok: false, error: sessionState.error });
+    return null;
+  }
+  if (sessionState.tableMissing) {
+    res.status(401).json({ ok: false, error: "Missing Authorization Bearer token" });
+    return null;
+  }
+  if (!sessionState.row) {
+    res.status(403).json({ ok: false, error: "Сессия комнаты истекла. Войдите снова.", code: "ROOM_SESSION_EXPIRED" });
+    return null;
+  }
+
+  const user: AuthedUser = {
+    id: sessionState.row.user_id,
+    email: null,
+    user_metadata: {},
+    app_metadata: {},
+  };
 
   const { data: member, error: memErr } = await (supabaseAdmin as any)
     .from("training_room_members")
@@ -241,23 +357,6 @@ export async function requireTrainingRoomAccess(
 
   if (memErr || !member) {
     res.status(403).json({ ok: false, error: "Сначала войдите в комнату" });
-    return null;
-  }
-
-  const isSpecialist = member.role === "specialist" && isSpecialistUser(user);
-  if (isSpecialist) return { user, supabaseAdmin, member, isSpecialist: true, sessionStrict: false };
-
-  const sessionState = await getTrainingRoomServerSession(req, supabaseAdmin, { roomId, userId: user.id });
-  if (sessionState.error) {
-    res.status(500).json({ ok: false, error: sessionState.error });
-    return null;
-  }
-  if (sessionState.tableMissing) {
-    // Backward compatibility until migration is applied.
-    return { user, supabaseAdmin, member, isSpecialist: false, sessionStrict: false };
-  }
-  if (!sessionState.row) {
-    res.status(403).json({ ok: false, error: "Сессия комнаты истекла. Войдите снова.", code: "ROOM_SESSION_EXPIRED" });
     return null;
   }
 

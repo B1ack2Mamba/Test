@@ -5,6 +5,21 @@ import { enabledRoomTests, getRoomTestsSafe } from "@/lib/trainingRoomTests";
 import { isSpecialistUser } from "@/lib/specialist";
 import type { ScoreResult } from "@/lib/score";
 
+type TimingMap = Record<string, number>;
+
+function markSince(start: number) {
+  return Date.now() - start;
+}
+
+function setServerTiming(res: NextApiResponse, timings: TimingMap) {
+  try {
+    const entries = Object.entries(timings)
+      .filter(([, v]) => Number.isFinite(v))
+      .map(([k, v]) => `${k};dur=${Math.max(0, Math.round(Number(v)))}`);
+    if (entries.length) res.setHeader("Server-Timing", entries.join(", "));
+  } catch {}
+}
+
 function miniFromResult(result: any): string {
   const r = result as ScoreResult;
   if (!r || typeof r !== "object") return "";
@@ -59,7 +74,10 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null
 }
 
 async function getAuthorizedRoom(req: NextApiRequest, res: NextApiResponse, roomId: string) {
+  const timings: TimingMap = {};
+  const authStarted = Date.now();
   const auth = await requireUser(req, res, { requireEmail: true });
+  timings.auth = markSince(authStarted);
   if (!auth) return null;
   const { user, supabaseAdmin } = auth;
 
@@ -73,12 +91,17 @@ async function getAuthorizedRoom(req: NextApiRequest, res: NextApiResponse, room
     const sel = withPrompt
       ? "id,name,created_by_email,is_active,created_at,analysis_prompt"
       : "id,name,created_by_email,is_active,created_at";
-    return await retryTransientApi<any>(
+    const started = Date.now();
+    const out = await retryTransientApi<any>(
       () => sb.from("training_rooms").select(sel).eq("id", roomId).maybeSingle(),
       { attempts: 1, delayMs: 0 }
     );
+    timings[withPrompt ? "room_select" : "room_select_fallback"] = markSince(started);
+    return out;
   };
 
+  const memberStarted = Date.now();
+  const roomStarted = Date.now();
   const [memberResp, firstRoomResp] = await Promise.all([
     retryTransientApi<any>(
       () => supabaseAdmin
@@ -88,8 +111,8 @@ async function getAuthorizedRoom(req: NextApiRequest, res: NextApiResponse, room
         .eq("user_id", user.id)
         .maybeSingle(),
       { attempts: 1, delayMs: 0 }
-    ),
-    selectRoom(true),
+    ).finally(() => { timings.member_check = markSince(memberStarted); }),
+    selectRoom(true).finally(() => { timings.room_check = markSince(roomStarted); }),
   ]);
 
   const { data: member, error: memErr } = memberResp;
@@ -107,7 +130,7 @@ async function getAuthorizedRoom(req: NextApiRequest, res: NextApiResponse, room
     return null;
   }
 
-  return { user, supabaseAdmin, room };
+  return { user, supabaseAdmin, room, authTimings: timings };
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -118,24 +141,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const mode = String(req.query.mode || "full").trim().toLowerCase();
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
 
+  const requestStarted = Date.now();
+  const debugTimingsWanted = String(req.query.debug || "") === "1" || process.env.NODE_ENV !== "production";
   const ctx = await getAuthorizedRoom(req, res, roomId);
   if (!ctx) return;
-  const { supabaseAdmin, room } = ctx;
+  const { supabaseAdmin, room, authTimings } = ctx;
+  const timings: TimingMap = { ...(authTimings || {}) };
 
   try {
+    const roomTestsStarted = Date.now();
     const roomTests = await getRoomTestsSafe(supabaseAdmin as any, roomId);
+    timings.room_tests = markSince(roomTestsStarted);
     const enabled = enabledRoomTests(roomTests);
     const enabledSlugs = enabled.map((r) => r.test_slug);
 
     if (mode === "shell") {
+      timings.total = markSince(requestStarted);
+      setServerTiming(res, timings);
       return res.status(200).json({
         ok: true,
         room,
         room_tests: roomTests,
         enabled_test_slugs: enabledSlugs,
+        ...(debugTimingsWanted ? { _timings: timings } : {}),
       });
     }
 
+    const membersStarted = Date.now();
+    const progressStarted = Date.now();
     const [membersResp, progressResp] = await Promise.all([
       retryTransientApi<any>(
         () => supabaseAdmin
@@ -144,7 +177,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .eq("room_id", roomId)
           .order("joined_at", { ascending: true }),
         { attempts: 1, delayMs: 0 }
-      ),
+      ).finally(() => { timings.members = markSince(membersStarted); }),
       retryTransientApi<any>(
         () => supabaseAdmin
           .from("training_progress")
@@ -152,7 +185,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .eq("room_id", roomId)
           .in("test_slug", enabledSlugs.length ? enabledSlugs : ["__none__"]),
         { attempts: 1, delayMs: 0 }
-      ),
+      ).finally(() => { timings.progress = markSince(progressStarted); }),
     ]);
 
     const { data: membersData, error: membersErr } = membersResp;
@@ -172,6 +205,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .map((p: any) => p.attempt_id)
       .filter(Boolean))) as string[];
 
+    const attemptsStarted = Date.now();
+    const sharedStarted = Date.now();
     const [attemptsResp, sharedResp] = attemptIds.length
       ? await Promise.all([
           retryTransientApi<any>(
@@ -180,7 +215,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               .select("id,result")
               .in("id", attemptIds),
             { attempts: 1, delayMs: 0 }
-          ),
+          ).finally(() => { timings.attempts = markSince(attemptsStarted); }),
           withTimeout(
             retryTransientApi<any>(
               () => supabaseAdmin
@@ -189,7 +224,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 .in("attempt_id", attemptIds)
                 .eq("kind", "shared"),
               { attempts: 1, delayMs: 0 }
-            ),
+            ).finally(() => { timings.shared = markSince(sharedStarted); }),
             1200
           ),
         ])
@@ -222,8 +257,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
     }
 
+    const buildStarted = Date.now();
     const participantCount = members.filter((m: any) => m.role === "participant").length;
     const completedCount = Array.from(new Set((progressData ?? []).filter((p: any) => !!p.completed_at).map((p: any) => String(p.user_id)))).length;
+    timings.build = markSince(buildStarted);
+    timings.total = markSince(requestStarted);
+    setServerTiming(res, timings);
 
     return res.status(200).json({
       ok: true,
@@ -238,6 +277,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         completed_participant_count: completedCount,
         attempt_count: attemptIds.length,
       },
+      ...(debugTimingsWanted ? { _timings: timings } : {}),
     });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || "Dashboard failed" });

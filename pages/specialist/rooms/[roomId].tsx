@@ -496,12 +496,14 @@ export default function SpecialistRoom({ tests }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [roomTestsOpen, setRoomTestsOpen] = useState(true);
+  const [timingDebug, setTimingDebug] = useState<{ shell?: Record<string, number>; results?: Record<string, number> }>({});
+  const showTimingDebug = process.env.NODE_ENV !== "production";
 
   const roomTestsRef = useRef<any[]>([]);
   const roomTestsDraftRef = useRef<any[]>([]);
-  const shellLoadInFlightRef = useRef(false);
-  const resultsLoadInFlightRef = useRef(false);
   const mountedRef = useRef(true);
+  const shellRequestIdRef = useRef(0);
+  const resultsRequestIdRef = useRef(0);
   const exportLockRef = useRef(false);
   const exportAbortRef = useRef<AbortController | null>(null);
   const exportMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -517,6 +519,16 @@ export default function SpecialistRoom({ tests }: Props) {
   }, [roomTestsDraft]);
 
   useEffect(() => {
+    const fallback = normalizeRoomTestsDraft(fallbackRoomTests);
+    if (!roomTestsRef.current.length && fallback.length) {
+      setRoomTests(fallback);
+    }
+    if (!roomTestsDraftRef.current.length && fallback.length) {
+      setRoomTestsDraft(fallback);
+    }
+  }, [fallbackRoomTests]);
+
+  useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
@@ -526,19 +538,19 @@ export default function SpecialistRoom({ tests }: Props) {
   }, []);
 
   const loadShell = useCallback(async (opts?: { silent?: boolean; signal?: AbortSignal }) => {
-    if (!session || !roomId || shellLoadInFlightRef.current) return;
-    shellLoadInFlightRef.current = true;
+    if (!session || !roomId) return;
+    const requestId = ++shellRequestIdRef.current;
     if (!opts?.silent) setLoading(true);
     setErr("");
     try {
-      const shellRes = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(roomId)}&mode=shell`, {
+      const shellRes = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(roomId)}&mode=shell${showTimingDebug ? "&debug=1" : ""}`, {
         headers: { authorization: `Bearer ${session.access_token}` },
         cache: "no-store",
         signal: opts?.signal,
       });
       const shellJson = await shellRes.json();
       if (!shellRes.ok || !shellJson?.ok) throw new Error(shellJson?.error || "Не удалось загрузить комнату");
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestId !== shellRequestIdRef.current) return;
 
       const name = shellJson.room?.name || "Комната";
       const incomingRoomTests = Array.isArray(shellJson.room_tests) && shellJson.room_tests.length
@@ -555,45 +567,49 @@ export default function SpecialistRoom({ tests }: Props) {
       if (!draftDirty) setRoomTestsDraft(incomingRoomTests);
       if (!draftDirty) setRoomTestsMsg("");
       if (!(Array.isArray(shellJson.room_tests) && shellJson.room_tests.length)) setRoomTestsOpen(true);
+      if (showTimingDebug && shellJson?._timings) {
+        setTimingDebug((prev) => ({ ...prev, shell: shellJson._timings }));
+      }
       setBootstrapped(true);
     } catch (e: any) {
       if (e?.name === "AbortError") return;
-      if (mountedRef.current) setErr(e?.message || "Ошибка");
+      if (mountedRef.current && requestId === shellRequestIdRef.current) setErr(e?.message || "Ошибка");
     } finally {
-      shellLoadInFlightRef.current = false;
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current && requestId === shellRequestIdRef.current) setLoading(false);
     }
-  }, [fallbackRoomTests, roomId, session]);
+  }, [fallbackRoomTests, roomId, session, showTimingDebug]);
 
   const loadResults = useCallback(async (opts?: { silent?: boolean; signal?: AbortSignal }) => {
-    if (!session || !roomId || resultsLoadInFlightRef.current) return;
-    resultsLoadInFlightRef.current = true;
+    if (!session || !roomId) return;
+    const requestId = ++resultsRequestIdRef.current;
     if (opts?.silent) setRefreshing(true);
     else setResultsLoading(true);
     setErr("");
     try {
-      const dashRes = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(roomId)}&mode=results`, {
+      const dashRes = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(roomId)}&mode=results${showTimingDebug ? "&debug=1" : ""}`, {
         headers: { authorization: `Bearer ${session.access_token}` },
         cache: "no-store",
         signal: opts?.signal,
       });
       const dashJson = await dashRes.json();
       if (!dashRes.ok || !dashJson?.ok) throw new Error(dashJson?.error || "Не удалось загрузить результаты комнаты");
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestId !== resultsRequestIdRef.current) return;
       setMembers(dashJson.members || []);
       setProgress(dashJson.progress || []);
       setCells(dashJson.cells || {});
+      if (showTimingDebug && dashJson?._timings) {
+        setTimingDebug((prev) => ({ ...prev, results: dashJson._timings }));
+      }
     } catch (e: any) {
       if (e?.name === "AbortError") return;
-      if (mountedRef.current) setErr(e?.message || "Ошибка");
+      if (mountedRef.current && requestId === resultsRequestIdRef.current) setErr(e?.message || "Ошибка");
     } finally {
-      resultsLoadInFlightRef.current = false;
-      if (mountedRef.current) {
+      if (mountedRef.current && requestId === resultsRequestIdRef.current) {
         setRefreshing(false);
         setResultsLoading(false);
       }
     }
-  }, [roomId, session]);
+  }, [roomId, session, showTimingDebug]);
 
   const load = useCallback(async (opts?: { silent?: boolean; signal?: AbortSignal }) => {
     await loadShell(opts);
@@ -1322,12 +1338,26 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
           ← К комнатам
         </Link>
         <button onClick={() => load()} disabled={loading || resultsLoading || refreshing} className="btn btn-secondary btn-sm">
-          {loading ? "Загрузка…" : resultsLoading || refreshing ? "Обновляем…" : "Обновить"}
+          {loading ? "Загрузка…" : resultsLoading || refreshing ? "Обновляем данные…" : "Обновить"}
         </button>
       </div>
 
-      {loading && !bootstrapped ? <div className="mb-3 card text-sm text-zinc-600">Загружаем комнату…</div> : null}
-      {bootstrapped && resultsLoading && !refreshing ? <div className="mb-3 card text-sm text-zinc-600">Загружаем результаты комнаты…</div> : null}
+      {loading && !bootstrapped ? <div className="mb-3 rounded-2xl border bg-white/70 px-3 py-2 text-sm text-zinc-600">Загружаем оболочку комнаты…</div> : null}
+      {showTimingDebug && (timingDebug.shell || timingDebug.results) ? (
+        <details className="mb-3 rounded-2xl border bg-white/70 p-3 text-xs text-zinc-600">
+          <summary className="cursor-pointer font-medium text-zinc-800">Тайминги загрузки (dev)</summary>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div>
+              <div className="font-semibold text-zinc-800">shell</div>
+              <pre className="mt-1 overflow-auto whitespace-pre-wrap rounded-xl bg-zinc-50 p-2">{JSON.stringify(timingDebug.shell || {}, null, 2)}</pre>
+            </div>
+            <div>
+              <div className="font-semibold text-zinc-800">results</div>
+              <pre className="mt-1 overflow-auto whitespace-pre-wrap rounded-xl bg-zinc-50 p-2">{JSON.stringify(timingDebug.results || {}, null, 2)}</pre>
+            </div>
+          </div>
+        </details>
+      ) : null}
       {err ? <div className="mb-3 card text-sm text-red-600">{err}</div> : null}
 
       <div className="mb-4 card">

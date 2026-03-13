@@ -11,7 +11,9 @@
     "cap:android": "npx cap add android",
     "cap:open:android": "npx cap open android",
     "cap:ios": "npx cap add ios",
-    "cap:open:ios": "npx cap open ios"
+    "cap:open:ios": "npx cap open ios",
+    "load:room:dashboard": "node scripts/load-room-dashboard.mjs",
+    "load:room:submit": "node scripts/load-room-submit.mjs"
   },
   "dependencies": {
     "next": "15.5.7",
