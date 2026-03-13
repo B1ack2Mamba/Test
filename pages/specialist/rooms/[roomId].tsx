@@ -1414,7 +1414,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
             <div className="text-lg leading-none text-zinc-500">{roomTestsOpen ? "▾" : "▸"}</div>
             <div>
               <div className="text-sm font-semibold">Тесты комнаты</div>
-              <div className="mt-1 text-xs text-zinc-600">Выберите, какие тесты доступны участникам этой комнаты, и порядок отображения.</div>
+              
             </div>
           </button>
           <div className="flex items-center gap-2">
@@ -1493,14 +1493,7 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
             })}
           </div>
         </div>
-        ) : (
-          <div className="mt-3 text-xs text-zinc-500">Список тестов скрыт. Нажмите «Показать», чтобы открыть состав и порядок тестов комнаты.</div>
-        )}
-      </div>
-
-      <div className="mb-4 card text-sm text-zinc-700">
-        Участники (онлайн обновляется раз в ~10 сек). Нажмите на ✅ в таблице, чтобы открыть результаты в цифрах и сделать
-        расшифровку по ключам.
+        ) : null}
       </div>
 
       <div className="rounded-2xl border bg-white p-2 overflow-auto">
