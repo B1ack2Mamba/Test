@@ -98,19 +98,22 @@ async function main() {
     };
     try {
       let finalElapsed = 0;
-      for (let attempt = 1; attempt <= 12; attempt += 1) {
+      let queueToken = '';
+      for (let attempt = 1; attempt <= 24; attempt += 1) {
+        const payload = queueToken ? { ...body, queue_token: queueToken } : body;
         const { res, elapsed } = await timedFetch(joinTarget, {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
             'cache-control': 'no-store',
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify(payload),
         });
         finalElapsed += elapsed;
         const json = await res.json().catch(() => ({}));
         if (res.status === 202 && json?.queued) {
-          const retryAfter = Math.max(300, Number(json?.retry_after_ms || 1200));
+          if (json?.queue_token) queueToken = String(json.queue_token);
+          const retryAfter = Math.max(700, Number(json?.retry_after_ms || 1800));
           await new Promise((resolve) => setTimeout(resolve, retryAfter));
           continue;
         }

@@ -87,8 +87,10 @@ export default function TrainingHome() {
     setJoinError("");
     setJoinBusy(true);
     try {
-      const payload = { room_id: joinRoomId, password: joinPwd, display_name: joinName, personal_data_consent: joinConsent };
-      for (let attempt = 1; attempt <= 10; attempt += 1) {
+      let queueToken = "";
+      for (let attempt = 1; attempt <= 14; attempt += 1) {
+        const payload: any = { room_id: joinRoomId, password: joinPwd, display_name: joinName, personal_data_consent: joinConsent };
+        if (queueToken) payload.queue_token = queueToken;
         const r = await fetch("/api/training/rooms/join", {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
@@ -102,7 +104,8 @@ export default function TrainingHome() {
           return;
         }
         if (r.status === 202 && j?.queued) {
-          const retryAfter = Math.max(500, Number(j?.retry_after_ms || 1500));
+          if (j?.queue_token) queueToken = String(j.queue_token);
+          const retryAfter = Math.max(700, Number(j?.retry_after_ms || 1800));
           const approx = Number(j?.approx_position || 0);
           setJoinError(approx > 0
             ? `Сейчас много входов. Подключаем вас в порядке очереди… Позиция примерно: ${approx}`
