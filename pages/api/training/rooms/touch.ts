@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireTrainingRoomAccess } from "@/lib/trainingRoomServerSession";
-import { setNoStore } from "@/lib/apiHardening";
+import { retryTransientApi, setNoStore } from "@/lib/apiHardening";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   setNoStore(res);
@@ -15,22 +15,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { user, supabaseAdmin, sessionStrict } = access;
 
   const now = new Date().toISOString();
-  const { error } = await supabaseAdmin
-    .from("training_room_members")
-    .update({ last_seen: now })
-    .eq("room_id", roomId)
-    .eq("user_id", user.id);
+  const { error } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_room_members")
+      .update({ last_seen: now })
+      .eq("room_id", roomId)
+      .eq("user_id", user.id),
+    { attempts: 3, delayMs: 120 }
+  );
 
   if (error) return res.status(500).json({ ok: false, error: error.message });
 
   if (sessionStrict) {
     try {
-      await (supabaseAdmin as any)
-        .from("training_room_sessions")
-        .update({ last_seen: now })
-        .eq("room_id", roomId)
-        .eq("user_id", user.id)
-        .gt("expires_at", now);
+      await retryTransientApi<any>(
+        () => (supabaseAdmin as any)
+          .from("training_room_sessions")
+          .update({ last_seen: now })
+          .eq("room_id", roomId)
+          .eq("user_id", user.id)
+          .gt("expires_at", now),
+        { attempts: 2, delayMs: 80 }
+      );
     } catch {
       // ignore non-critical session touch errors
     }

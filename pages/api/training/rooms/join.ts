@@ -269,7 +269,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!joinQueueTableMissing && queueTicket) {
       const state = await getQueueState(supabaseAdmin as any, queueTicket, queueBatchSize);
       if (!state.ok) {
-        return res.status(500).json({ ok: false, error: state.error?.message || "Не удалось обработать очередь входа" });
+        const retryAfterMs = Math.min(12000, queueRetryBaseMs + 1200 + Math.floor(Math.random() * 700));
+        return res.status(202).json({
+          ok: false,
+          queued: true,
+          queue_token: queueToken,
+          error: "Сейчас много входов, продолжаем обрабатывать очередь…",
+          retry_after_ms: retryAfterMs,
+          approx_position: 1,
+        });
       }
       if (!state.shouldAdmit && queueTicket.status !== "admitted") {
         const overload = Math.max(0, state.approxPosition - queueBatchSize);
@@ -287,7 +295,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (queueTicket.status === "queued") {
         const admitted = await admitJoinTicket(supabaseAdmin as any, roomId, queueToken);
         if (admitted.error) {
-          return res.status(500).json({ ok: false, error: admitted.error.message || "Не удалось подтвердить очередь входа" });
+          const retryAfterMs = Math.min(12000, queueRetryBaseMs + 1000 + Math.floor(Math.random() * 700));
+          return res.status(202).json({
+            ok: false,
+            queued: true,
+            queue_token: queueToken,
+            error: "Сейчас много входов, продолжаем обрабатывать очередь…",
+            retry_after_ms: retryAfterMs,
+            approx_position: 1,
+          });
         }
         if (admitted.data) queueTicket = admitted.data;
       }

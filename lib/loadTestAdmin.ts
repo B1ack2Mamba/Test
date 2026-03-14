@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AnyTest } from "@/lib/testTypes";
+import { retryTransientApi } from "@/lib/apiHardening";
 
 const TESTS_DIR = path.join(process.cwd(), "data", "tests");
 
@@ -41,14 +42,17 @@ export async function loadTestJsonBySlugAdmin(
 
 
   try {
-    const { data, error } = await supabaseAdmin
-      .from("tests")
-      .select("json, price_rub")
-      .eq("slug", slug)
-      .maybeSingle();
+    const { data, error } = await retryTransientApi<any>(
+      () => supabaseAdmin
+        .from("tests")
+        .select("json, price_rub")
+        .eq("slug", slug)
+        .maybeSingle(),
+      { attempts: 3, delayMs: 150 }
+    );
 
     if (error || !data?.json) {
-      return isDev ? getTestBySlugLocal(slug) : null;
+      return getTestBySlugLocal(slug) || null;
     }
 
     const raw = data.json as any;
@@ -67,6 +71,6 @@ export async function loadTestJsonBySlugAdmin(
     };
   } catch (e) {
     console.warn("Supabase admin load failed:", e);
-    return isDev ? getTestBySlugLocal(slug) : null;
+    return getTestBySlugLocal(slug) || null;
   }
 }

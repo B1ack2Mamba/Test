@@ -4,7 +4,7 @@ import { loadTestJsonBySlugAdmin } from "@/lib/loadTestAdmin";
 import { scoreForcedPair, scorePairSplit, scoreColorTypes, scoreUSK, score16PF, scoreSituationalGuidance, scoreBelbin, scoreEmin, scoreTimeManagement, scoreLearningTypology } from "@/lib/score";
 import { ensureRoomTests } from "@/lib/trainingRoomTests";
 import type { Tag, TimeManagementTag, LearningTypologyChoice } from "@/lib/testTypes";
-import { setNoStore } from "@/lib/apiHardening";
+import { retryTransientApi, setNoStore } from "@/lib/apiHardening";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   setNoStore(res);
@@ -160,35 +160,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Store attempt (specialist-only table)
-  const { data: attempt, error: insErr } = await supabaseAdmin
-    .from("training_attempts")
-    .insert({
-      room_id: roomId,
-      user_id: user.id,
-      test_slug: slug,
-      answers: answersJson,
-      result,
-    })
-    .select("id,created_at")
-    .single();
+  const { data: attempt, error: insErr } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_attempts")
+      .insert({
+        room_id: roomId,
+        user_id: user.id,
+        test_slug: slug,
+        answers: answersJson,
+        result,
+      })
+      .select("id,created_at")
+      .single(),
+    { attempts: 3, delayMs: 150 }
+  );
 
   if (insErr) return res.status(500).json({ ok: false, error: insErr.message });
 
   // Update progress
   const now = new Date().toISOString();
-  const { error: progErr } = await supabaseAdmin
-    .from("training_progress")
-    .upsert(
-      {
-        room_id: roomId,
-        user_id: user.id,
-        test_slug: slug,
-        started_at: now,
-        completed_at: now,
-        attempt_id: attempt.id,
-      },
-      { onConflict: "room_id,user_id,test_slug" }
-    );
+  const { error: progErr } = await retryTransientApi<any>(
+    () => supabaseAdmin
+      .from("training_progress")
+      .upsert(
+        {
+          room_id: roomId,
+          user_id: user.id,
+          test_slug: slug,
+          started_at: now,
+          completed_at: now,
+          attempt_id: attempt.id,
+        },
+        { onConflict: "room_id,user_id,test_slug" }
+      ),
+    { attempts: 3, delayMs: 120 }
+  );
 
   if (progErr) return res.status(500).json({ ok: false, error: progErr.message });
 
