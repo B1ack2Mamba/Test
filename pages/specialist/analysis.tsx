@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
+import { fetchWithSession } from "@/lib/fetchWithSession";
 import { isSpecialistUser } from "@/lib/specialist";
 
 type Room = {
@@ -51,7 +52,7 @@ function titleForSlug(slug: string) {
 }
 
 export default function SpecialistAnalysisPage() {
-  const { session, user } = useSession();
+  const { supabase, session, user } = useSession();
   const router = useRouter();
   const roomIdFromQuery = typeof router.query.room_id === "string" ? router.query.room_id : "";
 
@@ -99,12 +100,8 @@ export default function SpecialistAnalysisPage() {
       setRoomsLoading(true);
       setRoomsErr("");
       try {
-        const r = await fetch("/api/training/rooms/my", {
-          headers: { authorization: `Bearer ${session.access_token}` },
-          cache: "no-store",
-        });
-        const j = await r.json();
-        if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить комнаты");
+        const { response: r, json: j } = await fetchWithSession(supabase, "/api/training/rooms/my", { cache: "no-store" });
+        if (!r.ok || !(j as any)?.ok) throw new Error((j as any)?.error || "Не удалось загрузить комнаты");
         if (cancelled || reqId !== roomsReqRef.current) return;
         const nextRooms = (j.rooms || []) as Room[];
         setRooms(nextRooms);
@@ -325,8 +322,8 @@ export default function SpecialistAnalysisPage() {
                   if (!session) return;
                   setRoomsLoading(true);
                   setRoomsErr("");
-                  fetch("/api/training/rooms/my", { headers: { authorization: `Bearer ${session.access_token}` } })
-                    .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+                  fetchWithSession(supabase, "/api/training/rooms/my")
+                    .then(({ response: r, json: j }) => ({ ok: r.ok, j }))
                     .then(({ ok, j }) => {
                       if (!ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить комнаты");
                       setRooms(j.rooms || []);

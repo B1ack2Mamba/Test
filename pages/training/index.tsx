@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
+import { fetchWithSession } from "@/lib/fetchWithSession";
 
 type Room = { id: string; name: string; created_at: string; created_by_email: string | null; is_joined?: boolean };
 
 export default function TrainingHome() {
-  const { session, user } = useSession();
+  const { supabase, session, user } = useSession();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -51,11 +52,8 @@ export default function TrainingHome() {
     setLoading(true);
     setErr("");
     try {
-      const r = await fetch("/api/training/rooms/list", {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      });
-      const j = await r.json();
-      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить комнаты");
+      const { response: r, json: j } = await fetchWithSession(supabase, "/api/training/rooms/list");
+      if (!r.ok || !(j as any)?.ok) throw new Error((j as any)?.error || "Не удалось загрузить комнаты");
       setRooms(j.rooms || []);
     } catch (e: any) {
       setErr(e?.message || "Ошибка");
@@ -91,12 +89,11 @@ export default function TrainingHome() {
       for (let attempt = 1; attempt <= 14; attempt += 1) {
         const payload: any = { room_id: joinRoomId, password: joinPwd, display_name: joinName, personal_data_consent: joinConsent };
         if (queueToken) payload.queue_token = queueToken;
-        const r = await fetch("/api/training/rooms/join", {
+        const { response: r, json: j } = await fetchWithSession(supabase, "/api/training/rooms/join", {
           method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+          headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
         });
-        const j = await r.json().catch(() => ({}));
         if (r.ok && j?.ok) {
           const safeName = String(joinName || "").trim();
           saveNameLocal(safeName);

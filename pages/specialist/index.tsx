@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
+import { fetchWithSession } from "@/lib/fetchWithSession";
 import { isSpecialistUser } from "@/lib/specialist";
 
 type Room = { id: string; name: string; created_at: string; is_active: boolean; participants_can_see_digits?: boolean };
 
 export default function SpecialistHome() {
-  const { session, user } = useSession();
+  const { supabase, session, user } = useSession();
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
@@ -32,12 +33,8 @@ export default function SpecialistHome() {
     setLoading(true);
     setErr("");
     try {
-      const r = await fetch("/api/training/rooms/my", {
-        headers: { authorization: `Bearer ${session.access_token}` },
-        cache: "no-store",
-      });
-      const j = await r.json();
-      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить комнаты");
+      const { response: r, json: j } = await fetchWithSession(supabase, "/api/training/rooms/my", { cache: "no-store" });
+      if (!r.ok || !(j as any)?.ok) throw new Error((j as any)?.error || "Не удалось загрузить комнаты");
       if (reqId !== loadReqRef.current) return;
       setRooms(j.rooms || []);
     } catch (e: any) {

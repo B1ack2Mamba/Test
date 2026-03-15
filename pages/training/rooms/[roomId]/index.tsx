@@ -69,6 +69,13 @@ export default function TrainingRoom({ tests }: Props) {
   }, [user?.email, joinName]);
 
   useEffect(() => {
+    const qp = router.query.p;
+    if (typeof qp === "string" && qp.trim() && !joinPwd) {
+      setJoinPwd(qp.trim());
+    }
+  }, [router.query.p, joinPwd]);
+
+  useEffect(() => {
     if (member?.display_name) {
       setRenameValue(member.display_name);
     }

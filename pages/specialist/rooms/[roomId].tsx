@@ -493,6 +493,9 @@ export default function SpecialistRoom({ tests }: Props) {
 
   const [copyBusy, setCopyBusy] = useState(false);
   const [copyMsg2, setCopyMsg2] = useState<string>("");
+  const [showRoomQr, setShowRoomQr] = useState(false);
+  const [roomLinkMsg, setRoomLinkMsg] = useState<string>("");
+  const [qrPasswordHint, setQrPasswordHint] = useState<string>("");
   const [refreshing, setRefreshing] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [roomTestsOpen, setRoomTestsOpen] = useState(true);
@@ -515,6 +518,18 @@ export default function SpecialistRoom({ tests }: Props) {
   const exportMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fallbackRoomTests = useMemo(() => buildFallbackRoomTests(tests), [tests]);
+
+  const roomJoinUrl = useMemo(() => {
+    if (typeof window === "undefined" || !roomId) return "";
+    const base = `${window.location.origin}/training/rooms/${encodeURIComponent(roomId)}`;
+    const p = String(qrPasswordHint || "").trim();
+    return p ? `${base}?p=${encodeURIComponent(p)}` : base;
+  }, [roomId, qrPasswordHint]);
+
+  const roomQrUrl = useMemo(() => {
+    if (!roomJoinUrl) return "";
+    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(roomJoinUrl)}`;
+  }, [roomJoinUrl]);
 
   useEffect(() => {
     roomTestsRef.current = roomTests;
@@ -1191,6 +1206,17 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
     }
   };
 
+  const copyRoomJoinLink = async () => {
+    if (!roomJoinUrl) return;
+    try {
+      await navigator.clipboard.writeText(roomJoinUrl);
+      setRoomLinkMsg("Ссылка для участников скопирована ✅");
+      setTimeout(() => setRoomLinkMsg(""), 2500);
+    } catch {
+      setRoomLinkMsg(roomJoinUrl);
+    }
+  };
+
   const copyClientText = async () => {
     if (typeof window === "undefined") return;
     const text = (clientText || "").trim();
@@ -1441,6 +1467,26 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
         </div>
 
         <div className="mt-4 border-t pt-4">
+          <div className="text-sm font-semibold">Массовое тестирование</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={copyRoomJoinLink} className="btn btn-secondary">Скопировать ссылку</button>
+            <button type="button" onClick={() => setShowRoomQr(true)} className="btn btn-secondary">Показать QR</button>
+          </div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+            <input
+              value={qrPasswordHint}
+              onChange={(e) => setQrPasswordHint(e.target.value)}
+              className="rounded-xl border bg-white px-3 py-2 text-sm"
+              placeholder="Пароль для автозаполнения в ссылке/QR (необязательно)"
+            />
+            <div className="flex items-center text-xs text-zinc-500">
+              Если заполнить, QR откроет комнату уже с подставленным паролем.
+            </div>
+          </div>
+          {roomLinkMsg ? <div className="mt-2 text-xs text-zinc-600">{roomLinkMsg}</div> : null}
+        </div>
+
+        <div className="mt-4 border-t pt-4">
           <div className="text-sm font-semibold">Результаты</div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
@@ -1682,6 +1728,28 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
           </tbody>
         </table>
       </div>
+
+      {showRoomQr ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
+          <div className="card w-full max-w-md shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold">QR для комнаты</div>
+                <div className="mt-1 text-xs text-zinc-500">Участники открывают QR и попадают на страницу входа в комнату.</div>
+              </div>
+              <button onClick={() => setShowRoomQr(false)} className="btn btn-secondary btn-sm">Закрыть</button>
+            </div>
+            <div className="mt-4 flex flex-col items-center gap-3">
+              {roomQrUrl ? <img src={roomQrUrl} alt="QR комнаты" className="h-72 w-72 rounded-xl border bg-white p-2" /> : null}
+              <div className="w-full rounded-2xl border bg-white/60 p-3 text-xs text-zinc-700 break-all">{roomJoinUrl || "Ссылка недоступна"}</div>
+              <div className="text-xs text-zinc-500">{qrPasswordHint ? `Пароль уже подставлен в ссылку/QR: ${qrPasswordHint}` : "Если пароль не подставлен, участник введёт его вручную."}</div>
+              <div className="flex items-center gap-2">
+                <button onClick={copyRoomJoinLink} className="btn btn-secondary btn-sm">Скопировать ссылку</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {open ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-3">
