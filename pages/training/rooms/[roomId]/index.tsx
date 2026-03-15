@@ -11,6 +11,7 @@ type RoomInfo = { id: string; name: string; created_by_email: string | null; is_
 type MemberInfo = { role: string; display_name: string };
 
 type ProgressRow = { test_slug: string; started_at: string | null; completed_at: string | null; attempt_id: string | null };
+type ParticipantAccessInfo = { enabled?: boolean; access_code?: string; access_url?: string };
 
 export default function TrainingRoom({ tests }: Props) {
   const router = useRouter();
@@ -27,6 +28,8 @@ export default function TrainingRoom({ tests }: Props) {
   const [loading, setLoading] = useState(false);
   const [bootChecked, setBootChecked] = useState(false);
   const [err, setErr] = useState("");
+  const [participantAccess, setParticipantAccess] = useState<ParticipantAccessInfo | null>(null);
+  const [copiedAccess, setCopiedAccess] = useState(false);
 
   // join form (if not joined)
   const [joinName, setJoinName] = useState("");
@@ -77,13 +80,13 @@ export default function TrainingRoom({ tests }: Props) {
   }, [roomId, member?.display_name, joinName]);
 
   const load = async () => {
-    if (!session || !roomId) return;
+    if (!roomId) return;
     setLoading(true);
     setErr("");
     try {
-      const r = await fetch(`/api/training/rooms/bootstrap?room_id=${encodeURIComponent(roomId)}`, {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      });
+      const headers: Record<string, string> = {};
+      if (session?.access_token) headers.authorization = `Bearer ${session.access_token}`;
+      const r = await fetch(`/api/training/rooms/bootstrap?room_id=${encodeURIComponent(roomId)}`, { headers });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить комнату");
       setRoom(j.room);
@@ -100,7 +103,7 @@ export default function TrainingRoom({ tests }: Props) {
   };
 
   useEffect(() => {
-    if (!session || !roomId) return;
+    if (!roomId) return;
     setBootChecked(false);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,18 +111,46 @@ export default function TrainingRoom({ tests }: Props) {
 
   // presence ping
   useEffect(() => {
-    if (!session || !roomId || !member) return;
+    if (!roomId || !member) return;
     const tick = async () => {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (session?.access_token) headers.authorization = `Bearer ${session.access_token}`;
       await fetch("/api/training/rooms/touch", {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+        headers,
         body: JSON.stringify({ room_id: roomId }),
       }).catch(() => null);
     };
     tick();
     const id = setInterval(tick, 90_000);
     return () => clearInterval(id);
-  }, [session, roomId, member]);
+  }, [session?.access_token, roomId, member]);
+
+  useEffect(() => {
+    if (!roomId || !member) return;
+    (async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (session?.access_token) headers.authorization = `Bearer ${session.access_token}`;
+        const r = await fetch(`/api/training/participant/access/me?room_id=${encodeURIComponent(roomId)}`, { headers });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && j?.ok) setParticipantAccess(j);
+      } catch {
+        // ignore
+      }
+    })();
+  }, [roomId, member, session?.access_token]);
+
+  const copyParticipantAccess = async () => {
+    if (!participantAccess?.access_url) return;
+    try {
+      await navigator.clipboard.writeText(participantAccess.access_url);
+      setCopiedAccess(true);
+      setTimeout(() => setCopiedAccess(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
 
   const bySlug = useMemo(() => {
     const m = new Map<string, ProgressRow>();
@@ -143,7 +174,6 @@ export default function TrainingRoom({ tests }: Props) {
   }, [roomTests, testsBySlug, tests]);
 
   const join = async () => {
-    if (!session) return;
     setJoinBusy(true);
     setJoinError("");
     try {
@@ -151,9 +181,11 @@ export default function TrainingRoom({ tests }: Props) {
       for (let attemptNo = 1; attemptNo <= 14; attemptNo += 1) {
         const payload: any = { room_id: roomId, password: joinPwd, display_name: joinName, personal_data_consent: joinConsent };
         if (queueToken) payload.queue_token = queueToken;
+        const headers: Record<string, string> = { "content-type": "application/json" };
+        if (session?.access_token) headers.authorization = `Bearer ${session.access_token}`;
         const r = await fetch("/api/training/rooms/join", {
           method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+          headers,
           body: JSON.stringify(payload),
         });
         const j = await r.json().catch(() => ({}));
@@ -186,7 +218,7 @@ export default function TrainingRoom({ tests }: Props) {
   };
 
   const saveRename = async () => {
-    if (!session || !roomId) return;
+    if (!roomId) return;
     const name = (renameValue || "").trim();
     if (!name) {
       setRenameMsg("Имя пустое");
@@ -196,9 +228,11 @@ export default function TrainingRoom({ tests }: Props) {
     setRenameBusy(true);
     setRenameMsg("");
     try {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (session?.access_token) headers.authorization = `Bearer ${session.access_token}`;
       const r = await fetch("/api/training/rooms/update-member-name", {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+        headers,
         body: JSON.stringify({ room_id: roomId, display_name: name }),
       });
       const j = await r.json();
@@ -216,25 +250,8 @@ export default function TrainingRoom({ tests }: Props) {
   };
 
 
-  const checkingRoomAccess = !!session && !!user && !!roomId && !bootChecked;
+  const checkingRoomAccess = !!roomId && !bootChecked;
 
-  if (!session || !user) {
-    return (
-      <Layout title="Комната тренинга">
-        <div className="card text-sm text-zinc-700">
-          Нужно войти, чтобы открыть комнату.
-          <div className="mt-3">
-            <Link
-              href={`/auth?next=${encodeURIComponent(`/training/rooms/${roomId || ""}`)}`}
-              className="btn btn-secondary btn-sm"
-            >
-              Вход / регистрация
-            </Link>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
 
   return (
     <Layout title={room ? room.name : "Комната тренинга"}>
@@ -301,6 +318,21 @@ export default function TrainingRoom({ tests }: Props) {
 
           </div>
         </div>
+
+        {member && participantAccess?.enabled ? (
+          <div className="mt-4 rounded-2xl border bg-white/70 p-3 text-sm text-zinc-700">
+            <div className="font-semibold text-zinc-900">Ваш доступ к результатам</div>
+            <div className="mt-1">Сохраните ссылку или код. По ним вы сможете открыть свои результаты с другого устройства без регистрации.</div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+              <div className="rounded-2xl border bg-white px-3 py-2 text-xs break-all">{participantAccess.access_url}</div>
+              <button type="button" onClick={copyParticipantAccess} className="btn btn-secondary btn-sm">{copiedAccess ? 'Скопировано ✅' : 'Скопировать ссылку'}</button>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600">
+              <span className="rounded-full border bg-white px-2 py-1">Код доступа: <b>{participantAccess.access_code}</b></span>
+              <Link href={`/training/participant/results?room_id=${encodeURIComponent(roomId)}`} className="underline">Открыть мои результаты</Link>
+            </div>
+          </div>
+        ) : null}
 
         {checkingRoomAccess ? (
           <div className="mt-4 card-soft p-4 text-sm text-zinc-600">Проверяем доступ к комнате…</div>

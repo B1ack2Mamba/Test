@@ -497,6 +497,12 @@ export default function SpecialistRoom({ tests }: Props) {
   const [bootstrapped, setBootstrapped] = useState(false);
   const [roomTestsOpen, setRoomTestsOpen] = useState(true);
   const [timingDebug, setTimingDebug] = useState<{ shell?: Record<string, number>; results?: Record<string, number> }>({});
+  const [participantsPage, setParticipantsPage] = useState(1);
+  const [participantsPageSize, setParticipantsPageSize] = useState(50);
+  const [participantsSearch, setParticipantsSearch] = useState("");
+  const [participantsTotal, setParticipantsTotal] = useState(0);
+  const [participantsHasMore, setParticipantsHasMore] = useState(false);
+  const [roomLimits, setRoomLimits] = useState<any>(null);
   const showTimingDebug = process.env.NODE_ENV !== "production";
 
   const roomTestsRef = useRef<any[]>([]);
@@ -586,7 +592,10 @@ export default function SpecialistRoom({ tests }: Props) {
     else setResultsLoading(true);
     setErr("");
     try {
-      const dashRes = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(roomId)}&mode=results${showTimingDebug ? "&debug=1" : ""}`, {
+      const qs = new URLSearchParams({ room_id: roomId, mode: "results", participants_page: String(participantsPage), participants_page_size: String(participantsPageSize) });
+      if (participantsSearch.trim()) qs.set("participants_search", participantsSearch.trim());
+      if (showTimingDebug) qs.set("debug", "1");
+      const dashRes = await fetch(`/api/training/rooms/dashboard?${qs.toString()}`, {
         headers: { authorization: `Bearer ${session.access_token}` },
         cache: "no-store",
         signal: opts?.signal,
@@ -597,6 +606,9 @@ export default function SpecialistRoom({ tests }: Props) {
       setMembers(dashJson.members || []);
       setProgress(dashJson.progress || []);
       setCells(dashJson.cells || {});
+      setParticipantsTotal(Number(dashJson.participants_total || 0));
+      setParticipantsHasMore(Boolean(dashJson.participants_has_more));
+      setRoomLimits(dashJson.room_limits || null);
       if (showTimingDebug && dashJson?._timings) {
         setTimingDebug((prev) => ({ ...prev, results: dashJson._timings }));
       }
@@ -609,7 +621,7 @@ export default function SpecialistRoom({ tests }: Props) {
         setResultsLoading(false);
       }
     }
-  }, [roomId, session, showTimingDebug]);
+  }, [participantsPage, participantsPageSize, participantsSearch, roomId, session, showTimingDebug]);
 
   const load = useCallback(async (opts?: { silent?: boolean; signal?: AbortSignal }) => {
     await loadShell(opts);
@@ -655,6 +667,11 @@ export default function SpecialistRoom({ tests }: Props) {
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
     };
   }, [loadResults, loadShell, roomId, session]);
+
+
+  useEffect(() => {
+    setParticipantsPage(1);
+  }, [participantsSearch, participantsPageSize, roomId]);
 
   const byUserTest = useMemo(() => {
     const m = new Map<string, Progress>();
@@ -1548,6 +1565,50 @@ ${major === 2 ? "✅ " : ""}Утверждение 2${rf ? ` (фактор ${rf}
           </div>
         </div>
         ) : null}
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-3">
+        <div>
+          <div className="text-sm font-semibold">Участники</div>
+          <div className="text-xs text-zinc-600">Показано {members.length} из {participantsTotal}</div>
+          {roomLimits?.isSoftExceeded ? (
+            <div className="mt-1 text-xs text-amber-700">Комната приближается к рабочему лимиту: {roomLimits.participantCount}/{roomLimits.softLimit} участников.</div>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={participantsSearch}
+            onChange={(e) => setParticipantsSearch(e.target.value)}
+            placeholder="Поиск по имени"
+            className="rounded-xl border px-3 py-2 text-sm"
+          />
+          <select
+            value={participantsPageSize}
+            onChange={(e) => setParticipantsPageSize(Number(e.target.value) || 50)}
+            className="rounded-xl border px-3 py-2 text-sm"
+          >
+            <option value={25}>25 / стр.</option>
+            <option value={50}>50 / стр.</option>
+            <option value={100}>100 / стр.</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => setParticipantsPage((p) => Math.max(1, p - 1))}
+            disabled={participantsPage <= 1 || resultsLoading || refreshing}
+            className="btn btn-secondary disabled:opacity-50"
+          >
+            ← Назад
+          </button>
+          <div className="text-xs text-zinc-600">Стр. {participantsPage}</div>
+          <button
+            type="button"
+            onClick={() => setParticipantsPage((p) => p + 1)}
+            disabled={!participantsHasMore || resultsLoading || refreshing}
+            className="btn btn-secondary disabled:opacity-50"
+          >
+            Вперёд →
+          </button>
+        </div>
       </div>
 
       <div className="rounded-2xl border bg-white p-2 overflow-auto">

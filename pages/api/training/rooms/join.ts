@@ -6,6 +6,8 @@ import { verifyPassword } from "@/lib/password";
 import { isSpecialistUser } from "@/lib/specialist";
 import { createTrainingRoomServerSession, setTrainingRoomSessionCookie } from "@/lib/trainingRoomServerSession";
 import { retryTransientApi, setNoStore } from "@/lib/apiHardening";
+import { buildTrainingRoomLimitState } from "@/lib/trainingRoomLimits";
+import { ensureParticipantAccess } from "@/lib/trainingRoomParticipantAccess";
 
 function createSupabaseAdminFromEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -224,6 +226,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (roomErr || !room) return res.status(404).json({ ok: false, error: "Комната не найдена" });
   if (!room.is_active) return res.status(400).json({ ok: false, error: "Комната не активна" });
+
+  const participantCountResp = await retryTransientApi<any>(
+    () => (supabaseAdmin as any)
+      .from("training_room_members")
+      .select("id", { count: "exact", head: true })
+      .eq("room_id", roomId)
+      .eq("role", "participant"),
+    { attempts: 1, delayMs: 0 }
+  );
+  const participantCount = Number(participantCountResp?.count || 0);
+  const roomLimits = buildTrainingRoomLimitState(participantCount);
+  if (!getBearerToken(req) && roomLimits.isHardExceeded) {
+    return res.status(409).json({
+      ok: false,
+      error: "Комната достигла лимита участников. Разбейте поток на несколько комнат или запустите вход волнами.",
+      code: "ROOM_PARTICIPANT_LIMIT_REACHED",
+      room_limits: roomLimits,
+    });
+  }
+
   if (!verifyPassword(pwd, room.password_hash)) {
     return res.status(403).json({ ok: false, error: "Неверный пароль" });
   }
@@ -289,6 +311,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           error: "Сейчас много входов, подключаем вас в порядке очереди…",
           retry_after_ms: retryAfterMs,
           approx_position: state.approxPosition,
+          room_limits: roomLimits,
         });
       }
 
@@ -322,6 +345,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           error: "Сейчас много входов, подключаем вас в порядке очереди…",
           retry_after_ms: retryAfterMs,
           approx_position: approxPosition,
+          room_limits: roomLimits,
         });
       }
     }
@@ -422,6 +446,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ ok: false, error: ("error" in roomSession ? roomSession.error : undefined) || "Не удалось создать сессию комнаты" });
   }
 
+  let participantAccess: { access_code: string; access_url: string; access_token: string } | null = null;
+  const accessState = await ensureParticipantAccess(supabaseAdmin as any, { roomId, userId, displayName });
+  if (accessState.ok) {
+    const base = `${req.headers["x-forwarded-proto"] || (process.env.NODE_ENV === "production" ? "https" : "http")}://${req.headers.host}`;
+    participantAccess = {
+      access_code: accessState.row.access_code,
+      access_token: accessState.accessToken,
+      access_url: `${base}/training/access?room_id=${encodeURIComponent(roomId)}&token=${encodeURIComponent(accessState.accessToken)}`,
+    };
+  }
+
   if (queueToken) {
     await completeJoinTicket(supabaseAdmin as any, roomId, queueToken, "completed", null).catch(() => null);
   }
@@ -432,5 +467,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     room_session_expires_at: roomSession.ok ? roomSession.expiresAt : null,
     room_session_enabled: roomSession.ok,
     guest_created: guestCreated,
+    participant_access: participantAccess,
+    room_limits: buildTrainingRoomLimitState(participantCount + (role === "participant" ? 1 : 0)),
   });
 }
