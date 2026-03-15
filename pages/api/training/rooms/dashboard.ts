@@ -3,7 +3,6 @@ import { requireUser } from "@/lib/serverAuth";
 import { retryTransientApi, setNoStore } from "@/lib/apiHardening";
 import { enabledRoomTests, getRoomTestsSafe } from "@/lib/trainingRoomTests";
 import { isSpecialistUser } from "@/lib/specialist";
-import { buildTrainingRoomLimitState } from "@/lib/trainingRoomLimits";
 import type { ScoreResult } from "@/lib/score";
 
 type TimingMap = Record<string, number>;
@@ -140,9 +139,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const roomId = String(req.query.room_id || "").trim();
   const mode = String(req.query.mode || "full").trim().toLowerCase();
-  const participantsPage = Math.max(1, Number(req.query.participants_page || 1) || 1);
-  const participantsPageSize = Math.min(100, Math.max(25, Number(req.query.participants_page_size || 50) || 50));
-  const participantsSearch = String(req.query.participants_search || "").trim();
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
 
   const requestStarted = Date.now();
@@ -172,34 +168,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const membersStarted = Date.now();
-    const membersQuery = (supabaseAdmin as any)
-      .from("training_room_members")
-      .select("id,user_id,display_name,role,joined_at,last_seen", { count: "exact" })
-      .eq("room_id", roomId)
-      .eq("role", "participant")
-      .order("joined_at", { ascending: true });
-    const filteredMembersQuery = participantsSearch
-      ? membersQuery.ilike("display_name", `%${participantsSearch}%`)
-      : membersQuery;
-    const membersResp = await retryTransientApi<any>(
-      () => filteredMembersQuery.range((participantsPage - 1) * participantsPageSize, (participantsPage - 1) * participantsPageSize + participantsPageSize - 1),
-      { attempts: 1, delayMs: 0 }
-    ).finally(() => { timings.members = markSince(membersStarted); });
-
-    const { data: membersData, error: membersErr, count: membersCount } = membersResp as any;
-    if (membersErr) return res.status(500).json({ ok: false, error: membersErr.message });
-
-    const participantIdsPage = Array.from(new Set((membersData ?? []).map((m: any) => String(m.user_id)).filter(Boolean)));
     const progressStarted = Date.now();
-    const progressResp = await retryTransientApi<any>(
-      () => supabaseAdmin
-        .from("training_progress")
-        .select("room_id,user_id,test_slug,started_at,completed_at,attempt_id")
-        .eq("room_id", roomId)
-        .in("test_slug", enabledSlugs.length ? enabledSlugs : ["__none__"])
-        .in("user_id", participantIdsPage.length ? participantIdsPage : ["00000000-0000-0000-0000-000000000000"]),
-      { attempts: 1, delayMs: 0 }
-    ).finally(() => { timings.progress = markSince(progressStarted); });
+    const [membersResp, progressResp] = await Promise.all([
+      retryTransientApi<any>(
+        () => supabaseAdmin
+          .from("training_room_members")
+          .select("id,user_id,display_name,role,joined_at,last_seen")
+          .eq("room_id", roomId)
+          .order("joined_at", { ascending: true }),
+        { attempts: 1, delayMs: 0 }
+      ).finally(() => { timings.members = markSince(membersStarted); }),
+      retryTransientApi<any>(
+        () => supabaseAdmin
+          .from("training_progress")
+          .select("room_id,user_id,test_slug,started_at,completed_at,attempt_id")
+          .eq("room_id", roomId)
+          .in("test_slug", enabledSlugs.length ? enabledSlugs : ["__none__"]),
+        { attempts: 1, delayMs: 0 }
+      ).finally(() => { timings.progress = markSince(progressStarted); }),
+    ]);
+
+    const { data: membersData, error: membersErr } = membersResp;
+    if (membersErr) return res.status(500).json({ ok: false, error: membersErr.message });
 
     const now = Date.now();
     const onlineWindowMs = 60_000;
