@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
 import type { AnyTest } from "@/lib/testTypes";
@@ -35,11 +36,18 @@ function fmt(ts: string) {
 type Props = { tests: Pick<AnyTest, "slug" | "title">[] };
 
 export default function MyTrainingResults({ tests }: Props) {
+  const router = useRouter();
   const { session, user } = useSession();
   const [rows, setRows] = useState<Row[]>([]);
   const [digitsRows, setDigitsRows] = useState<DigitsRow[]>([]);
+  const [openDigitsAttemptId, setOpenDigitsAttemptId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+
+  const requestedDigitsAttemptId = useMemo(() => {
+    const raw = router.query.digits_attempt;
+    return typeof raw === "string" && raw.trim() ? raw.trim() : "";
+  }, [router.query.digits_attempt]);
 
   const titleBySlug = useMemo(() => {
     const m = new Map<string, string>();
@@ -101,6 +109,13 @@ export default function MyTrainingResults({ tests }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token]);
 
+  useEffect(() => {
+    if (!requestedDigitsAttemptId) return;
+    if (openDigitsAttemptId) return;
+    const match = digitsRows.find((row) => row.attempt_id === requestedDigitsAttemptId);
+    if (match) setOpenDigitsAttemptId(match.attempt_id);
+  }, [requestedDigitsAttemptId, digitsRows, openDigitsAttemptId]);
+
   if (!session || !user) {
     return (
       <Layout title="Мои результаты">
@@ -145,7 +160,15 @@ export default function MyTrainingResults({ tests }: Props) {
       {digitsRows.length ? (
         <div className="mt-3 grid gap-3">
           {digitsRows.map((r) => (
-            <details key={r.attempt_id} className="card">
+            <details
+              key={r.attempt_id}
+              className="card"
+              open={openDigitsAttemptId === r.attempt_id}
+              onToggle={(e) => {
+                const el = e.currentTarget as HTMLDetailsElement;
+                setOpenDigitsAttemptId(el.open ? r.attempt_id : null);
+              }}
+            >
               <summary className="cursor-pointer list-none">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -153,7 +176,7 @@ export default function MyTrainingResults({ tests }: Props) {
                     <div className="mt-1 text-xs text-zinc-500">Комната: {r.room_name || r.room_id}</div>
                     <div className="mt-1 text-xs text-zinc-500">Последнее прохождение: {fmt(r.created_at)}</div>
                   </div>
-                  <div className="text-xs text-zinc-500">Раскрыть</div>
+                  <div className="text-xs text-zinc-500">{openDigitsAttemptId === r.attempt_id ? "Скрыть" : "Раскрыть"}</div>
                 </div>
               </summary>
               <div className="mt-3">

@@ -21,6 +21,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!access) return;
   const { user, supabaseAdmin, member } = access;
 
+
+  let roomTrainingMode = false;
+  try {
+    const { data: roomSettings, error: roomSettingsError } = await (supabaseAdmin as any)
+      .from("training_rooms")
+      .select("participants_can_see_digits")
+      .eq("id", roomId)
+      .maybeSingle();
+    if (!roomSettingsError) roomTrainingMode = Boolean(roomSettings?.participants_can_see_digits);
+  } catch {
+    // ignore missing migration / transient lookup
+  }
+
   // room-specific enabled tests
   try {
     const roomTests = await ensureRoomTests(supabaseAdmin as any, roomId);
@@ -44,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .maybeSingle();
 
     if (existingProgress?.attempt_id && existingProgress?.completed_at) {
-      return res.status(200).json({ ok: true, attempt_id: existingProgress.attempt_id, duplicate: true });
+      return res.status(200).json({ ok: true, attempt_id: existingProgress.attempt_id, duplicate: true, training_mode: roomTrainingMode });
     }
   } catch {
     // if progress lookup fails transiently, continue with normal submit path
@@ -198,5 +211,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (progErr) return res.status(500).json({ ok: false, error: progErr.message });
 
-  return res.status(200).json({ ok: true, attempt_id: attempt.id });
+  return res.status(200).json({ ok: true, attempt_id: attempt.id, training_mode: roomTrainingMode });
 }

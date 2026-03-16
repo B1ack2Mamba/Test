@@ -117,6 +117,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [isEnabled, setIsEnabled] = useState(true);
+  const [trainingMode, setTrainingMode] = useState(false);
 
   const [forced, setForced] = useState<string[]>(() => Array(test.questions?.length ?? 0).fill(""));
   const [leftPoints, setLeftPoints] = useState<(number | null)[]>(() => Array(test.questions?.length ?? 0).fill(null));
@@ -273,6 +274,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
         if (!r.ok || !j?.ok) return;
         const slugs = (j.room_tests || []).map((x: any) => String(x.test_slug));
         setIsEnabled(slugs.includes(test.slug));
+        setTrainingMode(Boolean(j?.room?.participants_can_see_digits));
       } catch {
         // ignore
       }
@@ -384,6 +386,7 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось сохранить попытку");
 
       const attemptId = j.attempt_id as string;
+      const shouldOpenMyResults = typeof j?.training_mode === "boolean" ? Boolean(j.training_mode) : trainingMode;
 
       // local history per-room (minimal)
       try {
@@ -393,6 +396,11 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
         list.unshift({ test_slug: test.slug, attempt_id: attemptId, at: Date.now() });
         window.localStorage.setItem(key, JSON.stringify(list.slice(0, 50)));
       } catch {}
+
+      if (shouldOpenMyResults) {
+        router.push(`/training/my-results?digits_attempt=${encodeURIComponent(attemptId)}`);
+        return;
+      }
 
       router.push(
         `/training/rooms/${encodeURIComponent(roomId)}/tests/${encodeURIComponent(test.slug)}/done?attempt=${encodeURIComponent(
@@ -524,7 +532,9 @@ export default function TrainingTake({ test }: { test: AnyTest }) {
       <div className="mb-4 card text-sm text-slate-700">
         Комната: <span className="font-medium">{roomId}</span>
         <div className="mt-1 text-xs text-slate-500">
-          Результаты в цифрах будут доступны специалисту. Вы увидите только статус «завершено».
+          {trainingMode
+            ? "Тренинг-режим включён: после завершения теста цифры сразу откроются в разделе «Мои результаты»."
+            : "Результаты в цифрах будут доступны специалисту. Вы увидите только статус «завершено»."}
         </div>
       </div>
 

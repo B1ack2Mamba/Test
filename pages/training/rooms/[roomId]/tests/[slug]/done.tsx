@@ -12,6 +12,7 @@ export default function TrainingDone() {
   const slug = String(router.query.slug || "");
 
   const [nextSlug, setNextSlug] = useState<string | null>(null);
+  const [trainingMode, setTrainingMode] = useState(false);
   const [nextStatus, setNextStatus] = useState<"idle" | "loading" | "ready" | "none" | "error">("idle");
   const [nextErr, setNextErr] = useState<string>("");
   const [nextBusy, setNextBusy] = useState(false);
@@ -35,6 +36,8 @@ export default function TrainingDone() {
         const bootstrapJson: any = await bootstrapRes.json().catch(() => ({}));
 
         if (!bootstrapRes.ok || !bootstrapJson?.ok) throw new Error(bootstrapJson?.error || "Не удалось загрузить данные комнаты");
+
+        setTrainingMode(Boolean(bootstrapJson?.room?.participants_can_see_digits));
 
         const roomTests = Array.isArray(bootstrapJson.room_tests) ? bootstrapJson.room_tests : [];
         const ordered = [...roomTests]
@@ -102,12 +105,22 @@ export default function TrainingDone() {
     <Layout title="Тест завершён">
       <div className="card">
         <div className="text-lg font-semibold">Готово ✅</div>
-        <div className="mt-1 text-sm text-zinc-700">Результаты отправлены специалисту в комнате.</div>
+        <div className="mt-1 text-sm text-zinc-700">
+          {trainingMode
+            ? "Тренинг-режим включён: цифры уже лежат в разделе «Мои результаты»."
+            : "Результаты отправлены специалисту в комнате."}
+        </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
           <Link href={`/training/rooms/${encodeURIComponent(roomId)}`} className="btn btn-primary">
             Назад в комнату
           </Link>
+
+          {trainingMode ? (
+            <Link href="/training/my-results" className="btn btn-secondary">
+              Мои результаты
+            </Link>
+          ) : null}
 
           {canComputeNext ? (
             <button

@@ -5,16 +5,21 @@ import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
 
 type Mode = "login" | "signup";
+type AuthKind = "name" | "email";
 
 export default function AuthPage() {
   const { supabase, user, session } = useSession();
   const router = useRouter();
   const next = useMemo(() => {
     const n = router.query.next;
-    return typeof n === "string" ? n : "/";
+    return typeof n === "string" ? n : "/training";
   }, [router.query.next]);
 
-  const [mode, setMode] = useState<Mode>("login");
+  const [mode, setMode] = useState<Mode>("signup");
+  const [authKind, setAuthKind] = useState<AuthKind>("name");
+
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -39,6 +44,22 @@ export default function AuthPage() {
     }
   }, [user, session, next, router]);
 
+  useEffect(() => {
+    if (authKind !== "email" || mode !== "signup") {
+      setIsSpecialist(false);
+      setSpecialistCode("");
+    }
+  }, [authKind, mode]);
+
+  const applyServerSession = async (payload: any) => {
+    if (!supabase) throw new Error("Supabase client is not ready");
+    const accessToken = String(payload?.session?.access_token || "");
+    const refreshToken = String(payload?.session?.refresh_token || "");
+    if (!accessToken || !refreshToken) throw new Error("Сервер не вернул сессию");
+    const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    if (error) throw error;
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
@@ -48,43 +69,71 @@ export default function AuthPage() {
 
     try {
       if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        if (error) throw error;
-        return;
-      }
-
-      if (mode === "signup") {
-        if (password.length < 8) throw new Error("Пароль должен быть не короче 8 символов.");
-        if (password !== password2) throw new Error("Пароли не совпадают.");
-
-        // Specialist sign-up uses server route (service_role) and a shared code.
-        if (isSpecialist) {
-          const r = await fetch("/api/auth/specialist-signup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: email.trim(), password, code: specialistCode }),
+        if (authKind === "email") {
+          const { error } = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
           });
-          const j = await r.json().catch(() => ({}));
-          if (!r.ok || !j.ok) throw new Error(j.error || "Не удалось создать специалиста");
-          setInfo("Аккаунт специалиста создан. Теперь войдите по email и паролю.");
-          setMode("login");
+          if (error) throw error;
           return;
         }
 
-        const { error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
+        const r = await fetch("/api/auth/name-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ first_name: firstName, last_name: lastName, password }),
         });
-        if (error) throw error;
-        setInfo(
-          "Аккаунт создан. Если в Supabase включено подтверждение email — потребуется подтвердить почту. Если подтверждение выключено — можно сразу входить."
-        );
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || "Не удалось войти");
+        await applyServerSession(j);
+        return;
+      }
+
+      if (password.length < 8) throw new Error("Пароль должен быть не короче 8 символов.");
+      if (password !== password2) throw new Error("Пароли не совпадают.");
+
+      if (authKind === "name") {
+        const r = await fetch("/api/auth/name-signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ first_name: firstName, last_name: lastName, password }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || "Не удалось создать аккаунт");
+        if (j?.session?.access_token && j?.session?.refresh_token) {
+          await applyServerSession(j);
+          return;
+        }
+        setInfo(String(j?.message || "Аккаунт создан. Теперь войдите по имени, фамилии и паролю."));
         setMode("login");
         return;
       }
+
+      if (isSpecialist) {
+        const r = await fetch("/api/auth/specialist-signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim(), password, code: specialistCode }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || "Не удалось создать специалиста");
+        setInfo("Аккаунт специалиста создан. Теперь войдите по email и паролю.");
+        setMode("login");
+        setAuthKind("email");
+        return;
+      }
+
+      const { error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+      });
+      if (error) throw error;
+      setInfo(
+        "Аккаунт создан. Если в Supabase включено подтверждение email — потребуется подтвердить почту. Если подтверждение выключено — можно сразу входить."
+      );
+      setMode("login");
+      setAuthKind("email");
+      return;
     } catch (err: any) {
       setError(err?.message ?? "Ошибка");
     } finally {
@@ -92,17 +141,13 @@ export default function AuthPage() {
     }
   };
 
+  const nameAuthActive = authKind === "name";
+  const showRepeatPassword = mode === "signup";
+
   return (
-    <Layout title="Вход">
+    <Layout title={mode === "signup" ? "Регистрация" : "Вход"}>
       <div className="card">
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setMode("login")}
-            className={`btn btn-sm ${mode === "login" ? "btn-primary" : "btn-secondary"}`}
-          >
-            Вход
-          </button>
           <button
             type="button"
             onClick={() => setMode("signup")}
@@ -110,27 +155,86 @@ export default function AuthPage() {
           >
             Регистрация
           </button>
+          <button
+            type="button"
+            onClick={() => setMode("login")}
+            className={`btn btn-sm ${mode === "login" ? "btn-primary" : "btn-secondary"}`}
+          >
+            Вход
+          </button>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setAuthKind("name")}
+            className={`rounded-2xl border px-4 py-3 text-left transition ${nameAuthActive ? "border-indigo-300 bg-indigo-50 text-indigo-950" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"}`}
+          >
+            <div className="text-sm font-semibold">🪪 По имени и фамилии</div>
+            <div className="mt-1 text-xs text-zinc-500">
+              {mode === "signup" ? "Основная регистрация без почты." : "Вход по имени, фамилии и паролю."}
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAuthKind("email")}
+            className={`rounded-2xl border px-4 py-3 text-left transition ${!nameAuthActive ? "border-indigo-300 bg-indigo-50 text-indigo-950" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"}`}
+          >
+            <div className="text-sm font-semibold">✉️ По почте</div>
+            <div className="mt-1 text-xs text-zinc-500">
+              {mode === "signup" ? "Альтернативная регистрация по email." : "Обычный вход по email и паролю."}
+            </div>
+          </button>
         </div>
 
         <div className="mt-3 text-xs text-slate-600">
-          {mode === "login" ? "Вход по email и паролю." : null}
-          {mode === "signup"
-            ? "Создайте аккаунт по email и паролю. Если вы специалист — включите переключатель и введите общий код."
-            : null}
+          {mode === "signup" && authKind === "name" ? "Сначала — регистрация по имени и фамилии. Почта остаётся как альтернативный вариант." : null}
+          {mode === "signup" && authKind === "email" ? "Регистрация по email и паролю. Для специалистов используйте этот режим." : null}
+          {mode === "login" && authKind === "name" ? "Вход по имени, фамилии и паролю." : null}
+          {mode === "login" && authKind === "email" ? "Вход по email и паролю." : null}
         </div>
 
         <form onSubmit={onSubmit} className="mt-4 grid gap-3">
-          <label className="grid gap-1">
-            <span className="text-xs text-slate-600">Email</span>
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              type="email"
-              placeholder="you@example.com"
-              className="input"
-              required
-            />
-          </label>
+          {authKind === "name" ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1">
+                  <span className="text-xs text-slate-600">Имя</span>
+                  <input
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Алекс"
+                    className="input"
+                    required
+                  />
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-xs text-slate-600">Фамилия</span>
+                  <input
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Иванов"
+                    className="input"
+                    required
+                  />
+                </label>
+              </div>
+            </>
+          ) : (
+            <label className="grid gap-1">
+              <span className="text-xs text-slate-600">Email</span>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                placeholder="you@example.com"
+                className="input"
+                required
+              />
+            </label>
+          )}
 
           <label className="grid gap-1">
             <span className="text-xs text-slate-600">Пароль</span>
@@ -153,12 +257,10 @@ export default function AuthPage() {
               </button>
             </div>
             {mode === "signup" ? <div className="text-[11px] text-slate-500">8+ символов</div> : null}
-            {passwordTooShort ? (
-              <div className="text-sm text-red-600">Пароль должен быть не короче 8 символов.</div>
-            ) : null}
+            {passwordTooShort ? <div className="text-sm text-red-600">Пароль должен быть не короче 8 символов.</div> : null}
           </label>
 
-          {mode === "signup" ? (
+          {showRepeatPassword ? (
             <label className="grid gap-1">
               <span className="text-xs text-slate-600">Повторите пароль</span>
               <div className="relative">
@@ -186,7 +288,7 @@ export default function AuthPage() {
             </label>
           ) : null}
 
-          {mode === "signup" ? (
+          {mode === "signup" && authKind === "email" ? (
             <div className="card-soft p-3">
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -214,27 +316,23 @@ export default function AuthPage() {
                 </label>
               ) : (
                 <div className="mt-2 text-[11px] text-slate-500">
-                  Если вы участник тренинга — просто регистрируйтесь как обычный пользователь.
+                  Участникам тренинга обычно достаточно регистрации по имени и фамилии. Почта — запасной путь.
                 </div>
               )}
+            </div>
+          ) : null}
+
+          {mode === "signup" && authKind === "name" ? (
+            <div className="rounded-2xl border border-zinc-200 bg-white/60 px-3 py-2 text-[11px] text-zinc-600">
+              Для участников тренинга имя и фамилия становятся основным способом входа. Если у двух людей совпадают имя и фамилия, одному из них лучше использовать регистрацию по почте.
             </div>
           ) : null}
 
           {error ? <div className="text-sm text-red-600">{error}</div> : null}
           {info ? <div className="text-sm text-slate-700">{info}</div> : null}
 
-          <button
-            disabled={loading}
-            type="submit"
-            className="btn btn-primary w-full"
-          >
-            {loading
-              ? "..."
-              : mode === "login"
-              ? "Войти"
-              : mode === "signup"
-              ? "Зарегистрироваться"
-              : "Продолжить"}
+          <button disabled={loading} type="submit" className="btn btn-primary w-full">
+            {loading ? "..." : mode === "signup" ? "Продолжить" : "Войти"}
           </button>
         </form>
 

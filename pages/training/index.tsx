@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
+import { getPreferredUserName } from "@/lib/nameAuth";
 
-type Room = { id: string; name: string; created_at: string; created_by_email: string | null; is_joined?: boolean };
+type Room = { id: string; name: string; created_at: string; created_by_email: string | null; participants_can_see_digits?: boolean; is_joined?: boolean };
 
 export default function TrainingHome() {
   const { session, user } = useSession();
@@ -41,8 +42,9 @@ export default function TrainingHome() {
   }, [joinName]);
 
   useEffect(() => {
-    if (user?.email && !joinName) setJoinName(user.email.split("@")[0]);
-  }, [user?.email, joinName]);
+    const preferredName = getPreferredUserName(user);
+    if (preferredName && !joinName) setJoinName(preferredName);
+  }, [user, joinName]);
 
   const canLoad = !!session?.access_token;
 
@@ -181,10 +183,16 @@ export default function TrainingHome() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="text-lg font-semibold">{room.name}</div>
+                {room.participants_can_see_digits ? (
+                  <div className="mt-1">
+                    <span className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
+                      Тренинг-режим
+                    </span>
+                  </div>
+                ) : null}
                 <div className="mt-1 text-xs text-zinc-500">
                   {room.created_by_email ? `Создатель: ${room.created_by_email}` : ""}
                 </div>
-                {/* production UI: no extra session/status badges here */}
               </div>
 
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">

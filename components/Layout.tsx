@@ -29,24 +29,42 @@ export function Layout({
       <header className="border-b border-indigo-100/90 bg-white/70 backdrop-blur-sm shadow-sm">
         <div className="app-header-inner mx-auto flex max-w-4xl flex-col gap-2 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
           <Link href="/training" className="app-brand flex items-center gap-3 font-semibold tracking-tight">
-            {/* Mobile: compact mark + label. Desktop: full logo. */}
+            {/* Mobile: compact mark + label. Desktop: full logo + partner logo. */}
             <Image
               src="/krost-mark.png"
-              alt="Логотип"
+              alt="Логотип КРОСТ"
               width={28}
               height={28}
               className="block sm:hidden"
               priority
             />
+            <span className="sm:hidden text-slate-900">КРОСТ</span>
             <Image
-              src="/krost-logo.png"
-              alt="КРОСТ"
-              width={170}
-              height={44}
-              className="hidden sm:block"
+              src="/avtoban-mobile-logo.jpg"
+              alt="АВТОБАН"
+              width={32}
+              height={32}
+              className="block rounded sm:hidden"
               priority
             />
-            <span className="sm:hidden text-slate-900">КРОСТ</span>
+
+            <div className="hidden items-center gap-3 sm:flex">
+              <Image
+                src="/krost-logo.png"
+                alt="КРОСТ"
+                width={170}
+                height={44}
+                priority
+              />
+              <Image
+                src="/avtoban-mobile-logo.jpg"
+                alt="АВТОБАН"
+                width={70}
+                height={70}
+                className="rounded"
+                priority
+              />
+            </div>
           </Link>
           <nav className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
             <Link

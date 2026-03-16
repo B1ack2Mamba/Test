@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
+import { getPreferredUserName } from "@/lib/nameAuth";
 import type { AnyTest } from "@/lib/testTypes";
 
 type Props = { tests: AnyTest[] };
@@ -62,8 +63,9 @@ export default function TrainingRoom({ tests }: Props) {
   }, [roomId, joinName]);
 
   useEffect(() => {
-    if (user?.email && !joinName) setJoinName(user.email.split("@")[0]);
-  }, [user?.email, joinName]);
+    const preferredName = getPreferredUserName(user);
+    if (preferredName && !joinName) setJoinName(preferredName);
+  }, [user, joinName]);
 
   useEffect(() => {
     if (member?.display_name) {
@@ -245,6 +247,13 @@ export default function TrainingRoom({ tests }: Props) {
           <div>
             <div className="text-sm text-zinc-600">Комната</div>
             <div className="text-lg font-semibold">{room?.name || "…"}</div>
+            {room?.participants_can_see_digits ? (
+              <div className="mt-1">
+                <span className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
+                  Тренинг-режим
+                </span>
+              </div>
+            ) : null}
             <div className="mt-1 text-xs text-zinc-500">
               {member ? (
                 <div className="flex flex-wrap items-center gap-2">

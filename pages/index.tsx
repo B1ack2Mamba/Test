@@ -4,7 +4,7 @@ import type { GetServerSideProps } from "next";
 export const getServerSideProps: GetServerSideProps = async () => {
   return {
     redirect: {
-      destination: "/training",
+      destination: "/auth?next=%2Ftraining",
       permanent: false,
     },
   };
