@@ -49,7 +49,6 @@ export function DigitsTable({ result }: { result: ScoreResult }) {
     const upper = Number(adequacy?.upper ?? (result as any)?.counts?.upper ?? 0);
     const lower = Number(adequacy?.lower ?? (result as any)?.counts?.lower ?? 0);
     const near = Number(adequacy?.near ?? (result as any)?.counts?.near ?? 0);
-    const opposite = upper + lower;
     const diagonalPercent = Number(
       adequacy?.diagonal_percent ?? ((diagonal / (total || 1)) * 100).toFixed(1)
     );
@@ -59,7 +58,6 @@ export function DigitsTable({ result }: { result: ScoreResult }) {
     const lowerPercent = Number(
       adequacy?.lower_percent ?? ((lower / (total || 1)) * 100).toFixed(1)
     );
-    const oppositePercent = Number(((opposite / (total || 1)) * 100).toFixed(1));
 
     return {
       total,
@@ -69,11 +67,9 @@ export function DigitsTable({ result }: { result: ScoreResult }) {
       near,
       upper,
       lower,
-      opposite,
       diagonalPercent,
       upperPercent,
       lowerPercent,
-      oppositePercent,
     };
   })();
 
@@ -94,7 +90,7 @@ export function DigitsTable({ result }: { result: ScoreResult }) {
       ) : null}
 
       {sgMeta ? (
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border bg-white/55 p-3">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Гибкость применения стилей</div>
             <div className="mt-1 text-lg font-semibold text-zinc-900">{sgMeta.flexibility}</div>
@@ -106,18 +102,20 @@ export function DigitsTable({ result }: { result: ScoreResult }) {
             <div className="mt-1 text-xs text-zinc-600">По диагонали: {sgMeta.diagonal}/{sgMeta.total}</div>
           </div>
           <div className="rounded-2xl border bg-white/55 p-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Прямо противоположный стиль</div>
-            <div className="mt-1 text-lg font-semibold text-zinc-900">{sgMeta.oppositePercent}%</div>
-            <div className="mt-1 text-xs text-zinc-600">{sgMeta.opposite}/{sgMeta.total} ситуаций</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Попустительский</div>
+            <div className="mt-1 text-lg font-semibold text-zinc-900">{sgMeta.upperPercent}%</div>
+            <div className="mt-1 text-xs text-zinc-600">{sgMeta.upper}/{sgMeta.total} ситуаций</div>
           </div>
-          <div className="rounded-2xl border bg-white/45 p-3 sm:col-span-3">
-            <div className="text-xs text-zinc-700">
-              Попустительский: <b>{sgMeta.upperPercent}%</b> ({sgMeta.upper}/{sgMeta.total}) · Излишний контроль: <b>{sgMeta.lowerPercent}%</b> ({sgMeta.lower}/{sgMeta.total})
+          <div className="rounded-2xl border bg-white/55 p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Излишний контроль</div>
+            <div className="mt-1 text-lg font-semibold text-zinc-900">{sgMeta.lowerPercent}%</div>
+            <div className="mt-1 text-xs text-zinc-600">{sgMeta.lower}/{sgMeta.total} ситуаций</div>
+          </div>
+          {sgMeta.near ? (
+            <div className="rounded-2xl border bg-white/45 p-3 sm:col-span-2 xl:col-span-4">
+              <div className="text-[11px] text-zinc-500">Рядом с диагональю: {sgMeta.near}/{sgMeta.total}</div>
             </div>
-            {sgMeta.near ? (
-              <div className="mt-1 text-[11px] text-zinc-500">Рядом с диагональю: {sgMeta.near}/{sgMeta.total}</div>
-            ) : null}
-          </div>
+          ) : null}
         </div>
       ) : null}
 

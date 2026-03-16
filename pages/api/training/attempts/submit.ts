@@ -46,7 +46,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
 
-  // Повторная отправка уже завершённого теста не должна плодить дубли.
+  // В обычном режиме фиксируем только первую завершённую попытку.
+  // В тренинг-режиме разрешаем перепрохождение и обновляем результат на последний.
   try {
     const { data: existingProgress } = await supabaseAdmin
       .from("training_progress")
@@ -56,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("test_slug", slug)
       .maybeSingle();
 
-    if (existingProgress?.attempt_id && existingProgress?.completed_at) {
+    if (!roomTrainingMode && existingProgress?.attempt_id && existingProgress?.completed_at) {
       return res.status(200).json({ ok: true, attempt_id: existingProgress.attempt_id, duplicate: true, training_mode: roomTrainingMode });
     }
   } catch {
