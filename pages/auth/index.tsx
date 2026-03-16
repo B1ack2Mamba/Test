@@ -197,7 +197,7 @@ export default function AuthPage() {
         </div>
 
         <div className="mt-3 text-xs text-slate-600">
-          {mode === "signup" && authKind === "name" ? "Сначала — регистрация по имени и фамилии. Почта остаётся как альтернативный вариант." : null}
+          {mode === "signup" && authKind === "name" ? null : null}
           {mode === "signup" && authKind === "email" ? "Регистрация по email и паролю. Для специалистов используйте этот режим." : null}
           {mode === "login" && authKind === "name" ? "Вход по имени, фамилии и паролю." : null}
           {mode === "login" && authKind === "email" ? "Вход по email и паролю." : null}

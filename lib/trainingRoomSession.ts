@@ -1,5 +1,5 @@
 const PREFIX = 'training_room_session_v1_';
-const DEFAULT_TTL_MS = 3 * 60 * 60 * 1000;
+const DEFAULT_TTL_MS = 6 * 60 * 60 * 1000;
 
 export type TrainingRoomLocalSession = {
   roomId: string;

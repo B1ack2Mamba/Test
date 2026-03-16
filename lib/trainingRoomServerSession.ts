@@ -5,7 +5,7 @@ import { requireUser, type AuthedUser } from "@/lib/serverAuth";
 import { isSpecialistUser } from "@/lib/specialist";
 import { retryTransientApi } from "@/lib/apiHardening";
 
-export const TRAINING_ROOM_SERVER_SESSION_TTL_MS = 3 * 60 * 60 * 1000;
+export const TRAINING_ROOM_SERVER_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
 const COOKIE_PREFIX = "training_room_session_v1_";
 
 type SessionRow = {
