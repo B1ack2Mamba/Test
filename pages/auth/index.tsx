@@ -51,6 +51,14 @@ export default function AuthPage() {
     }
   }, [authKind, mode]);
 
+
+  const humanizeAuthError = (message: string) => {
+    if (/Server env missing:/i.test(message)) {
+      return "На сервере не настроены переменные Supabase. Добавьте NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (или NEXT_PUBLIC_SUPABASE_ANON_KEY) и SUPABASE_SERVICE_ROLE_KEY в ENV проекта.";
+    }
+    return message;
+  };
+
   const applyServerSession = async (payload: any) => {
     if (!supabase) throw new Error("Supabase client is not ready");
     const accessToken = String(payload?.session?.access_token || "");
@@ -135,7 +143,7 @@ export default function AuthPage() {
       setAuthKind("email");
       return;
     } catch (err: any) {
-      setError(err?.message ?? "Ошибка");
+      setError(humanizeAuthError(err?.message ?? "Ошибка"));
     } finally {
       setLoading(false);
     }
