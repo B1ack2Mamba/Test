@@ -3,16 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Layout } from "@/components/Layout";
 import { useSession } from "@/lib/useSession";
-import { LineChart } from "@/components/LineChart";
 import type { ScoreResult } from "@/lib/score";
-
-function levelColor(level: string) {
-  const l = String(level || "").toLowerCase();
-  if (l.includes("выс")) return "bg-emerald-50 text-emerald-700";
-  if (l.includes("сред")) return "bg-amber-50 text-amber-700";
-  if (l.includes("низ")) return "bg-white/60 text-zinc-700";
-  return "bg-white/60 text-zinc-700";
-}
 
 export default function TrainingResults() {
   const router = useRouter();
@@ -79,21 +70,50 @@ export default function TrainingResults() {
               {result.kind === "belbin_v1" && result.ranked?.length ? (
                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
                   {[...result.ranked]
-                    .sort((a, b) => (Number((b as any).count ?? 0) - Number((a as any).count ?? 0)))
+                    .sort((a, b) => Number((b as any).count ?? 0) - Number((a as any).count ?? 0))
                     .slice(0, 3)
                     .map((r: any, i: number) => (
                       <div key={String(r.tag)} className="rounded-2xl border bg-white/55 p-3">
                         <div className="text-[11px] font-semibold text-zinc-600">Топ {i + 1}</div>
                         <div className="mt-1 text-sm font-semibold text-zinc-900">{r.style}</div>
-                        <div className="mt-1 text-xs text-zinc-600">{r.count}/{(result as any).total || 70} · {r.percent}%</div>
+                        <div className="mt-1 text-lg font-semibold text-zinc-900">{r.count}</div>
                       </div>
                     ))}
                 </div>
               ) : null}
 
-              {result?.ranked?.length ? (
-                <div className="mt-3">
-                  <LineChart data={result.ranked.map((r) => ({ tag: r.tag, percent: r.percent }))} />
+              {result.kind === "situational_guidance_v1" ? (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl border bg-white/55 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Гибкость применения стилей</div>
+                    <div className="mt-1 text-lg font-semibold text-zinc-900">
+                      {Number((result as any)?.meta?.flexibility?.sum ?? (result as any)?.counts?.flexibility ?? 0)}
+                    </div>
+                    <div className="mt-1 text-xs text-zinc-600">
+                      {String((result as any)?.meta?.flexibility?.level ?? "") || "—"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border bg-white/55 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Адекватность применения стилей</div>
+                    <div className="mt-1 text-lg font-semibold text-zinc-900">
+                      {Number((result as any)?.meta?.adequacy?.diagonal ?? (result as any)?.counts?.diagonal ?? 0)}
+                    </div>
+                    <div className="mt-1 text-xs text-zinc-600">По диагонали</div>
+                  </div>
+                  <div className="rounded-2xl border bg-white/55 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Попустительский</div>
+                    <div className="mt-1 text-lg font-semibold text-zinc-900">
+                      {Number((result as any)?.meta?.adequacy?.upper ?? (result as any)?.counts?.upper ?? 0)}
+                    </div>
+                    <div className="mt-1 text-xs text-zinc-600">Ситуаций</div>
+                  </div>
+                  <div className="rounded-2xl border bg-white/55 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Излишний контроль</div>
+                    <div className="mt-1 text-lg font-semibold text-zinc-900">
+                      {Number((result as any)?.meta?.adequacy?.lower ?? (result as any)?.counts?.lower ?? 0)}
+                    </div>
+                    <div className="mt-1 text-xs text-zinc-600">Ситуаций</div>
+                  </div>
                 </div>
               ) : null}
 
@@ -102,40 +122,11 @@ export default function TrainingResults() {
                   <thead>
                     <tr className="border-b">
                       <th className="py-2 text-left font-medium text-zinc-700">Фактор</th>
-                      <th className="py-2 text-left font-medium text-zinc-700">Баллы</th>
-                      {result.kind === "16pf_v1" ? null : (
-                        <th className="py-2 text-left font-medium text-zinc-700">Уровень</th>
-                      )}
+                      <th className="py-2 text-left font-medium text-zinc-700">Результат</th>
                     </tr>
                   </thead>
                   <tbody>
                     {result.ranked.map((r, idx) => {
-                      const isNumericPrimary = result.kind === "usk_v1" || result.kind === "16pf_v1";
-                      const denom = (() => {
-                        if (result.kind === "forced_pair_v1") return (result as any).total;
-                        if (result.kind === "color_types_v1") return (result as any).total;
-                        if (result.kind === "pair_sum5_v1") {
-                          const m = (result as any).meta?.maxByFactor;
-                          const d = m?.[r.tag];
-                          return Number.isFinite(d) ? Number(d) : null;
-                        }
-                        if (result.kind === "usk_v1") return (result as any).total || 10;
-                        if (result.kind === "time_management_v1") return (result as any).total || 14;
-                        if (result.kind === "learning_typology_v1") {
-                          const d = (result as any).meta?.maxByFactor?.[r.tag];
-                          return Number.isFinite(d) ? Number(d) : ((result as any).total || 20);
-                        }
-                        if (result.kind === "16pf_v1") return 10;
-                        if (result.kind === "belbin_v1") return (result as any).total || 70;
-                        return null;
-                      })();
-
-                      const extraRaw = (() => {
-                        // Для участников: в 16PF не показываем сырые баллы.
-                        if (result.kind === "usk_v1") return (result as any).meta?.rawByScale?.[r.tag] ?? null;
-                        return null;
-                      })();
-
                       const stripe = idx % 2 === 0 ? "bg-white/55" : "bg-white/35";
 
                       return (
@@ -158,28 +149,8 @@ export default function TrainingResults() {
                             )}
                           </td>
                           <td className="py-3 pr-4 text-zinc-900">
-                            <div>
-                              {isNumericPrimary ? (
-                                <>
-                                  <b>{r.count}</b>
-                                  <span className="text-xs text-zinc-600">/10</span>
-                                </>
-                              ) : (
-                                <>
-                                  {r.percent}%{" "}
-                                  <span className="text-xs text-zinc-600">({typeof denom === "number" ? `${r.count}/${denom}` : String(r.count)})</span>
-                                </>
-                              )}
-                            </div>
-                            {extraRaw !== null && extraRaw !== undefined ? (
-                              <div className="mt-1 text-[11px] text-zinc-500">Сырые баллы: {String(extraRaw)}</div>
-                            ) : null}
+                            <b>{r.count}</b>
                           </td>
-                          {result.kind === "16pf_v1" ? null : (
-                            <td className="py-3">
-                              <span className={["inline-flex rounded-full px-2 py-1 text-xs", levelColor(r.level)].join(" ")}>{r.level}</span>
-                            </td>
-                          )}
                         </tr>
                       );
                     })}
