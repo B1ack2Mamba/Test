@@ -48,7 +48,15 @@ export function Layout({
               priority
             />
 
-            <div className="hidden items-center gap-3 sm:flex">
+            <div className="hidden items-center gap-4 sm:flex">
+              <Image
+                src="/murmansk-government.png"
+                alt="Правительство Мурманской области"
+                width={210}
+                height={73}
+                className="h-12 w-auto object-contain"
+                priority
+              />
               <Image
                 src="/krost-logo.png"
                 alt="КРОСТ"
