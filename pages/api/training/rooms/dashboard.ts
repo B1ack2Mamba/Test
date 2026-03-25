@@ -89,7 +89,7 @@ async function getAuthorizedRoom(req: NextApiRequest, res: NextApiResponse, room
   const sb: any = supabaseAdmin as any;
   const selectRoom = async (withPrompt: boolean) => {
     const sel = withPrompt
-      ? "id,name,created_by_email,is_active,created_at,analysis_prompt"
+      ? "id,name,created_by_email,is_active,created_at,analysis_prompt,group_analysis_prompt"
       : "id,name,created_by_email,is_active,created_at";
     const started = Date.now();
     const out = await retryTransientApi<any>(
@@ -122,7 +122,7 @@ async function getAuthorizedRoom(req: NextApiRequest, res: NextApiResponse, room
   }
 
   let { data: room, error: roomErr } = firstRoomResp;
-  if (roomErr && /analysis_prompt/i.test(roomErr.message || "")) {
+  if (roomErr && /(analysis_prompt|group_analysis_prompt)/i.test(roomErr.message || "")) {
     ({ data: room, error: roomErr } = await selectRoom(false));
   }
   if (roomErr || !room) {

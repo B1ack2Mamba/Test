@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/serverAuth";
 import { isSpecialistUser } from "@/lib/specialist";
 import type { ScoreResult } from "@/lib/score";
 import { DEFAULT_TEST_INTERPRETATIONS } from "@/lib/defaultTestInterpretations";
+import { callDeepseekText } from "@/lib/deepseek";
 
 type Audience = "staff" | "client";
 
@@ -441,31 +442,13 @@ function buildKeysPrompt(args: {
 }
 
 async function callDeepseek(prompt: string): Promise<string> {
-  const key = process.env.DEEPSEEK_API_KEY;
-  if (!key) throw new Error("DEEPSEEK_API_KEY is missing");
-  const base = (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1").replace(/\/$/, "");
-  const model = process.env.DEEPSEEK_MODEL || "deepseek-chat";
-
-  const r = await fetch(`${base}/chat/completions`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: "Ты помогаешь специалисту расшифровать результаты тестов для тренинга." },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.4,
-      max_tokens: 2600,
-    }),
+  return await callDeepseekText({
+    systemPrompt: "Ты помогаешь специалисту расшифровать результаты тестов для тренинга.",
+    userPrompt: prompt,
+    temperature: 0.4,
+    maxTokens: 2600,
+    retries: 2,
   });
-
-  const j = await r.json().catch(() => null);
-  const text = j?.choices?.[0]?.message?.content;
-  if (!r.ok || !text) {
-    throw new Error(j?.error?.message || `DeepSeek error (${r.status})`);
-  }
-  return String(text).trim();
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

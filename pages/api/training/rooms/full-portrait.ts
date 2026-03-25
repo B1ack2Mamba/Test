@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { requireUser } from "@/lib/serverAuth";
 import { isSpecialistUser } from "@/lib/specialist";
 import { retryTransientApi, setNoStore } from "@/lib/apiHardening";
+import { callDeepseekText } from "@/lib/deepseek";
 
 function trimText(s: any, maxLen = 1400) {
   const t = String(s ?? "").trim();
@@ -145,48 +146,13 @@ function buildFullPortraitPrompt(args: {
 }
 
 async function callDeepseek(prompt: string): Promise<string> {
-  const key = process.env.DEEPSEEK_API_KEY;
-  if (!key) throw new Error("DEEPSEEK_API_KEY is missing");
-  const base = (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1").replace(/\/$/, "");
-  const model = process.env.DEEPSEEK_MODEL || "deepseek-chat";
-  const timeoutMs = Math.max(15_000, Number(process.env.DEEPSEEK_TIMEOUT_MS || 60_000));
-
-  return await retryTransientApi<string>(async () => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const r = await fetch(`${base}/chat/completions`, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: "Ты помогаешь специалисту собрать единый психологический портрет клиента по данным нескольких тестов." },
-            { role: "user", content: prompt },
-          ],
-          temperature: 0.45,
-          max_tokens: 3200,
-        }),
-        signal: controller.signal,
-      });
-
-      const j = await r.json().catch(() => null);
-      const text = j?.choices?.[0]?.message?.content;
-      if (!r.ok || !text) {
-        const msg = String(j?.error?.message || `DeepSeek error (${r.status})`);
-        if (r.status === 429 || r.status >= 500) throw new Error(msg);
-        throw new Error(msg);
-      }
-      return String(text).trim();
-    } catch (e: any) {
-      if (e?.name === "AbortError") {
-        throw new Error(`DeepSeek timeout after ${timeoutMs}ms`);
-      }
-      throw e;
-    } finally {
-      clearTimeout(timeout);
-    }
-  }, { attempts: 2, delayMs: 350 });
+  return await callDeepseekText({
+    systemPrompt: "Ты помогаешь специалисту собрать единый психологический портрет клиента по данным нескольких тестов.",
+    userPrompt: prompt,
+    temperature: 0.45,
+    maxTokens: 3200,
+    retries: 2,
+  });
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

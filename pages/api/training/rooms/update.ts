@@ -21,9 +21,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const roomAnalysisPrompt = hasAnalysisPrompt && typeof body.analysis_prompt === "string"
     ? String(body.analysis_prompt).replace(/\r\n/g, "\n")
     : "";
+  const hasGroupAnalysisPrompt = Object.prototype.hasOwnProperty.call(body, "group_analysis_prompt");
+  const roomGroupAnalysisPrompt = hasGroupAnalysisPrompt && typeof body.group_analysis_prompt === "string"
+    ? String(body.group_analysis_prompt).replace(/\r\n/g, "\n")
+    : "";
 
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
-  if (!roomName && !roomPwd && !hasAnalysisPrompt) {
+  if (!roomName && !roomPwd && !hasAnalysisPrompt && !hasGroupAnalysisPrompt) {
     return res.status(400).json({ ok: false, error: "Нужно указать название комнаты, новый пароль или промпт анализа" });
   }
 
@@ -55,6 +59,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     patch.analysis_prompt = roomAnalysisPrompt;
   }
 
+  if (hasGroupAnalysisPrompt) {
+    patch.group_analysis_prompt = roomGroupAnalysisPrompt;
+  }
+
   const { data, error } = await supabaseAdmin
     .from("training_rooms")
     .update(patch)
@@ -63,6 +71,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .single();
 
   if (error) {
+    if (/group_analysis_prompt/i.test(error.message || "")) {
+      return res.status(500).json({
+        ok: false,
+        error: "В базе нет поля group_analysis_prompt. Выполните SQL миграцию supabase/training_rooms_group_analysis_prompt.sql и повторите.",
+      });
+    }
     if (/analysis_prompt/i.test(error.message || "")) {
       return res.status(500).json({
         ok: false,

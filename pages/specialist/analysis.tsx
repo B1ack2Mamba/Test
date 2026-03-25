@@ -33,7 +33,7 @@ type Progress = {
 };
 
 type DashboardPayload = {
-  room?: { id: string; name: string; analysis_prompt?: string };
+  room?: { id: string; name: string; analysis_prompt?: string; group_analysis_prompt?: string };
   members?: Member[];
   progress?: Progress[];
 };
@@ -65,19 +65,33 @@ export default function SpecialistAnalysisPage() {
   const [dashErr, setDashErr] = useState("");
 
   const [selectedUserId, setSelectedUserId] = useState("");
+
   const [promptDraft, setPromptDraft] = useState("");
-  const [savingPrompt, setSavingPrompt] = useState(false);
+  const [groupPromptDraft, setGroupPromptDraft] = useState("");
+  const [savingIndividualPrompt, setSavingIndividualPrompt] = useState(false);
+  const [savingGroupPrompt, setSavingGroupPrompt] = useState(false);
   const [promptMsg, setPromptMsg] = useState("");
+  const [groupPromptMsg, setGroupPromptMsg] = useState("");
 
   const [portrait, setPortrait] = useState("");
   const [portraitMsg, setPortraitMsg] = useState("");
   const [portraitBusy, setPortraitBusy] = useState(false);
+
+  const [groupAnalysis, setGroupAnalysis] = useState("");
+  const [groupAnalysisMsg, setGroupAnalysisMsg] = useState("");
+  const [groupAnalysisBusy, setGroupAnalysisBusy] = useState(false);
+
   const roomsReqRef = useRef(0);
   const dashboardReqRef = useRef(0);
   const portraitReqRef = useRef(0);
   const portraitLockRef = useRef(false);
   const portraitAbortRef = useRef<AbortController | null>(null);
   const portraitMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const groupReqRef = useRef(0);
+  const groupLockRef = useRef(false);
+  const groupAbortRef = useRef<AbortController | null>(null);
+  const groupMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!roomIdFromQuery) return;
@@ -87,7 +101,9 @@ export default function SpecialistAnalysisPage() {
   useEffect(() => {
     return () => {
       portraitAbortRef.current?.abort();
+      groupAbortRef.current?.abort();
       if (portraitMsgTimerRef.current) clearTimeout(portraitMsgTimerRef.current);
+      if (groupMsgTimerRef.current) clearTimeout(groupMsgTimerRef.current);
     };
   }, []);
 
@@ -135,6 +151,8 @@ export default function SpecialistAnalysisPage() {
       setDashErr("");
       setPortrait("");
       setPortraitMsg("");
+      setGroupAnalysis("");
+      setGroupAnalysisMsg("");
       try {
         const r = await fetch(`/api/training/rooms/dashboard?room_id=${encodeURIComponent(selectedRoomId)}`, {
           headers: { authorization: `Bearer ${session.access_token}` },
@@ -144,8 +162,10 @@ export default function SpecialistAnalysisPage() {
         if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить аналитику комнаты");
         if (cancelled || reqId !== dashboardReqRef.current) return;
         setDashboard(j);
-        const prompt = typeof j?.room?.analysis_prompt === "string" ? String(j.room.analysis_prompt) : "";
-        setPromptDraft(prompt);
+        const individualPrompt = typeof j?.room?.analysis_prompt === "string" ? String(j.room.analysis_prompt) : "";
+        const collectivePrompt = typeof j?.room?.group_analysis_prompt === "string" ? String(j.room.group_analysis_prompt) : "";
+        setPromptDraft(individualPrompt);
+        setGroupPromptDraft(collectivePrompt);
         const participants = ((j.members || []) as Member[]).filter((m) => m.role === "participant");
         setSelectedUserId((prev) => {
           if (prev && participants.some((m) => m.user_id === prev)) return prev;
@@ -171,6 +191,12 @@ export default function SpecialistAnalysisPage() {
     portraitLockRef.current = false;
     setPortraitBusy(false);
   }, [selectedRoomId, selectedUserId]);
+
+  useEffect(() => {
+    groupAbortRef.current?.abort();
+    groupLockRef.current = false;
+    setGroupAnalysisBusy(false);
+  }, [selectedRoomId]);
 
   const participants = useMemo(
     () => ((dashboard?.members || []) as Member[]).filter((m) => m.role === "participant"),
@@ -198,11 +224,20 @@ export default function SpecialistAnalysisPage() {
   const selectedMember = participants.find((m) => m.user_id === selectedUserId) || null;
   const selectedAttempts = selectedUserId ? completedByUser.get(selectedUserId) || [] : [];
   const anchorAttemptId = selectedAttempts[0]?.attempt_id || "";
+  const participantsWithCompletedTests = useMemo(
+    () => participants.filter((member) => (completedByUser.get(member.user_id) || []).length > 0),
+    [participants, completedByUser]
+  );
 
-  const savePrompt = async () => {
+  const saveRoomPrompts = async (mode: "individual" | "group") => {
     if (!session || !selectedRoomId || !dashboard?.room?.name) return;
-    setSavingPrompt(true);
-    setPromptMsg("");
+    if (mode === "individual") {
+      setSavingIndividualPrompt(true);
+      setPromptMsg("");
+    } else {
+      setSavingGroupPrompt(true);
+      setGroupPromptMsg("");
+    }
     try {
       const r = await fetch("/api/training/rooms/update", {
         method: "POST",
@@ -212,17 +247,32 @@ export default function SpecialistAnalysisPage() {
           room_id: selectedRoomId,
           name: dashboard.room.name,
           analysis_prompt: promptDraft.replace(/\r\n/g, "\n"),
+          group_analysis_prompt: groupPromptDraft.replace(/\r\n/g, "\n"),
         }),
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось сохранить промпт");
-      setDashboard((prev) => (prev ? { ...prev, room: { ...(prev.room as any), analysis_prompt: promptDraft.replace(/\r\n/g, "\n") } } : prev));
-      setPromptMsg("Промпт сохранён ✅");
-      setTimeout(() => setPromptMsg(""), 2500);
+      setDashboard((prev) => prev ? {
+        ...prev,
+        room: {
+          ...(prev.room as any),
+          analysis_prompt: promptDraft.replace(/\r\n/g, "\n"),
+          group_analysis_prompt: groupPromptDraft.replace(/\r\n/g, "\n"),
+        },
+      } : prev);
+      if (mode === "individual") {
+        setPromptMsg("Промпт портрета сохранён ✅");
+        setTimeout(() => setPromptMsg(""), 2500);
+      } else {
+        setGroupPromptMsg("Промпт группы сохранён ✅");
+        setTimeout(() => setGroupPromptMsg(""), 2500);
+      }
     } catch (e: any) {
-      setPromptMsg(e?.message || "Ошибка");
+      if (mode === "individual") setPromptMsg(e?.message || "Ошибка");
+      else setGroupPromptMsg(e?.message || "Ошибка");
     } finally {
-      setSavingPrompt(false);
+      if (mode === "individual") setSavingIndividualPrompt(false);
+      else setSavingGroupPrompt(false);
     }
   };
 
@@ -269,15 +319,58 @@ export default function SpecialistAnalysisPage() {
     }
   };
 
-  const copyPortrait = async () => {
-    const text = portrait.trim();
-    if (!text) return;
+  const generateGroupAnalysis = async () => {
+    if (!session || !selectedRoomId) return;
+    if (groupLockRef.current) {
+      setGroupAnalysisMsg("Групповой анализ уже собирается…");
+      if (groupMsgTimerRef.current) clearTimeout(groupMsgTimerRef.current);
+      groupMsgTimerRef.current = setTimeout(() => setGroupAnalysisMsg(""), 1800);
+      return;
+    }
+    groupLockRef.current = true;
+    groupAbortRef.current?.abort();
+    const controller = new AbortController();
+    groupAbortRef.current = controller;
+    const reqId = ++groupReqRef.current;
+    setGroupAnalysisBusy(true);
+    setGroupAnalysisMsg("");
     try {
-      await navigator.clipboard.writeText(text);
-      setPortraitMsg("Портрет скопирован ✅");
-      setTimeout(() => setPortraitMsg(""), 2500);
+      const r = await fetch("/api/training/rooms/group-analysis", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ room_id: selectedRoomId }),
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const j = await r.json();
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось собрать групповой анализ");
+      if (reqId !== groupReqRef.current) return;
+      setGroupAnalysis(String(j.text || ""));
+      setGroupAnalysisMsg(`Групповой анализ собран ✅${Number(j?.participant_count || 0) > 0 ? ` · участников: ${j.participant_count}` : ""}`);
+      if (groupMsgTimerRef.current) clearTimeout(groupMsgTimerRef.current);
+      groupMsgTimerRef.current = setTimeout(() => setGroupAnalysisMsg(""), 2500);
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      if (reqId !== groupReqRef.current) return;
+      setGroupAnalysisMsg(e?.message || "Ошибка");
+    } finally {
+      if (reqId === groupReqRef.current) {
+        groupLockRef.current = false;
+        groupAbortRef.current = null;
+        setGroupAnalysisBusy(false);
+      }
+    }
+  };
+
+  const copyText = async (text: string, okMessage: string, setMessage: (value: string) => void) => {
+    const value = text.trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setMessage(okMessage);
+      setTimeout(() => setMessage(""), 2500);
     } catch {
-      setPortraitMsg("Не удалось скопировать");
+      setMessage("Не удалось скопировать");
     }
   };
 
@@ -312,7 +405,7 @@ export default function SpecialistAnalysisPage() {
       </div>
 
       <div className="mb-4 card text-sm text-zinc-700">
-        Отдельный раздел для полного AI-портрета клиента и общего промпта комнаты. Комната остаётся чистой, а вся тяжёлая аналитика живёт здесь.
+        Здесь живут две тяжёлые штуки: полный AI-портрет отдельного клиента и групповой анализ комнаты. Комната остаётся чище, а мясо вынесено сюда.
       </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -402,7 +495,12 @@ export default function SpecialistAnalysisPage() {
         <div className="grid gap-4 self-start content-start">
           <div className="card">
             <div className="text-lg font-semibold">{dashboard?.room?.name || "Выбери комнату"}</div>
-            <div className="mt-1 text-sm text-zinc-500">Промпт задаётся для всей комнаты и применяется ко всем полным портретам клиентов.</div>
+            <div className="mt-1 text-sm text-zinc-500">Ниже два отдельных окна промтов: одно для личных портретов, второе для групповой аналитики.</div>
+          </div>
+
+          <div className="card">
+            <div className="text-lg font-semibold">Промпт для полного портрета клиента</div>
+            <div className="mt-1 text-sm text-zinc-500">Применяется ко всем индивидуальным портретам клиентов в этой комнате.</div>
             <textarea
               value={promptDraft}
               onChange={(e) => setPromptDraft(e.target.value)}
@@ -410,10 +508,27 @@ export default function SpecialistAnalysisPage() {
               placeholder="Например: делай акцент на рисках, стиле обучения, противоречиях профиля и практических рекомендациях для сопровождения клиента."
             />
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button onClick={savePrompt} disabled={savingPrompt || !selectedRoomId} className="btn btn-primary btn-sm disabled:opacity-50">
-                {savingPrompt ? "…" : "Сохранить промпт"}
+              <button onClick={() => saveRoomPrompts("individual")} disabled={savingIndividualPrompt || !selectedRoomId} className="btn btn-primary btn-sm disabled:opacity-50">
+                {savingIndividualPrompt ? "…" : "Сохранить промпт портрета"}
               </button>
               {promptMsg ? <div className="text-xs text-zinc-600">{promptMsg}</div> : null}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="text-lg font-semibold">Промпт для группового анализа</div>
+            <div className="mt-1 text-sm text-zinc-500">Применяется к общему анализу всех участников комнаты, у которых есть завершённые тесты.</div>
+            <textarea
+              value={groupPromptDraft}
+              onChange={(e) => setGroupPromptDraft(e.target.value)}
+              className="mt-3 min-h-[180px] w-full rounded-2xl border bg-white px-3 py-2 text-sm"
+              placeholder="Например: ищи кластеры внутри группы, зоны потенциального конфликта, темп группы, уровень саморегуляции и рекомендации ведущему по удержанию включённости."
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button onClick={() => saveRoomPrompts("group")} disabled={savingGroupPrompt || !selectedRoomId} className="btn btn-primary btn-sm disabled:opacity-50">
+                {savingGroupPrompt ? "…" : "Сохранить промпт группы"}
+              </button>
+              {groupPromptMsg ? <div className="text-xs text-zinc-600">{groupPromptMsg}</div> : null}
             </div>
           </div>
 
@@ -424,7 +539,7 @@ export default function SpecialistAnalysisPage() {
                 <div className="mt-1 text-sm text-zinc-500">Берутся все завершённые тесты клиента в текущей комнате. Якорем служит последняя завершённая попытка.</div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button onClick={copyPortrait} disabled={!portrait.trim()} className="btn btn-secondary btn-sm disabled:opacity-50">Копировать</button>
+                <button onClick={() => copyText(portrait, "Портрет скопирован ✅", setPortraitMsg)} disabled={!portrait.trim()} className="btn btn-secondary btn-sm disabled:opacity-50">Копировать</button>
                 <button onClick={() => generatePortrait(false)} disabled={portraitBusy || !anchorAttemptId} className="btn btn-primary btn-sm disabled:opacity-50">
                   {portraitBusy ? "…" : portrait ? "Открыть / обновить" : "Собрать портрет"}
                 </button>
@@ -448,6 +563,38 @@ export default function SpecialistAnalysisPage() {
               {portrait || <span className="text-zinc-500">Пока пусто. Выбери клиента и нажми «Собрать портрет».</span>}
             </div>
             {portraitMsg ? <div className="mt-2 text-xs text-zinc-600">{portraitMsg}</div> : null}
+          </div>
+
+          <div className="card">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold">Групповой анализ комнаты</div>
+                <div className="mt-1 text-sm text-zinc-500">Берутся все участники текущей комнаты, у которых есть хотя бы один завершённый тест.</div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => copyText(groupAnalysis, "Групповой анализ скопирован ✅", setGroupAnalysisMsg)} disabled={!groupAnalysis.trim()} className="btn btn-secondary btn-sm disabled:opacity-50">Копировать</button>
+                <button onClick={generateGroupAnalysis} disabled={groupAnalysisBusy || !selectedRoomId || !participantsWithCompletedTests.length} className="btn btn-primary btn-sm disabled:opacity-50">
+                  {groupAnalysisBusy ? "…" : groupAnalysis ? "Пересобрать группу" : "Собрать группу"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border bg-white/50 p-3">
+              <div className="text-sm font-medium">Кто войдёт в анализ</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {participantsWithCompletedTests.map((member) => (
+                  <span key={member.id} className="rounded-full border bg-white px-2 py-1 text-xs text-zinc-700">
+                    {member.display_name || "Участник"} · {(completedByUser.get(member.user_id) || []).length} тест.
+                  </span>
+                ))}
+                {!participantsWithCompletedTests.length ? <span className="text-sm text-zinc-500">Пока нет участников с завершёнными тестами.</span> : null}
+              </div>
+            </div>
+
+            <div className="mt-4 min-h-[320px] rounded-2xl border bg-white p-4 text-sm whitespace-pre-wrap">
+              {groupAnalysis || <span className="text-zinc-500">Пока пусто. Нажми «Собрать группу», чтобы получить общий анализ по комнате.</span>}
+            </div>
+            {groupAnalysisMsg ? <div className="mt-2 text-xs text-zinc-600">{groupAnalysisMsg}</div> : null}
           </div>
         </div>
       </div>
