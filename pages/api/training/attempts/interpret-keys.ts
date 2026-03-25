@@ -446,7 +446,7 @@ async function callDeepseek(prompt: string): Promise<string> {
     system: "Ты помогаешь специалисту делать точную психологическую расшифровку результатов теста по ключам и уже посчитанным шкалам.",
     user: prompt,
     temperature: 0.4,
-    maxTokensChat: 2600,
+    maxTokensChat: 3200,
     maxTokensReasoner: 10000,
   });
 }

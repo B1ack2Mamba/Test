@@ -267,7 +267,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       system: "Ты помогаешь специалисту собрать целостный групповой психологический анализ по данным нескольких участников и тестов.",
       user: prompt,
       temperature: 0.45,
-      maxTokensChat: 3600,
+      maxTokensChat: 10000,
       maxTokensReasoner: 20000,
     });
     return res.status(200).json({ ok: true, text, participant_count: participants.length });

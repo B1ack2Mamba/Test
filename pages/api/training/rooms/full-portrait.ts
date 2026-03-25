@@ -150,7 +150,7 @@ async function callDeepseek(prompt: string): Promise<string> {
     system: "Ты помогаешь специалисту собрать единый психологический портрет клиента по данным нескольких тестов.",
     user: prompt,
     temperature: 0.45,
-    maxTokensChat: 3200,
+    maxTokensChat: 8000,
     maxTokensReasoner: 20000,
   });
 }

@@ -21,6 +21,28 @@ function isNoTextResponseError(message: string) {
   return /ответил без текста \(200\)/i.test(String(message || ""));
 }
 
+function extractTextFromMessageContent(content: any): string {
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((part: any) => {
+        if (typeof part === "string") return part;
+        if (typeof part?.text === "string") return part.text;
+        if (typeof part?.content === "string") return part.content;
+        if (typeof part?.value === "string") return part.value;
+        return "";
+      })
+      .join("")
+      .trim();
+  }
+  if (content && typeof content === "object") {
+    if (typeof content.text === "string") return content.text.trim();
+    if (typeof content.content === "string") return content.content.trim();
+    if (typeof content.value === "string") return content.value.trim();
+  }
+  return "";
+}
+
 export async function callDeepseekText(opts: DeepseekCallOptions): Promise<string> {
   const key = process.env.DEEPSEEK_API_KEY;
   if (!key) throw new Error("DEEPSEEK_API_KEY is missing");
@@ -32,11 +54,17 @@ export async function callDeepseekText(opts: DeepseekCallOptions): Promise<strin
   const maxTokensChat = Math.max(800, Number(opts.maxTokensChat || process.env.DEEPSEEK_MAX_TOKENS || 3200));
   const maxTokensReasoner = Math.max(4000, Number(opts.maxTokensReasoner || process.env.DEEPSEEK_REASONER_MAX_TOKENS || 12000));
 
-  async function requestText(model: string, mode: "normal" | "merged-user", reasonerBoost = 1): Promise<string> {
+  async function requestText(
+    model: string,
+    mode: "normal" | "merged-user",
+    reasonerBoost = 1,
+    chatBoost = 1,
+    temperatureOverride?: number
+  ): Promise<string> {
     const isReasoner = model === "deepseek-reasoner";
     const max_tokens = isReasoner
       ? Math.min(64000, Math.max(8000, Math.round(maxTokensReasoner * reasonerBoost)))
-      : maxTokensChat;
+      : Math.min(64000, Math.max(800, Math.round(maxTokensChat * chatBoost)));
 
     const system = String(opts.system || "").trim();
     const user = String(opts.user || "").trim();
@@ -55,8 +83,11 @@ export async function callDeepseekText(opts: DeepseekCallOptions): Promise<strin
         messages,
         max_tokens,
       };
-      if (!isReasoner && Number.isFinite(Number(opts.temperature))) {
-        payload.temperature = Number(opts.temperature);
+      const effectiveTemperature = Number.isFinite(Number(temperatureOverride))
+        ? Number(temperatureOverride)
+        : Number(opts.temperature);
+      if (!isReasoner && Number.isFinite(effectiveTemperature)) {
+        payload.temperature = effectiveTemperature;
       }
 
       const r = await fetch(`${base}/chat/completions`, {
@@ -72,7 +103,7 @@ export async function callDeepseekText(opts: DeepseekCallOptions): Promise<strin
       const j = await r.json().catch(() => null);
       const choice = j?.choices?.[0] || null;
       const message = choice?.message || {};
-      const text = typeof message?.content === "string" ? message.content.trim() : "";
+      const text = extractTextFromMessageContent(message?.content);
       const reasoning = typeof message?.reasoning_content === "string" ? message.reasoning_content.trim() : "";
       const finishReason = String(choice?.finish_reason || "").trim();
 
@@ -89,7 +120,9 @@ export async function callDeepseekText(opts: DeepseekCallOptions): Promise<strin
         } else if (finishReason) {
           extra += `; finish_reason=${finishReason}`;
         }
+        const toolCalls = Array.isArray(message?.tool_calls) ? message.tool_calls.length : 0;
         if (reasoning) extra += "; есть reasoning_content без финального content";
+        if (toolCalls) extra += `; tool_calls=${toolCalls}`;
         throw new Error(`DeepSeek ответил без текста (200).${extra}`);
       }
 
@@ -111,14 +144,24 @@ export async function callDeepseekText(opts: DeepseekCallOptions): Promise<strin
 
       if (initialModel === "deepseek-reasoner") {
         try {
-          return await requestText("deepseek-reasoner", "merged-user", 2);
+          return await requestText("deepseek-reasoner", "merged-user", 2, 1);
         } catch (e2: any) {
           if (!isNoTextResponseError(String(e2?.message || ""))) throw e2;
-          return await requestText("deepseek-chat", "normal", 1);
+          try {
+            return await requestText("deepseek-chat", "normal", 1, 2, 0.2);
+          } catch (e3: any) {
+            if (!isNoTextResponseError(String(e3?.message || ""))) throw e3;
+            return await requestText("deepseek-chat", "merged-user", 1, 3, 0.1);
+          }
         }
       }
 
-      throw e1;
+      try {
+        return await requestText(initialModel, "merged-user", 1, 2, 0.2);
+      } catch (e2: any) {
+        if (!isNoTextResponseError(String(e2?.message || ""))) throw e2;
+        return await requestText("deepseek-chat", "merged-user", 1, 3, 0.1);
+      }
     }
   }, { attempts: Math.max(1, Number(opts.attempts || 2)), delayMs: 350 });
 }
