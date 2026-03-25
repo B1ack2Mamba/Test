@@ -135,7 +135,7 @@ function buildGroupPrompt(args: {
       if (t.staffInterpretation?.trim()) {
         lines.push("");
         lines.push("Краткая уже имеющаяся расшифровка специалиста:");
-        lines.push(trimText(t.staffInterpretation, 1600));
+        lines.push(trimText(t.staffInterpretation, 700));
       }
       lines.push("");
     });
@@ -268,7 +268,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       user: prompt,
       temperature: 0.45,
       maxTokensChat: 3600,
-      maxTokensReasoner: 12000,
+      maxTokensReasoner: 20000,
     });
     return res.status(200).json({ ok: true, text, participant_count: participants.length });
   } catch (e: any) {

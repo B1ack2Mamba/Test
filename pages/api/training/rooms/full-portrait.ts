@@ -134,7 +134,7 @@ function buildFullPortraitPrompt(args: {
     if (t.staffInterpretation?.trim()) {
       lines.push("");
       lines.push("Краткая уже имеющаяся расшифровка специалиста:");
-      lines.push(trimText(t.staffInterpretation, 1600));
+      lines.push(trimText(t.staffInterpretation, 700));
     }
     lines.push("");
     lines.push("---");
@@ -151,7 +151,7 @@ async function callDeepseek(prompt: string): Promise<string> {
     user: prompt,
     temperature: 0.45,
     maxTokensChat: 3200,
-    maxTokensReasoner: 12000,
+    maxTokensReasoner: 20000,
   });
 }
 
