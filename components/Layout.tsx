@@ -20,14 +20,16 @@ const AuthNavNoSSR = dynamic(
 export function Layout({
   title,
   children,
+  widthClass = "max-w-4xl",
 }: {
   title?: string;
   children: React.ReactNode;
+  widthClass?: string;
 }) {
   return (
     <div className="min-h-screen bg-app text-slate-900">
       <header className="border-b border-indigo-100/90 bg-white/70 backdrop-blur-sm shadow-sm">
-        <div className="app-header-inner mx-auto flex max-w-4xl flex-col gap-2 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`app-header-inner mx-auto flex ${widthClass} flex-col gap-2 px-4 py-2 sm:flex-row sm:items-center sm:justify-between`}>
           <Link href="/training" className="app-brand flex items-center gap-3 font-semibold tracking-tight">
             {/* Mobile: compact mark + label. Desktop: full logo + partner logo. */}
             <Image
@@ -96,13 +98,13 @@ export function Layout({
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-4 py-6">
+      <main className={`mx-auto ${widthClass} px-4 py-6`}>
         {title ? <h1 className="mb-4 text-2xl font-semibold tracking-tight">{title}</h1> : null}
         {children}
       </main>
 
       <footer className="border-t border-indigo-100/90 bg-white/60 backdrop-blur-sm">
-        <div className="mx-auto max-w-4xl px-4 py-5 text-xs text-slate-500">&nbsp;</div>
+        <div className={`mx-auto ${widthClass} px-4 py-5 text-xs text-slate-500`}>&nbsp;</div>
       </footer>
     </div>
   );
