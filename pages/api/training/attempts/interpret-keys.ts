@@ -447,7 +447,7 @@ async function callDeepseek(prompt: string): Promise<string> {
     user: prompt,
     temperature: 0.4,
     maxTokensChat: 3200,
-    maxTokensReasoner: 10000,
+    maxTokensReasoner: 7000,
   });
 }
 

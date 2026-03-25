@@ -51,8 +51,9 @@ export async function callDeepseekText(opts: DeepseekCallOptions): Promise<strin
   const envModel = String(process.env.DEEPSEEK_MODEL || "deepseek-chat").trim() || "deepseek-chat";
   const initialModel = String(opts.modelOverride || envModel).trim() || envModel;
   const timeoutMs = Math.max(15_000, Number(opts.timeoutMs || process.env.DEEPSEEK_TIMEOUT_MS || 60_000));
-  const maxTokensChat = Math.max(800, Number(opts.maxTokensChat || process.env.DEEPSEEK_MAX_TOKENS || 3200));
-  const maxTokensReasoner = Math.max(4000, Number(opts.maxTokensReasoner || process.env.DEEPSEEK_REASONER_MAX_TOKENS || 12000));
+  const hardMaxTokens = Math.max(256, Number(process.env.DEEPSEEK_HARD_MAX_TOKENS || 8192));
+  const maxTokensChat = Math.min(hardMaxTokens, Math.max(800, Number(opts.maxTokensChat || process.env.DEEPSEEK_MAX_TOKENS || 3200)));
+  const maxTokensReasoner = Math.min(hardMaxTokens, Math.max(4000, Number(opts.maxTokensReasoner || process.env.DEEPSEEK_REASONER_MAX_TOKENS || 7000)));
 
   async function requestText(
     model: string,
@@ -63,8 +64,8 @@ export async function callDeepseekText(opts: DeepseekCallOptions): Promise<strin
   ): Promise<string> {
     const isReasoner = model === "deepseek-reasoner";
     const max_tokens = isReasoner
-      ? Math.min(64000, Math.max(8000, Math.round(maxTokensReasoner * reasonerBoost)))
-      : Math.min(64000, Math.max(800, Math.round(maxTokensChat * chatBoost)));
+      ? Math.min(hardMaxTokens, Math.max(4000, Math.round(maxTokensReasoner * reasonerBoost)))
+      : Math.min(hardMaxTokens, Math.max(800, Math.round(maxTokensChat * chatBoost)));
 
     const system = String(opts.system || "").trim();
     const user = String(opts.user || "").trim();
