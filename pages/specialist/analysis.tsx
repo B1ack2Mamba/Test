@@ -400,6 +400,7 @@ export default function SpecialistAnalysisPage() {
     <Layout title="AI-аналитика клиента">
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
         <Link href="/specialist" className="btn btn-secondary btn-sm">← К кабинету специалиста</Link>
+        <Link href={selectedRoomId ? `/specialist/method-base?room_id=${encodeURIComponent(selectedRoomId)}` : "/specialist/method-base"} className="btn btn-secondary btn-sm">Методическая база</Link>
         {selectedRoomId ? <Link href={`/specialist/rooms/${encodeURIComponent(selectedRoomId)}`} className="btn btn-secondary btn-sm">Открыть комнату</Link> : null}
       </div>
 
