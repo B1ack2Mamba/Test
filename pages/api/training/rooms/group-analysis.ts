@@ -85,42 +85,45 @@ function summarizeResult(result: any): string {
   return lines.join("\n");
 }
 
+type GroupPromptTest = { title: string; slug: string; created_at?: string | null; resultSummary: string; staffInterpretation?: string };
+
+type GroupPromptParticipant = { name: string; tests: GroupPromptTest[] };
+
 function buildGroupPrompt(args: {
   roomName: string;
   customPrompt: string;
-  participants: Array<{
-    name: string;
-    tests: Array<{ title: string; slug: string; created_at?: string | null; resultSummary: string; staffInterpretation?: string }>;
-  }>;
+  participants: GroupPromptParticipant[];
+  compact?: boolean;
 }) {
-  const { roomName, customPrompt, participants } = args;
+  const { roomName, customPrompt, participants, compact = false } = args;
   const lines: string[] = [];
+  const promptHint = trimText(customPrompt, compact ? 500 : 1200);
+
   lines.push(`Ты — сильный практикующий психолог-аналитик и ведущий тренинга.`);
-  lines.push(`Нужно составить групповой аналитический вывод по участникам комнаты «${roomName}».`);
+  lines.push(`Собери групповой аналитический вывод по участникам комнаты «${roomName}».`);
   lines.push(`Участников с завершёнными тестами: ${participants.length}.`);
   lines.push("");
-  lines.push("Жёсткие правила:");
+  lines.push("Правила:");
   lines.push("- Пиши по-русски.");
-  lines.push("- Не упоминай ИИ, модель, промпт, API, нейросеть.");
-  lines.push("- Не придумывай факты, которых нет в данных.");
-  lines.push("- Не ставь клинические диагнозы.");
-  lines.push("- Показывай как общие групповые тенденции, так и заметные различия между людьми.");
+  lines.push("- Не упоминай ИИ, API и промпты.");
+  lines.push("- Не выдумывай факты и не ставь диагнозы.");
+  lines.push("- Показывай общие групповые тенденции и различия между людьми.");
   lines.push("- Если данных мало, честно укажи ограничения.");
   lines.push("");
 
-  if (customPrompt.trim()) {
-    lines.push("Дополнительные инструкции специалиста для группового анализа (учти их максимально точно, если они не противоречат данным):");
-    lines.push(customPrompt.trim());
+  if (promptHint) {
+    lines.push("Дополнительные инструкции специалиста:");
+    lines.push(promptHint);
     lines.push("");
   }
 
   lines.push("Формат ответа:");
-  lines.push("1. Краткое ядро группового профиля — 1 абзац на 6–10 предложений.");
-  lines.push("2. Общие сильные стороны группы — 6–10 пунктов.");
-  lines.push("3. Общие риски и уязвимости группы — 5–9 пунктов.");
-  lines.push("4. Различия между участниками / подгруппы / напряжения — 4–8 пунктов.");
-  lines.push("5. Рекомендации по работе с этой группой для специалиста или руководителя — 7–12 пунктов.");
-  lines.push("6. Вопросы и темы, которые стоит поднять на групповом обсуждении — 5–8 пунктов.");
+  lines.push("1. Ядро группового профиля — 1 абзац.");
+  lines.push("2. Сильные стороны группы — 5–8 пунктов.");
+  lines.push("3. Риски и уязвимости группы — 4–7 пунктов.");
+  lines.push("4. Различия между участниками / подгруппы — 4–7 пунктов.");
+  lines.push("5. Практические рекомендации специалисту или руководителю — 6–10 пунктов.");
+  lines.push("6. Темы для группового обсуждения — 4–7 пунктов.");
   lines.push("");
   lines.push("Данные по участникам:");
   lines.push("");
@@ -129,21 +132,17 @@ function buildGroupPrompt(args: {
     lines.push(`Участник ${idx + 1}: ${participant.name}`);
     participant.tests.forEach((t, testIdx) => {
       lines.push(`Тест ${testIdx + 1}: ${t.title} (${t.slug})`);
-      if (t.created_at) lines.push(`Дата попытки: ${t.created_at}`);
-      lines.push("Числовой/шкальный результат:");
-      lines.push(t.resultSummary);
-      if (t.staffInterpretation?.trim()) {
-        lines.push("");
-        lines.push("Краткая уже имеющаяся расшифровка специалиста:");
-        lines.push(trimText(t.staffInterpretation, 700));
-      }
+      if (t.created_at) lines.push(`Дата: ${t.created_at}`);
+      lines.push(trimText(t.resultSummary, compact ? 600 : 1200));
+      const interp = compact ? "" : trimText(t.staffInterpretation, 180);
+      if (interp) lines.push(`Короткая смысловая заметка: ${interp}`);
       lines.push("");
     });
     lines.push("---");
     lines.push("");
   });
 
-  lines.push("Собери именно общую картину по группе и различиям между людьми, а не набор отдельных мини-портретов.");
+  lines.push("Собери общую картину по группе и различиям между людьми.");
   return lines.join("\n");
 }
 
@@ -261,17 +260,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     customPrompt: typeof room?.group_analysis_prompt === "string" ? String(room.group_analysis_prompt) : "",
     participants,
   });
+  const compactPrompt = buildGroupPrompt({
+    roomName: String(room?.name || "Комната"),
+    customPrompt: typeof room?.group_analysis_prompt === "string" ? String(room.group_analysis_prompt) : "",
+    participants,
+    compact: true,
+  });
 
   try {
-    const text = await callDeepseekText({
-      system: "Ты помогаешь специалисту собрать целостный групповой психологический анализ по данным нескольких участников и тестов.",
-      user: prompt,
-      temperature: 0.45,
-      maxTokensChat: 6000,
-      maxTokensReasoner: 7500,
-    });
+    let text: string;
+    try {
+      text = await callDeepseekText({
+        system: "Ты помогаешь специалисту собрать целостный групповой психологический анализ по данным нескольких участников и тестов.",
+        user: prompt,
+        temperature: 0.35,
+        maxTokensChat: 5200,
+        maxTokensReasoner: 7200,
+      });
+    } catch (inner: any) {
+      const msg = String(inner?.message || "");
+      if (!/без текста|timeout|insufficient|resource/i.test(msg)) throw inner;
+      text = await callDeepseekText({
+        system: "Ты помогаешь специалисту быстро собрать содержательный групповой анализ по компактным данным. Ответ должен быть конкретным и практичным.",
+        user: compactPrompt,
+        temperature: 0.25,
+        maxTokensChat: 3400,
+        maxTokensReasoner: 5000,
+      });
+    }
     return res.status(200).json({ ok: true, text, participant_count: participants.length });
   } catch (e: any) {
-    return res.status(500).json({ ok: false, error: e?.message || "Не удалось собрать групповой анализ" });
+    const details = ` prompt_chars=${prompt.length}; compact_chars=${compactPrompt.length}; participants=${participants.length}`;
+    return res.status(500).json({ ok: false, error: `${e?.message || "Не удалось собрать групповой анализ"}.${details}` });
   }
 }

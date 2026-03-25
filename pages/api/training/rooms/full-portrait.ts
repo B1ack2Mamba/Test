@@ -85,73 +85,73 @@ function summarizeResult(result: any): string {
   return lines.join("\n");
 }
 
+type PromptTest = { title: string; slug: string; created_at?: string | null; resultSummary: string; staffInterpretation?: string };
+
 function buildFullPortraitPrompt(args: {
   roomName: string;
   participantName: string;
   customPrompt: string;
-  tests: Array<{ title: string; slug: string; created_at?: string | null; resultSummary: string; staffInterpretation?: string }>;
+  tests: PromptTest[];
+  compact?: boolean;
 }) {
-  const { roomName, participantName, customPrompt, tests } = args;
+  const { roomName, participantName, customPrompt, tests, compact = false } = args;
   const lines: string[] = [];
+  const promptHint = trimText(customPrompt, compact ? 500 : 1200);
 
   lines.push(`Ты — сильный практикующий психолог-аналитик и ведущий тренинга.`);
-  lines.push(`Нужно составить целостный профессиональный портрет клиента по ВСЕМ завершённым тестам в комнате «${roomName}».`);
+  lines.push(`Собери целостный профессиональный портрет клиента по завершённым тестам в комнате «${roomName}».`);
   lines.push(`Клиент: ${participantName}.`);
   lines.push("");
-  lines.push("Жёсткие правила:");
+  lines.push("Правила:");
   lines.push("- Пиши по-русски.");
-  lines.push("- Не упоминай ИИ, модель, промпт, API, нейросеть.");
-  lines.push("- Не придумывай диагнозы и клинические ярлыки.");
-  lines.push("- Не выдумывай факты, которых нет в данных.");
-  lines.push("- Если тесты между собой противоречат, прямо покажи это как противоречие или напряжение профиля.");
-  lines.push("- Синтезируй результаты, а не пересказывай их по отдельности сухим списком.");
-  lines.push("- Можно ссылаться на названия шкал и тестов, но не превращай ответ в машинный отчёт.");
+  lines.push("- Не упоминай ИИ, модель, API и промпты.");
+  lines.push("- Не ставь диагнозы и не выдумывай факты.");
+  lines.push("- Если данные противоречат друг другу, покажи это прямо.");
+  lines.push("- Синтезируй общий профиль, а не просто перечисляй тесты.");
   lines.push("");
 
-  if (customPrompt.trim()) {
-    lines.push("Дополнительные инструкции специалиста для этой комнаты (учти их максимально точно, если они не противоречат данным):");
-    lines.push(customPrompt.trim());
+  if (promptHint) {
+    lines.push("Учитывай дополнительные инструкции специалиста:");
+    lines.push(promptHint);
     lines.push("");
   }
 
   lines.push("Формат ответа:");
-  lines.push("1. Ядро портрета — 1 плотный абзац на 6–10 предложений.");
-  lines.push("2. Сильные стороны — 6–10 пунктов.");
-  lines.push("3. Уязвимости и риски — 5–9 пунктов.");
-  lines.push("4. Как человек обучается, принимает решения, организует себя и взаимодействует с людьми — 1–2 абзаца.");
-  lines.push("5. Внутренние противоречия / напряжения профиля — 3–6 пунктов.");
-  lines.push("6. Практические рекомендации специалисту по работе с этим клиентом — 7–12 пунктов.");
-  lines.push("7. Вопросы, которые стоит обсудить с клиентом — 5–8 пунктов.");
+  lines.push("1. Ядро портрета — 1 плотный абзац.");
+  lines.push("2. Сильные стороны — 5–8 пунктов.");
+  lines.push("3. Риски и уязвимости — 4–7 пунктов.");
+  lines.push("4. Стиль мышления, обучения, взаимодействия и саморегуляции — 1 абзац.");
+  lines.push("5. Противоречия профиля — 3–5 пунктов.");
+  lines.push("6. Практические рекомендации специалисту — 6–10 пунктов.");
+  lines.push("7. Вопросы для обсуждения с клиентом — 4–7 пунктов.");
   lines.push("");
   lines.push("Данные по тестам:");
   lines.push("");
 
   tests.forEach((t, idx) => {
     lines.push(`Тест ${idx + 1}: ${t.title} (${t.slug})`);
-    if (t.created_at) lines.push(`Дата попытки: ${t.created_at}`);
-    lines.push("Числовой/шкальный результат:");
-    lines.push(t.resultSummary);
-    if (t.staffInterpretation?.trim()) {
-      lines.push("");
-      lines.push("Краткая уже имеющаяся расшифровка специалиста:");
-      lines.push(trimText(t.staffInterpretation, 700));
+    if (t.created_at) lines.push(`Дата: ${t.created_at}`);
+    lines.push(trimText(t.resultSummary, compact ? 700 : 1400));
+    const interp = compact ? "" : trimText(t.staffInterpretation, 220);
+    if (interp) {
+      lines.push(`Краткий смысл уже имеющейся расшифровки: ${interp}`);
     }
-    lines.push("");
-    lines.push("---");
     lines.push("");
   });
 
-  lines.push("Собери именно целостный портрет человека, а не набор изолированных мини-описаний по тестам.");
+  lines.push("Собери единый портрет человека.");
   return lines.join("\n");
 }
 
-async function callDeepseek(prompt: string): Promise<string> {
+async function callDeepseek(prompt: string, compact = false): Promise<string> {
   return await callDeepseekText({
-    system: "Ты помогаешь специалисту собрать единый психологический портрет клиента по данным нескольких тестов.",
+    system: compact
+      ? "Ты помогаешь специалисту быстро собрать единый психологический портрет клиента по компактным данным нескольких тестов. Ответ должен быть содержательным и конкретным."
+      : "Ты помогаешь специалисту собрать единый психологический портрет клиента по данным нескольких тестов.",
     user: prompt,
-    temperature: 0.45,
-    maxTokensChat: 5000,
-    maxTokensReasoner: 7000,
+    temperature: 0.35,
+    maxTokensChat: compact ? 3200 : 5000,
+    maxTokensReasoner: compact ? 5000 : 7000,
   });
 }
 
@@ -314,9 +314,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     customPrompt,
     tests: testsForPrompt,
   });
+  const compactPrompt = buildFullPortraitPrompt({
+    roomName,
+    participantName,
+    customPrompt,
+    tests: testsForPrompt,
+    compact: true,
+  });
 
   try {
-    const text = await callDeepseek(prompt);
+    let text: string;
+    try {
+      text = await callDeepseek(prompt, false);
+    } catch (inner: any) {
+      const msg = String(inner?.message || "");
+      if (!/без текста|timeout|insufficient|resource/i.test(msg)) throw inner;
+      text = await callDeepseek(compactPrompt, true);
+    }
 
     await retryTransientApi<any>(
       () => supabaseAdmin
@@ -327,6 +341,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(200).json({ ok: true, text, cached: false });
   } catch (e: any) {
-    return res.status(500).json({ ok: false, error: e?.message || "Не удалось собрать полный портрет" });
+    const details = ` prompt_chars=${prompt.length}; compact_chars=${compactPrompt.length}; tests=${testsForPrompt.length}`;
+    return res.status(500).json({ ok: false, error: `${e?.message || "Не удалось собрать полный портрет"}.${details}` });
   }
 }
