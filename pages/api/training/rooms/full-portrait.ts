@@ -147,11 +147,11 @@ function buildFullPortraitPrompt(args: {
 
 async function callDeepseek(prompt: string): Promise<string> {
   return await callDeepseekText({
-    systemPrompt: "Ты помогаешь специалисту собрать единый психологический портрет клиента по данным нескольких тестов.",
-    userPrompt: prompt,
+    system: "Ты помогаешь специалисту собрать единый психологический портрет клиента по данным нескольких тестов.",
+    user: prompt,
     temperature: 0.45,
-    maxTokens: 3200,
-    retries: 2,
+    maxTokensChat: 3200,
+    maxTokensReasoner: 12000,
   });
 }
 

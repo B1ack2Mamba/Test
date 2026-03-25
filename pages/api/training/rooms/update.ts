@@ -28,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
   if (!roomName && !roomPwd && !hasAnalysisPrompt && !hasGroupAnalysisPrompt) {
-    return res.status(400).json({ ok: false, error: "Нужно указать название комнаты, новый пароль или промпт анализа" });
+    return res.status(400).json({ ok: false, error: "Нужно указать название комнаты, новый пароль или хотя бы один промпт анализа" });
   }
 
   const { data: room, error: roomErr } = await supabaseAdmin

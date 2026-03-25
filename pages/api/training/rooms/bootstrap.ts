@@ -6,18 +6,20 @@ import { setNoStore } from "@/lib/apiHardening";
 type AnyRow = Record<string, any>;
 
 async function loadRoom(sb: any, roomId: string) {
-  const selectRoom = async (withFlag: boolean) => {
-    const sel = withFlag
+  const selectRoom = async (mode: "full" | "analysis" | "base") => {
+    const sel = mode === "full"
       ? "id,name,created_by_email,is_active,participants_can_see_digits,analysis_prompt,group_analysis_prompt"
-      : "id,name,created_by_email,is_active,analysis_prompt,group_analysis_prompt";
+      : mode === "analysis"
+        ? "id,name,created_by_email,is_active,analysis_prompt"
+        : "id,name,created_by_email,is_active";
     return await sb.from("training_rooms").select(sel).eq("id", roomId).maybeSingle();
   };
 
-  let { data: room, error } = await selectRoom(true);
+  let { data: room, error } = await selectRoom("full");
   if (error && /(participants_can_see_digits|analysis_prompt|group_analysis_prompt)/i.test(error.message || "")) {
-    ({ data: room, error } = await selectRoom(false));
-    if (error && /(analysis_prompt|group_analysis_prompt)/i.test(error.message || "")) {
-      ({ data: room, error } = await sb.from("training_rooms").select("id,name,created_by_email,is_active").eq("id", roomId).maybeSingle());
+    ({ data: room, error } = await selectRoom("analysis"));
+    if (error && /analysis_prompt/i.test(error.message || "")) {
+      ({ data: room, error } = await selectRoom("base"));
     }
   }
 

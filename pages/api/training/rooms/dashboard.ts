@@ -87,16 +87,18 @@ async function getAuthorizedRoom(req: NextApiRequest, res: NextApiResponse, room
   }
 
   const sb: any = supabaseAdmin as any;
-  const selectRoom = async (withPrompt: boolean) => {
-    const sel = withPrompt
+  const selectRoom = async (mode: "full" | "analysis" | "base") => {
+    const sel = mode === "full"
       ? "id,name,created_by_email,is_active,created_at,analysis_prompt,group_analysis_prompt"
-      : "id,name,created_by_email,is_active,created_at";
+      : mode === "analysis"
+        ? "id,name,created_by_email,is_active,created_at,analysis_prompt"
+        : "id,name,created_by_email,is_active,created_at";
     const started = Date.now();
     const out = await retryTransientApi<any>(
       () => sb.from("training_rooms").select(sel).eq("id", roomId).maybeSingle(),
       { attempts: 1, delayMs: 0 }
     );
-    timings[withPrompt ? "room_select" : "room_select_fallback"] = markSince(started);
+    timings[mode === "full" ? "room_select" : "room_select_fallback"] = markSince(started);
     return out;
   };
 
@@ -112,7 +114,7 @@ async function getAuthorizedRoom(req: NextApiRequest, res: NextApiResponse, room
         .maybeSingle(),
       { attempts: 1, delayMs: 0 }
     ).finally(() => { timings.member_check = markSince(memberStarted); }),
-    selectRoom(true).finally(() => { timings.room_check = markSince(roomStarted); }),
+    selectRoom("full").finally(() => { timings.room_check = markSince(roomStarted); }),
   ]);
 
   const { data: member, error: memErr } = memberResp;
@@ -123,7 +125,10 @@ async function getAuthorizedRoom(req: NextApiRequest, res: NextApiResponse, room
 
   let { data: room, error: roomErr } = firstRoomResp;
   if (roomErr && /(analysis_prompt|group_analysis_prompt)/i.test(roomErr.message || "")) {
-    ({ data: room, error: roomErr } = await selectRoom(false));
+    ({ data: room, error: roomErr } = await selectRoom("analysis"));
+    if (roomErr && /analysis_prompt/i.test(roomErr.message || "")) {
+      ({ data: room, error: roomErr } = await selectRoom("base"));
+    }
   }
   if (roomErr || !room) {
     res.status(404).json({ ok: false, error: "Room not found" });

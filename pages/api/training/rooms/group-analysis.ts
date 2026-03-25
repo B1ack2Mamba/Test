@@ -4,7 +4,7 @@ import { isSpecialistUser } from "@/lib/specialist";
 import { retryTransientApi, setNoStore } from "@/lib/apiHardening";
 import { callDeepseekText } from "@/lib/deepseek";
 
-function trimText(s: any, maxLen = 900) {
+function trimText(s: any, maxLen = 1400) {
   const t = String(s ?? "").trim();
   if (!t) return "";
   return t.length > maxLen ? t.slice(0, maxLen).trimEnd() + "…" : t;
@@ -74,7 +74,7 @@ function summarizeResult(result: any): string {
       lines.push(`- ${style} (${tag}): ${count}${max ? `/${max}` : ""}; ${pct}%${level ? `; уровень ${level}` : ""}`);
     }
   } else {
-    lines.push(trimText(safeJson(result), 1800));
+    lines.push(trimText(safeJson(result), 2400));
   }
 
   if (meta?.dominant) lines.push(`Доминирующее направление: ${String(meta.dominant)}`);
@@ -95,17 +95,17 @@ function buildGroupPrompt(args: {
 }) {
   const { roomName, customPrompt, participants } = args;
   const lines: string[] = [];
-
-  lines.push(`Ты — сильный практикующий психолог-аналитик и ведущий группового тренинга.`);
-  lines.push(`Нужно сделать групповой анализ по всем участникам комнаты «${roomName}», у которых есть завершённые тесты.`);
+  lines.push(`Ты — сильный практикующий психолог-аналитик и ведущий тренинга.`);
+  lines.push(`Нужно составить групповой аналитический вывод по участникам комнаты «${roomName}».`);
+  lines.push(`Участников с завершёнными тестами: ${participants.length}.`);
   lines.push("");
   lines.push("Жёсткие правила:");
   lines.push("- Пиши по-русски.");
   lines.push("- Не упоминай ИИ, модель, промпт, API, нейросеть.");
-  lines.push("- Не ставь диагнозы и не навешивай клинические ярлыки.");
-  lines.push("- Не выдумывай данные, которых нет в тестах.");
-  lines.push("- Смотри на группу как на систему: сходства, различия, кластеры, напряжения, риски, управленческие выводы.");
-  lines.push("- Не ограничивайся средними значениями: выделяй контрасты и заметные выбросы.");
+  lines.push("- Не придумывай факты, которых нет в данных.");
+  lines.push("- Не ставь клинические диагнозы.");
+  lines.push("- Показывай как общие групповые тенденции, так и заметные различия между людьми.");
+  lines.push("- Если данных мало, честно укажи ограничения.");
   lines.push("");
 
   if (customPrompt.trim()) {
@@ -115,31 +115,27 @@ function buildGroupPrompt(args: {
   }
 
   lines.push("Формат ответа:");
-  lines.push("1. Ядро группового портрета — 1–2 плотных абзаца.");
-  lines.push("2. Повторяющиеся сильные стороны группы — 6–12 пунктов.");
-  lines.push("3. Общие риски и уязвимости группы — 6–12 пунктов.");
-  lines.push("4. Кластеры / типы участников внутри группы — 3–7 подпунктов с описанием.");
-  lines.push("5. Потенциальные линии напряжения, конфликтов или разрыва темпа — 4–8 пунктов.");
-  lines.push("6. Кто может требовать отдельного внимания ведущего и почему — 3–8 пунктов.");
-  lines.push("7. Практические рекомендации по ведению этой группы — 8–15 пунктов.");
-  lines.push("8. Какие темы стоит вынести на обсуждение в группе — 5–10 пунктов.");
+  lines.push("1. Краткое ядро группового профиля — 1 абзац на 6–10 предложений.");
+  lines.push("2. Общие сильные стороны группы — 6–10 пунктов.");
+  lines.push("3. Общие риски и уязвимости группы — 5–9 пунктов.");
+  lines.push("4. Различия между участниками / подгруппы / напряжения — 4–8 пунктов.");
+  lines.push("5. Рекомендации по работе с этой группой для специалиста или руководителя — 7–12 пунктов.");
+  lines.push("6. Вопросы и темы, которые стоит поднять на групповом обсуждении — 5–8 пунктов.");
   lines.push("");
-  lines.push(`В анализе ${participants.length} участников.`);
   lines.push("Данные по участникам:");
   lines.push("");
 
   participants.forEach((participant, idx) => {
     lines.push(`Участник ${idx + 1}: ${participant.name}`);
-    lines.push(`Завершённых тестов: ${participant.tests.length}`);
-    participant.tests.forEach((test, tIdx) => {
-      lines.push(`Тест ${tIdx + 1}: ${test.title} (${test.slug})`);
-      if (test.created_at) lines.push(`Дата попытки: ${test.created_at}`);
+    participant.tests.forEach((t, testIdx) => {
+      lines.push(`Тест ${testIdx + 1}: ${t.title} (${t.slug})`);
+      if (t.created_at) lines.push(`Дата попытки: ${t.created_at}`);
       lines.push("Числовой/шкальный результат:");
-      lines.push(test.resultSummary);
-      if (test.staffInterpretation?.trim()) {
+      lines.push(t.resultSummary);
+      if (t.staffInterpretation?.trim()) {
         lines.push("");
         lines.push("Краткая уже имеющаяся расшифровка специалиста:");
-        lines.push(trimText(test.staffInterpretation, 900));
+        lines.push(trimText(t.staffInterpretation, 1600));
       }
       lines.push("");
     });
@@ -147,18 +143,8 @@ function buildGroupPrompt(args: {
     lines.push("");
   });
 
-  lines.push("Сделай именно аналитический портрет группы и рекомендации для ведущего, а не механический пересказ карточек людей по очереди.");
+  lines.push("Собери именно общую картину по группе и различиям между людьми, а не набор отдельных мини-портретов.");
   return lines.join("\n");
-}
-
-async function callDeepseek(prompt: string): Promise<string> {
-  return await callDeepseekText({
-    systemPrompt: "Ты помогаешь специалисту собрать групповой психологический анализ по данным нескольких участников и их тестов.",
-    userPrompt: prompt,
-    temperature: 0.45,
-    maxTokens: 5200,
-    retries: 2,
-  });
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -171,22 +157,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!isSpecialistUser(user)) return res.status(403).json({ ok: false, error: "Forbidden" });
 
-  const { room_id } = (req.body || {}) as any;
-  const roomId = String(room_id || "").trim();
+  const roomId = String((req.body || {}).room_id || "").trim();
   if (!roomId) return res.status(400).json({ ok: false, error: "room_id is required" });
 
-  const sb: any = supabaseAdmin as any;
-  const { data: member, error: memberErr } = await retryTransientApi<any>(
-    () => supabaseAdmin
-      .from("training_room_members")
-      .select("role")
-      .eq("room_id", roomId)
-      .eq("user_id", user.id)
-      .maybeSingle(),
+  const { data: specialistMember, error: mErr } = await retryTransientApi<any>(
+    () => supabaseAdmin.from("training_room_members").select("role").eq("room_id", roomId).eq("user_id", user.id).maybeSingle(),
     { attempts: 2, delayMs: 150 }
   );
-  if (memberErr || !member || member.role !== "specialist") return res.status(403).json({ ok: false, error: "Forbidden" });
+  if (mErr || !specialistMember || specialistMember.role !== "specialist") {
+    return res.status(403).json({ ok: false, error: "Forbidden" });
+  }
 
+  const sb: any = supabaseAdmin as any;
   let room: any = null;
   let roomErr: any = null;
   ({ data: room, error: roomErr } = await retryTransientApi<any>(
@@ -201,139 +183,95 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   if (roomErr || !room) return res.status(404).json({ ok: false, error: "Комната не найдена" });
 
-  const roomName = String(room?.name || "Комната");
-  const customPrompt = typeof room?.group_analysis_prompt === "string" ? String(room.group_analysis_prompt) : "";
-
-  const { data: progressRows, error: progressErr } = await retryTransientApi<any>(
+  const { data: progressRows, error: pErr } = await retryTransientApi<any>(
     () => supabaseAdmin
       .from("training_progress")
-      .select("room_id,user_id,test_slug,completed_at,attempt_id")
+      .select("user_id,test_slug,attempt_id,completed_at")
       .eq("room_id", roomId)
       .not("completed_at", "is", null),
     { attempts: 2, delayMs: 150 }
   );
-  if (progressErr) return res.status(500).json({ ok: false, error: progressErr.message });
+  if (pErr) return res.status(500).json({ ok: false, error: pErr.message });
 
-  const completedRows = (progressRows || []).filter((row: any) => !!row?.attempt_id);
-  if (!completedRows.length) {
-    return res.status(400).json({ ok: false, error: "В этой комнате пока нет завершённых тестов для группового анализа" });
+  const progressList = (progressRows || []).filter((r: any) => !!r.attempt_id);
+  if (!progressList.length) {
+    return res.status(400).json({ ok: false, error: "В комнате пока нет завершённых тестов" });
   }
 
-  const userIds = Array.from(new Set(completedRows.map((row: any) => String(row.user_id || "")).filter(Boolean)));
-  const attemptIds = Array.from(new Set(completedRows.map((row: any) => String(row.attempt_id || "")).filter(Boolean)));
-  const testSlugs = Array.from(new Set(completedRows.map((row: any) => String(row.test_slug || "")).filter(Boolean)));
+  const userIds = Array.from(new Set(progressList.map((r: any) => String(r.user_id))));
+  const attemptIds = Array.from(new Set(progressList.map((r: any) => String(r.attempt_id))));
+  const slugs = Array.from(new Set(progressList.map((r: any) => String(r.test_slug))));
 
-  const [membersResp, attemptsResp, testsResp, interpsResp] = await Promise.all([
-    retryTransientApi<any>(
-      () => supabaseAdmin
-        .from("training_room_members")
-        .select("user_id,display_name,role")
-        .eq("room_id", roomId)
-        .in("user_id", userIds.length ? userIds : ["__none__"]),
-      { attempts: 2, delayMs: 150 }
-    ),
-    retryTransientApi<any>(
-      () => supabaseAdmin
-        .from("training_attempts")
-        .select("id,user_id,test_slug,result,created_at")
-        .in("id", attemptIds.length ? attemptIds : ["__none__"]),
-      { attempts: 2, delayMs: 150 }
-    ),
-    retryTransientApi<any>(
-      () => supabaseAdmin
-        .from("tests")
-        .select("slug,title")
-        .in("slug", testSlugs.length ? testSlugs : ["__none__"]),
-      { attempts: 2, delayMs: 150 }
-    ),
-    retryTransientApi<any>(
-      () => supabaseAdmin
-        .from("training_attempt_interpretations")
-        .select("attempt_id,kind,text")
-        .in("attempt_id", attemptIds.length ? attemptIds : ["__none__"])
-        .in("kind", ["keys_ai"]),
-      { attempts: 2, delayMs: 150 }
-    ),
+  const [membersResp, attemptsResp, testsResp, interpResp] = await Promise.all([
+    retryTransientApi<any>(() => supabaseAdmin.from("training_room_members").select("user_id,display_name,role").eq("room_id", roomId).in("user_id", userIds), { attempts: 2, delayMs: 150 }),
+    retryTransientApi<any>(() => supabaseAdmin.from("training_attempts").select("id,user_id,test_slug,result,created_at").in("id", attemptIds), { attempts: 2, delayMs: 150 }),
+    retryTransientApi<any>(() => supabaseAdmin.from("tests").select("slug,title").in("slug", slugs), { attempts: 2, delayMs: 150 }),
+    retryTransientApi<any>(() => supabaseAdmin.from("training_attempt_interpretations").select("attempt_id,kind,text").in("attempt_id", attemptIds).in("kind", ["keys_ai"]), { attempts: 2, delayMs: 150 }),
   ]);
 
-  const { data: membersData, error: membersErr } = membersResp;
-  const { data: attemptsData, error: attemptsErr } = attemptsResp;
-  const { data: testsData, error: testsErr } = testsResp;
-  const { data: interpsData, error: interpsErr } = interpsResp;
-  if (membersErr) return res.status(500).json({ ok: false, error: membersErr.message });
-  if (attemptsErr) return res.status(500).json({ ok: false, error: attemptsErr.message });
-  if (testsErr) return res.status(500).json({ ok: false, error: testsErr.message });
-  if (interpsErr) return res.status(500).json({ ok: false, error: interpsErr.message });
+  if (membersResp.error) return res.status(500).json({ ok: false, error: membersResp.error.message });
+  if (attemptsResp.error) return res.status(500).json({ ok: false, error: attemptsResp.error.message });
+  if (testsResp.error) return res.status(500).json({ ok: false, error: testsResp.error.message });
+  if (interpResp.error) return res.status(500).json({ ok: false, error: interpResp.error.message });
 
-  const memberByUserId = new Map<string, any>();
-  for (const row of membersData || []) {
-    if (String((row as any)?.role || "") === "participant") {
-      memberByUserId.set(String((row as any).user_id), row);
+  const memberNameByUser = new Map<string, string>();
+  for (const row of membersResp.data || []) {
+    if (String((row as any).role || "") === "participant") {
+      memberNameByUser.set(String((row as any).user_id), String((row as any).display_name || "Участник"));
     }
   }
-
-  const testTitleBySlug = new Map<string, string>();
-  for (const row of testsData || []) testTitleBySlug.set(String((row as any).slug), String((row as any).title || (row as any).slug));
-
-  const interpByAttempt = new Map<string, string>();
-  for (const row of interpsData || []) interpByAttempt.set(String((row as any).attempt_id), String((row as any).text || ""));
-
   const attemptsById = new Map<string, any>();
-  for (const row of attemptsData || []) attemptsById.set(String((row as any).id), row);
+  for (const row of attemptsResp.data || []) attemptsById.set(String((row as any).id), row);
+  const testTitleBySlug = new Map<string, string>();
+  for (const row of testsResp.data || []) testTitleBySlug.set(String((row as any).slug), String((row as any).title || (row as any).slug));
+  const interpByAttempt = new Map<string, string>();
+  for (const row of interpResp.data || []) interpByAttempt.set(String((row as any).attempt_id), String((row as any).text || ""));
 
-  const rowsByUser = new Map<string, any[]>();
-  for (const row of completedRows) {
-    const uid = String((row as any).user_id || "");
-    const list = rowsByUser.get(uid) || [];
-    list.push(row);
-    rowsByUser.set(uid, list);
+  const participantMap = new Map<string, { name: string; tests: Array<{ title: string; slug: string; created_at?: string | null; resultSummary: string; staffInterpretation?: string }> }>();
+
+  for (const row of progressList) {
+    const userId = String((row as any).user_id);
+    const attempt = attemptsById.get(String((row as any).attempt_id));
+    if (!attempt) continue;
+    const slug = String((row as any).test_slug || attempt.test_slug || "");
+    const participant = participantMap.get(userId) || {
+      name: memberNameByUser.get(userId) || "Участник",
+      tests: [],
+    };
+    participant.tests.push({
+      slug,
+      title: testTitleBySlug.get(slug) || slug,
+      created_at: attempt.created_at || (row as any).completed_at || null,
+      resultSummary: summarizeResult(attempt.result),
+      staffInterpretation: interpByAttempt.get(String(attempt.id)) || "",
+    });
+    participantMap.set(userId, participant);
   }
 
-  const participants = Array.from(rowsByUser.entries())
-    .map(([userId, rows]) => {
-      const memberRow = memberByUserId.get(userId);
-      const name = String(memberRow?.display_name || "Участник");
-      const tests = rows
-        .map((row: any) => {
-          const attempt = attemptsById.get(String(row.attempt_id));
-          if (!attempt) return null;
-          const slug = String(row.test_slug || attempt.test_slug || "");
-          return {
-            slug,
-            title: testTitleBySlug.get(slug) || slug,
-            created_at: attempt.created_at || row.completed_at || null,
-            resultSummary: summarizeResult(attempt.result),
-            staffInterpretation: interpByAttempt.get(String(attempt.id)) || "",
-          };
-        })
-        .filter(Boolean) as Array<{ title: string; slug: string; created_at?: string | null; resultSummary: string; staffInterpretation?: string }>;
-
-      tests.sort((a, b) => {
-        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return ta - tb;
-      });
-
-      return { name, tests };
-    })
-    .filter((row) => row.tests.length > 0)
+  const participants = Array.from(participantMap.values())
+    .filter((p) => p.tests.length > 0)
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
 
   if (!participants.length) {
-    return res.status(400).json({ ok: false, error: "Нет участников с завершёнными тестами, пригодными для анализа" });
+    return res.status(400).json({ ok: false, error: "Не удалось собрать данные по участникам комнаты" });
   }
 
-  const prompt = buildGroupPrompt({ roomName, customPrompt, participants });
-  const text = await callDeepseek(prompt);
-
-  return res.status(200).json({
-    ok: true,
-    text,
-    participant_count: participants.length,
-    room: {
-      id: roomId,
-      name: roomName,
-      group_analysis_prompt: customPrompt,
-    },
+  const prompt = buildGroupPrompt({
+    roomName: String(room?.name || "Комната"),
+    customPrompt: typeof room?.group_analysis_prompt === "string" ? String(room.group_analysis_prompt) : "",
+    participants,
   });
+
+  try {
+    const text = await callDeepseekText({
+      system: "Ты помогаешь специалисту собрать целостный групповой психологический анализ по данным нескольких участников и тестов.",
+      user: prompt,
+      temperature: 0.45,
+      maxTokensChat: 3600,
+      maxTokensReasoner: 12000,
+    });
+    return res.status(200).json({ ok: true, text, participant_count: participants.length });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || "Не удалось собрать групповой анализ" });
+  }
 }

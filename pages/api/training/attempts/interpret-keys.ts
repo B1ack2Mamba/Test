@@ -443,11 +443,11 @@ function buildKeysPrompt(args: {
 
 async function callDeepseek(prompt: string): Promise<string> {
   return await callDeepseekText({
-    systemPrompt: "Ты помогаешь специалисту расшифровать результаты тестов для тренинга.",
-    userPrompt: prompt,
+    system: "Ты помогаешь специалисту делать точную психологическую расшифровку результатов теста по ключам и уже посчитанным шкалам.",
+    user: prompt,
     temperature: 0.4,
-    maxTokens: 2600,
-    retries: 2,
+    maxTokensChat: 2600,
+    maxTokensReasoner: 10000,
   });
 }
 
