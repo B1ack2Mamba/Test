@@ -4,6 +4,10 @@ import { isSpecialistUser } from '@/lib/specialist';
 import { setNoStore } from '@/lib/apiHardening';
 import { callDeepseekText } from '@/lib/deepseek';
 
+function text(v: any) {
+  return String(v || '').trim();
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   setNoStore(res);
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
@@ -12,46 +16,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!auth) return;
   if (!isSpecialistUser(auth.user)) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
-  const body = req.body || {};
-  const fromNode = body.fromNode || null;
-  const toNode = body.toNode || null;
-  const relationType = String(body.relationType || '').trim();
-  const task = String(body.task || '').trim();
-  const context = String(body.context || '').trim();
-  if (!fromNode || !toNode) return res.status(400).json({ ok: false, error: 'fromNode и toNode обязательны' });
+  const itemsRaw = Array.isArray(req.body?.items) ? req.body.items : [];
+  const items = itemsRaw
+    .map((raw: any) => ({
+      testTitle: text(raw?.test_title || raw?.testTitle || raw?.testSlug),
+      resultLabel: text(raw?.result_label || raw?.resultLabel),
+      answerValue: text(raw?.answer_value || raw?.answerValue),
+      answerNote: text(raw?.answer_note || raw?.answerNote),
+    }))
+    .filter((item: any) => item.testTitle && item.resultLabel);
+
+  const task = text(req.body?.task);
+  if (items.length < 2) return res.status(400).json({ ok: false, error: 'Нужно минимум 2 результата для анализа связи' });
 
   try {
-    const text = await callDeepseekText({
-      system:
-        'Ты помогаешь специалисту по оценке персонала формулировать рабочие гипотезы по сочетанию результатов тестов. Не ставь диагнозов, не выдумывай факты, пиши как методист. Ответ должен быть на русском языке. Верни 4 коротких блока с подзаголовками: Смысл связи, Что это может значить, Риски интерпретации, Что проверить дальше.',
+    const textOut = await callDeepseekText({
+      system: [
+        'Ты помогаешь специалисту по оценке персонала формулировать методические выводы по сочетанию результатов разных тестов.',
+        'Не ставь диагнозов, не выдумывай фактов и не делай медицинских выводов.',
+        'Пиши по-русски, профессионально и ясно.',
+        'Верни 4 коротких блока с подзаголовками: Общий смысл, Что это может давать в поведении, Риски интерпретации, Что стоит уточнить специалисту.',
+      ].join(' '),
       user: [
-        'Проанализируй связь между двумя результатами тестов.',
-        `Связь: ${relationType || 'смысловая связь'}`,
+        'Проанализируй сочетание результатов разных тестов как методическую гипотезу.',
         '',
-        'Результат 1:',
-        `Тест: ${String(fromNode.testTitle || fromNode.testSlug || '—')}`,
-        `Короткое название: ${String(fromNode.label || '—')}`,
-        `Числа/уровень: ${String(fromNode.value || '—')}`,
-        `Описание: ${String(fromNode.note || '—')}`,
-        '',
-        'Результат 2:',
-        `Тест: ${String(toNode.testTitle || toNode.testSlug || '—')}`,
-        `Короткое название: ${String(toNode.label || '—')}`,
-        `Числа/уровень: ${String(toNode.value || '—')}`,
-        `Описание: ${String(toNode.note || '—')}`,
-        '',
-        context ? `Методическая рамка специалиста: ${context}` : '',
+        ...items.map((item: any, index: number) => [
+          `Результат ${index + 1}:`,
+          `Тест: ${item.testTitle}`,
+          `Показатель: ${item.resultLabel}`,
+          `Ответ / уровень: ${item.answerValue || 'не указан'}`,
+          `Комментарий: ${item.answerNote || '—'}`,
+          '',
+        ].join('\n')),
         task ? `Дополнительная задача специалиста: ${task}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n'),
+      ].filter(Boolean).join('\n'),
       temperature: 0.2,
-      maxTokensChat: 2200,
-      maxTokensReasoner: 4000,
+      maxTokensChat: 2600,
+      maxTokensReasoner: 5000,
       timeoutMs: 90000,
     });
 
-    return res.status(200).json({ ok: true, text });
+    return res.status(200).json({ ok: true, text: textOut });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || 'AI analysis failed' });
   }
