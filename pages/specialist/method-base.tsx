@@ -9,6 +9,7 @@ type MethodResultOption = {
   label: string;
   group?: string;
   suggestedValues: string[];
+  description?: string;
 };
 
 type CatalogTest = {
@@ -83,6 +84,7 @@ export default function SpecialistMethodBasePage() {
   const [missingMigration, setMissingMigration] = useState(false);
   const [savedLinks, setSavedLinks] = useState<SavedLink[]>([]);
   const [draft, setDraft] = useState(emptyDraft());
+  const [openDescriptions, setOpenDescriptions] = useState<Record<string, boolean>>({});
 
   const authorized = Boolean(session && user && isSpecialistUser(user));
 
@@ -151,6 +153,12 @@ export default function SpecialistMethodBasePage() {
   function toggleTest(slug: string) {
     setSelectedTestSlugs((prev) => (prev.includes(slug) ? prev.filter((x) => x !== slug) : [...prev, slug]));
   }
+
+  function toggleDescription(testSlug: string, resultKey: string) {
+    const id = `${testSlug}::${resultKey}`;
+    setOpenDescriptions((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
 
   function addResultToDraft(test: CatalogTest, option: MethodResultOption) {
     setDraft((prev) => {
@@ -471,14 +479,34 @@ export default function SpecialistMethodBasePage() {
                             <div className="grid gap-3 lg:grid-cols-2">
                               {options.map((option) => {
                                 const alreadyAdded = draft.items.some((item) => item.testSlug === test.slug && item.resultKey === option.key);
+                                const descriptionId = `${test.slug}::${option.key}`;
+                                const descriptionOpen = Boolean(openDescriptions[descriptionId]);
                                 return (
                                   <div key={option.key} className="rounded-2xl border border-indigo-100 bg-slate-50/70 p-3">
-                                    <div className="text-sm font-medium text-slate-900">{option.label}</div>
-                                    <div className="mt-2 flex flex-wrap gap-1.5">
-                                      {(option.suggestedValues || []).slice(0, 4).map((value) => (
-                                        <span key={value} className="rounded-full border border-indigo-100 bg-white px-2 py-1 text-[11px] text-slate-600">{value}</span>
-                                      ))}
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-medium text-slate-900">{option.label}</div>
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                          {(option.suggestedValues || []).slice(0, 4).map((value) => (
+                                            <span key={value} className="rounded-full border border-indigo-100 bg-white px-2 py-1 text-[11px] text-slate-600">{value}</span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      {option.description ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleDescription(test.slug, option.key)}
+                                          className="btn btn-secondary btn-sm shrink-0"
+                                        >
+                                          {descriptionOpen ? 'Скрыть описание' : 'Описание'}
+                                        </button>
+                                      ) : null}
                                     </div>
+                                    {option.description && descriptionOpen ? (
+                                      <div className="mt-3 rounded-2xl border border-indigo-100 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
+                                        {option.description}
+                                      </div>
+                                    ) : null}
                                     <button
                                       type="button"
                                       disabled={alreadyAdded}
