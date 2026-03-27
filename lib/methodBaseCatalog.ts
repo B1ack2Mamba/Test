@@ -7,6 +7,10 @@ export type MethodResultOption = {
   group?: string;
   suggestedValues: string[];
   description?: string;
+  valueMode: 'qualitative' | 'numeric';
+  minValue?: number;
+  maxValue?: number;
+  step?: number;
 };
 
 export type MethodCatalogTest = {
@@ -28,7 +32,28 @@ function uniq(values: Array<string | null | undefined>) {
 }
 
 function option(key: string, label: string, suggestedValues: string[], group?: string, description?: string): MethodResultOption {
-  return { key, label, group, suggestedValues: uniq(suggestedValues), description: description?.trim() || undefined };
+  return {
+    key,
+    label,
+    group,
+    suggestedValues: uniq(suggestedValues),
+    description: description?.trim() || undefined,
+    valueMode: 'qualitative',
+  };
+}
+
+function numericOption(key: string, label: string, minValue: number, maxValue: number, group?: string, description?: string, step = 1): MethodResultOption {
+  return {
+    key,
+    label,
+    group,
+    suggestedValues: [],
+    description: description?.trim() || undefined,
+    valueMode: 'numeric',
+    minValue,
+    maxValue,
+    step,
+  };
 }
 
 const PF16_DESCRIPTIONS: Record<string, string> = {
@@ -97,9 +122,9 @@ const SITUATIONAL_DESCRIPTIONS: Record<string, string> = {
   S2: 'Стиль убеждения: руководитель не только задаёт направление, но и объясняет, вовлекает и помогает принять задачу. Подходит, когда нужна и рамка, и поддержка принятия.',
   S3: 'Поддерживающий стиль: меньше жёстких указаний, больше участия, обсуждения и эмоциональной опоры. Полезен, когда человеку нужна включённость и укрепление уверенности.',
   S4: 'Делегирующий стиль: высокая автономия, передача ответственности и минимум оперативного контроля. Лучше работает с более зрелыми и самостоятельными сотрудниками.',
-  flexibility: 'Показывает, насколько человек вообще умеет переключаться между стилями руководства, а не застревать в одном привычном способе управления.',
-  adequacy: 'Отражает, насколько выбранный стиль руководства соответствует ситуации и уровню готовности сотрудника. Это показатель не только силы стиля, но и его уместности.',
-  polarity: 'Показывает, насколько профиль распределён полярно: когда человек опирается на противоположные стили и слабо использует промежуточные варианты. Это часто связано с “качелями” в управлении.',
+  flexibility: 'Суммарный количественный показатель гибкости: чем он выше, тем свободнее человек переключается между стилями руководства вместо застревания в одном привычном способе.',
+  adequacy: 'Количественный показатель адекватности применения стилей: фактически это число попаданий по диагонали, когда выбранный стиль лучше соответствует ситуации и уровню готовности сотрудника.',
+  polarity: 'Количественный показатель крайних отклонений: чем он выше, тем чаще человек уходит в резкие полярные решения вместо более точного попадания в ситуацию.',
 };
 
 const TIME_DESCRIPTIONS: Record<string, string> = {
@@ -150,18 +175,75 @@ function getDescription(test: AnyTest, key: string, label: string): string | und
   return undefined;
 }
 
+function getBelbinMaxByRole(test: AnyTest) {
+  const scoring: any = (test as any)?.scoring || {};
+  const totalPerSection = Number(scoring?.total_per_section ?? 10);
+  const keys = Array.isArray(scoring?.keys) ? scoring.keys : [];
+  const out: Record<string, number> = {};
+  for (const key of keys) {
+    const roleToLetter = key?.role_to_letter || {};
+    for (const role of Object.keys(roleToLetter)) {
+      out[role] = (out[role] ?? 0) + totalPerSection;
+    }
+  }
+  return out;
+}
+
+function getMotivationMaxByFactor(test: AnyTest) {
+  const scoring: any = (test as any)?.scoring || {};
+  const factors = Array.isArray(scoring?.factors) ? scoring.factors : [];
+  const out: Record<string, number> = Object.fromEntries(factors.map((factor: string) => [factor, 0]));
+  for (const q of Array.isArray((test as any)?.questions) ? (test as any).questions : []) {
+    const maxPoints = Number(q?.maxPoints ?? 5);
+    const left = String(q?.left?.factor || '').trim();
+    const right = String(q?.right?.factor || '').trim();
+    if (left) out[left] = (out[left] ?? 0) + maxPoints;
+    if (right) out[right] = (out[right] ?? 0) + maxPoints;
+  }
+  return out;
+}
+
+function getLearningMaxByTag(test: AnyTest) {
+  const scoring: any = (test as any)?.scoring || {};
+  const tags = Array.isArray(scoring?.tags) ? scoring.tags : [];
+  const out: Record<string, number> = Object.fromEntries(tags.map((tag: string) => [tag, 0]));
+  for (const q of Array.isArray((test as any)?.questions) ? (test as any).questions : []) {
+    for (const tag of tags) {
+      if ((q?.options || []).some((opt: any) => Array.isArray(opt?.tags) && opt.tags.includes(tag))) {
+        out[tag] = (out[tag] ?? 0) + 1;
+      }
+    }
+  }
+  return out;
+}
+
+function getColorMinMaxByKey() {
+  return {
+    green: { min: 2, max: 24 },
+    red: { min: 2, max: 24 },
+    blue: { min: 2, max: 24 },
+  };
+}
+
 function buildResultOptions(test: AnyTest): MethodResultOption[] {
   const scoring: any = (test as any)?.scoring || {};
+  const questionCount = Array.isArray((test as any)?.questions) ? (test as any).questions.length : 0;
+
   switch (test.slug) {
     case 'situational-guidance': {
+      const flexMax = (Array.isArray(scoring?.keys) ? scoring.keys : []).reduce((acc: number, key: any) => {
+        const pts = key?.points || {};
+        const maxPoint = Math.max(...Object.values(pts).map((v: any) => Number(v ?? 0)), 0);
+        return acc + maxPoint;
+      }, 0);
       const styles = Object.entries(scoring.style_to_name || {}).map(([key, label]) =>
-        option(String(key), String(label), ['ведущий', 'выражен', 'ослаблен'], 'Стили', getDescription(test, String(key), String(label)))
+        numericOption(String(key), String(label), 0, questionCount || 12, 'Стили', getDescription(test, String(key), String(label)))
       );
       return [
         ...styles,
-        option('flexibility', 'Гибкость стиля', ['низкая', 'средняя', 'высокая'], 'Итоговые показатели', getDescription(test, 'flexibility', 'Гибкость стиля')),
-        option('adequacy', 'Адекватность стиля', ['низкая', 'средняя', 'высокая'], 'Итоговые показатели', getDescription(test, 'adequacy', 'Адекватность стиля')),
-        option('polarity', 'Полярность распределения стилей', ['выражена', 'умеренная', 'не выражена'], 'Итоговые показатели', getDescription(test, 'polarity', 'Полярность распределения стилей')),
+        numericOption('flexibility', 'Гибкость стиля', 0, flexMax || 36, 'Итоговые показатели', getDescription(test, 'flexibility', 'Гибкость стиля')),
+        numericOption('adequacy', 'Адекватность стиля (по диагонали)', 0, questionCount || 12, 'Итоговые показатели', getDescription(test, 'adequacy', 'Адекватность стиля')),
+        numericOption('polarity', 'Полярность (крайние отклонения)', 0, questionCount || 12, 'Итоговые показатели', getDescription(test, 'polarity', 'Полярность распределения стилей')),
       ];
     }
     case 'emin': {
@@ -175,43 +257,50 @@ function buildResultOptions(test: AnyTest): MethodResultOption[] {
       return Object.entries(scoring.scale_to_name || {}).map(([key, label]) =>
         option(String(key), String(label), ['низкий', 'средний', 'высокий'], 'Шкалы УСК', getDescription(test, String(key), String(label)))
       );
-    case 'belbin':
+    case 'belbin': {
+      const maxByRole = getBelbinMaxByRole(test);
       return Object.entries(scoring.role_to_name || {}).map(([key, label]) =>
-        option(String(key), String(label), ['сильная роль', 'заметная роль', 'слабая роль'], 'Командные роли', getDescription(test, String(key), String(label)))
+        numericOption(String(key), String(label), 0, Number(maxByRole[key] ?? 70), 'Командные роли', getDescription(test, String(key), String(label)))
       );
+    }
     case 'time-management':
       return Object.entries(scoring.tag_to_name || {}).map(([key, label]) =>
-        option(String(key), String(label), ['ведущий', 'заметный', 'слабый'], 'Типы восприятия времени', getDescription(test, String(key), String(label)))
+        numericOption(String(key), String(label), 0, questionCount || 14, 'Типы восприятия времени', getDescription(test, String(key), String(label)))
       );
-    case 'learning-typology':
+    case 'learning-typology': {
+      const maxByTag = getLearningMaxByTag(test);
       return Object.entries(scoring.tag_to_name || {}).map(([key, label]) =>
-        option(String(key), String(label), ['доминирующий', 'выраженный', 'слабый'], 'Стили обучения', getDescription(test, String(key), String(label)))
+        numericOption(String(key), String(label), 0, Number(maxByTag[key] ?? questionCount ?? 20), 'Стили обучения', getDescription(test, String(key), String(label)))
       );
-    case 'motivation-cards':
+    }
+    case 'motivation-cards': {
+      const maxByFactor = getMotivationMaxByFactor(test);
       return Object.entries(scoring.factor_to_name || {}).map(([key, label]) =>
-        option(String(key), String(label), ['ведущий мотив', 'значимый мотив', 'ослабленный мотив'], 'Мотиваторы', getDescription(test, String(key), String(label)))
+        numericOption(String(key), String(label), 0, Number(maxByFactor[key] ?? 35), 'Мотиваторы', getDescription(test, String(key), String(label)))
       );
+    }
     case '16pf-a':
       return Object.entries(scoring.factor_to_name || {}).map(([key, label]) =>
         option(String(key), String(label), ['низкий', 'средний', 'высокий'], 'Факторы 16PF-A', getDescription(test, String(key), String(label)))
       );
     case 'color-types': {
       const labels = scoring.labels || {};
+      const minMax = getColorMinMaxByKey();
       return [
-        option('green', String(labels.green || 'Зелёный'), ['ведущий', 'вторичный', 'слабый'], 'Цветотипы', getDescription(test, 'green', String(labels.green || 'Зелёный'))),
-        option('red', String(labels.red || 'Красный'), ['ведущий', 'вторичный', 'слабый'], 'Цветотипы', getDescription(test, 'red', String(labels.red || 'Красный'))),
-        option('blue', String(labels.blue || 'Синий'), ['ведущий', 'вторичный', 'слабый'], 'Цветотипы', getDescription(test, 'blue', String(labels.blue || 'Синий'))),
+        numericOption('green', String(labels.green || 'Зелёный'), minMax.green.min, minMax.green.max, 'Цветотипы', getDescription(test, 'green', String(labels.green || 'Зелёный'))),
+        numericOption('red', String(labels.red || 'Красный'), minMax.red.min, minMax.red.max, 'Цветотипы', getDescription(test, 'red', String(labels.red || 'Красный'))),
+        numericOption('blue', String(labels.blue || 'Синий'), minMax.blue.min, minMax.blue.max, 'Цветотипы', getDescription(test, 'blue', String(labels.blue || 'Синий'))),
       ];
     }
     default: {
       if (scoring?.tag_to_style) {
         return Object.entries(scoring.tag_to_style).map(([key, label]) =>
-          option(String(key), String(label), ['сильная склонность', 'умеренная склонность', 'слабая склонность'], 'Стили', getDescription(test, String(key), String(label)))
+          numericOption(String(key), String(label), 0, questionCount || 0, 'Стили', getDescription(test, String(key), String(label)))
         );
       }
       if (scoring?.tag_to_name) {
         return Object.entries(scoring.tag_to_name).map(([key, label]) =>
-          option(String(key), String(label), ['выражен', 'умеренный', 'ослаблен'], 'Показатели', getDescription(test, String(key), String(label)))
+          numericOption(String(key), String(label), 0, questionCount || 0, 'Показатели', getDescription(test, String(key), String(label)))
         );
       }
       if (scoring?.scale_to_name) {

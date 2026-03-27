@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { useSession } from '@/lib/useSession';
@@ -10,6 +10,10 @@ type MethodResultOption = {
   group?: string;
   suggestedValues: string[];
   description?: string;
+  valueMode: 'qualitative' | 'numeric';
+  minValue?: number;
+  maxValue?: number;
+  step?: number;
 };
 
 type CatalogTest = {
@@ -27,6 +31,12 @@ type DraftItem = {
   answerValue: string;
   answerNote: string;
   suggestedValues: string[];
+  valueMode: 'qualitative' | 'numeric';
+  minValue: number | null;
+  maxValue: number | null;
+  step: number;
+  rangeStart: number | null;
+  rangeEnd: number | null;
 };
 
 type SavedLink = {
@@ -65,6 +75,46 @@ function emptyDraft() {
     isActive: true,
     items: [] as DraftItem[],
   };
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function parseNumericRange(answerValue: string, minValue: number, maxValue: number) {
+  const nums = String(answerValue || '')
+    .match(/-?\d+/g)
+    ?.map((x) => Number(x))
+    .filter((x) => Number.isFinite(x)) || [];
+
+  if (nums.length >= 2) {
+    const start = clampNumber(nums[0], minValue, maxValue);
+    const end = clampNumber(nums[1], minValue, maxValue);
+    return { rangeStart: Math.min(start, end), rangeEnd: Math.max(start, end) };
+  }
+  if (nums.length === 1) {
+    const point = clampNumber(nums[0], minValue, maxValue);
+    return { rangeStart: point, rangeEnd: point };
+  }
+  return { rangeStart: minValue, rangeEnd: maxValue };
+}
+
+function formatNumericAnswerValue(rangeStart: number | null, rangeEnd: number | null, maxValue: number | null) {
+  if (!Number.isFinite(rangeStart) || !Number.isFinite(rangeEnd)) return '';
+  const start = Number(rangeStart);
+  const end = Number(rangeEnd);
+  if (Number.isFinite(maxValue)) {
+    return start === end ? `${start} из ${maxValue}` : `${start}–${end} из ${maxValue}`;
+  }
+  return start === end ? String(start) : `${start}–${end}`;
+}
+
+function getDraftItemAnswerValue(item: DraftItem) {
+  if (item.valueMode === 'numeric') {
+    return formatNumericAnswerValue(item.rangeStart, item.rangeEnd, item.maxValue);
+  }
+  return item.answerValue;
 }
 
 const panelTitleClass = 'text-lg font-semibold tracking-tight text-slate-900';
@@ -159,11 +209,15 @@ export default function SpecialistMethodBasePage() {
     setOpenDescriptions((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
-
   function addResultToDraft(test: CatalogTest, option: MethodResultOption) {
     setDraft((prev) => {
       const exists = prev.items.some((item) => item.testSlug === test.slug && item.resultKey === option.key);
       if (exists) return prev;
+
+      const minValue = option.valueMode === 'numeric' && Number.isFinite(option.minValue) ? Number(option.minValue) : null;
+      const maxValue = option.valueMode === 'numeric' && Number.isFinite(option.maxValue) ? Number(option.maxValue) : null;
+      const step = option.valueMode === 'numeric' && Number.isFinite(option.step) ? Number(option.step) : 1;
+
       return {
         ...prev,
         items: [
@@ -177,6 +231,12 @@ export default function SpecialistMethodBasePage() {
             answerValue: '',
             answerNote: '',
             suggestedValues: option.suggestedValues || [],
+            valueMode: option.valueMode || 'qualitative',
+            minValue,
+            maxValue,
+            step,
+            rangeStart: minValue,
+            rangeEnd: maxValue,
           },
         ],
       };
@@ -195,6 +255,27 @@ export default function SpecialistMethodBasePage() {
     }));
   }
 
+  function updateDraftItemRange(localId: string, edge: 'start' | 'end', nextValue: number) {
+    setDraft((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => {
+        if (item.localId !== localId || item.valueMode !== 'numeric' || item.minValue === null || item.maxValue === null) return item;
+        const minValue = item.minValue;
+        const maxValue = item.maxValue;
+        const step = item.step || 1;
+        const safeValue = clampNumber(Math.round(nextValue / step) * step, minValue, maxValue);
+        const currentStart = Number.isFinite(item.rangeStart) ? Number(item.rangeStart) : minValue;
+        const currentEnd = Number.isFinite(item.rangeEnd) ? Number(item.rangeEnd) : maxValue;
+        if (edge === 'start') {
+          const nextStart = Math.min(safeValue, currentEnd);
+          return { ...item, rangeStart: nextStart, rangeEnd: Math.max(nextStart, currentEnd) };
+        }
+        const nextEnd = Math.max(safeValue, currentStart);
+        return { ...item, rangeStart: Math.min(currentStart, nextEnd), rangeEnd: nextEnd };
+      }),
+    }));
+  }
+
   function hydrateDraftFromSaved(link: SavedLink) {
     setDraft({
       editingId: link.id,
@@ -203,17 +284,36 @@ export default function SpecialistMethodBasePage() {
       aiDraft: link.ai_draft || '',
       finalText: link.final_text || '',
       isActive: link.is_active !== false,
-      items: (link.items || []).map((item) => ({
-        localId: uid('item'),
-        testSlug: item.test_slug,
-        testTitle: item.test_title,
-        resultKey: item.result_key,
-        resultLabel: item.result_label,
-        answerValue: item.answer_value || '',
-        answerNote: item.answer_note || '',
-        suggestedValues:
-          catalog.find((test) => test.slug === item.test_slug)?.resultOptions.find((opt) => opt.key === item.result_key)?.suggestedValues || [],
-      })),
+      items: (link.items || []).map((item) => {
+        const catalogOption = catalog
+          .find((test) => test.slug === item.test_slug)
+          ?.resultOptions.find((opt) => opt.key === item.result_key);
+
+        const valueMode = catalogOption?.valueMode || 'qualitative';
+        const minValue = valueMode === 'numeric' && Number.isFinite(catalogOption?.minValue) ? Number(catalogOption?.minValue) : null;
+        const maxValue = valueMode === 'numeric' && Number.isFinite(catalogOption?.maxValue) ? Number(catalogOption?.maxValue) : null;
+        const step = valueMode === 'numeric' && Number.isFinite(catalogOption?.step) ? Number(catalogOption?.step) : 1;
+        const parsedRange = valueMode === 'numeric' && minValue !== null && maxValue !== null
+          ? parseNumericRange(item.answer_value || '', minValue, maxValue)
+          : { rangeStart: null, rangeEnd: null };
+
+        return {
+          localId: uid('item'),
+          testSlug: item.test_slug,
+          testTitle: item.test_title,
+          resultKey: item.result_key,
+          resultLabel: item.result_label,
+          answerValue: item.answer_value || '',
+          answerNote: item.answer_note || '',
+          suggestedValues: catalogOption?.suggestedValues || [],
+          valueMode,
+          minValue,
+          maxValue,
+          step,
+          rangeStart: parsedRange.rangeStart,
+          rangeEnd: parsedRange.rangeEnd,
+        };
+      }),
     });
     setSelectedTestSlugs(Array.from(new Set((link.items || []).map((item) => item.test_slug).filter(Boolean))));
     setMsg('');
@@ -243,7 +343,7 @@ export default function SpecialistMethodBasePage() {
             testTitle: item.testTitle,
             resultKey: item.resultKey,
             resultLabel: item.resultLabel,
-            answerValue: item.answerValue,
+            answerValue: getDraftItemAnswerValue(item),
             answerNote: item.answerNote,
           })),
         }),
@@ -287,7 +387,7 @@ export default function SpecialistMethodBasePage() {
             test_title: item.testTitle,
             result_key: item.resultKey,
             result_label: item.resultLabel,
-            answer_value: item.answerValue,
+            answer_value: getDraftItemAnswerValue(item),
             answer_note: item.answerNote,
           })),
         }),
@@ -409,7 +509,7 @@ export default function SpecialistMethodBasePage() {
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {(link.items || []).slice(0, 4).map((item, idx) => (
                         <span key={`${link.id}_${idx}`} className="rounded-full border border-indigo-100 bg-white px-2.5 py-1 text-[11px] text-slate-700">
-                          {item.test_title}: {item.result_label}
+                          {item.test_title}: {item.result_label}{item.answer_value ? ` • ${item.answer_value}` : ''}
                         </span>
                       ))}
                       {(link.items || []).length > 4 ? <span className="text-[11px] text-slate-500">+{(link.items || []).length - 4}</span> : null}
@@ -486,11 +586,22 @@ export default function SpecialistMethodBasePage() {
                                     <div className="flex items-start justify-between gap-3">
                                       <div className="min-w-0">
                                         <div className="text-sm font-medium text-slate-900">{option.label}</div>
-                                        <div className="mt-2 flex flex-wrap gap-1.5">
-                                          {(option.suggestedValues || []).slice(0, 4).map((value) => (
-                                            <span key={value} className="rounded-full border border-indigo-100 bg-white px-2 py-1 text-[11px] text-slate-600">{value}</span>
-                                          ))}
-                                        </div>
+                                        {option.valueMode === 'numeric' ? (
+                                          <div className="mt-2 flex flex-wrap gap-1.5">
+                                            <span className="rounded-full border border-indigo-100 bg-white px-2 py-1 text-[11px] text-slate-600">
+                                              Диапазон: {option.minValue}–{option.maxValue}
+                                            </span>
+                                            <span className="rounded-full border border-indigo-100 bg-white px-2 py-1 text-[11px] text-slate-600">
+                                              Количественный показатель
+                                            </span>
+                                          </div>
+                                        ) : (
+                                          <div className="mt-2 flex flex-wrap gap-1.5">
+                                            {(option.suggestedValues || []).slice(0, 4).map((value) => (
+                                              <span key={value} className="rounded-full border border-indigo-100 bg-white px-2 py-1 text-[11px] text-slate-600">{value}</span>
+                                            ))}
+                                          </div>
+                                        )}
                                       </div>
                                       {option.description ? (
                                         <button
@@ -551,9 +662,9 @@ export default function SpecialistMethodBasePage() {
                 {!draft.items.length ? <div className="mt-4 text-sm text-slate-500">Пока сюда ничего не добавлено.</div> : null}
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   {draft.items.map((item, index) => (
-                    <>
+                    <Fragment key={item.localId}>
                       {index > 0 ? <div className="h-[2px] w-8 rounded-full bg-indigo-300" /> : null}
-                      <div key={item.localId} className="min-w-[220px] max-w-[320px] flex-1 rounded-2xl border border-indigo-200 bg-white p-3 shadow-sm">
+                      <div className="min-w-[220px] max-w-[340px] flex-1 rounded-2xl border border-indigo-200 bg-white p-3 shadow-sm">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="text-[11px] uppercase tracking-[0.08em] text-slate-500">{item.testTitle}</div>
@@ -561,29 +672,78 @@ export default function SpecialistMethodBasePage() {
                           </div>
                           <button type="button" onClick={() => removeDraftItem(item.localId)} className="btn btn-secondary btn-sm">Убрать</button>
                         </div>
-                        <div className="mt-3">
-                          <div className="text-xs font-medium text-slate-600">Какой именно ответ / уровень ты связываешь</div>
-                          <input
-                            value={item.answerValue}
-                            onChange={(e) => updateDraftItem(item.localId, { answerValue: e.target.value })}
-                            className="input mt-2"
-                            placeholder="Например: низкий / высокий / выражен / ведущий"
-                          />
-                          {item.suggestedValues.length ? (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {item.suggestedValues.map((value) => (
-                                <button
-                                  key={value}
-                                  type="button"
-                                  onClick={() => updateDraftItem(item.localId, { answerValue: value })}
-                                  className={`rounded-full border px-2.5 py-1 text-[11px] ${item.answerValue === value ? 'border-indigo-300 bg-indigo-100 text-indigo-950' : 'border-indigo-100 bg-white text-slate-600 hover:bg-indigo-50'}`}
-                                >
-                                  {value}
-                                </button>
-                              ))}
+
+                        {item.valueMode === 'numeric' && item.minValue !== null && item.maxValue !== null ? (
+                          <div className="mt-3 rounded-2xl border border-indigo-100 bg-slate-50/70 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-xs font-medium text-slate-600">Диапазон результата</div>
+                              <div className="rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700">
+                                {getDraftItemAnswerValue(item)}
+                              </div>
                             </div>
-                          ) : null}
-                        </div>
+                            <div className="mt-3 space-y-3">
+                              <div>
+                                <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500">
+                                  <span>От</span>
+                                  <span>{item.rangeStart}</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={item.minValue}
+                                  max={item.maxValue}
+                                  step={item.step || 1}
+                                  value={Number.isFinite(item.rangeStart) ? Number(item.rangeStart) : item.minValue}
+                                  onChange={(e) => updateDraftItemRange(item.localId, 'start', Number(e.target.value))}
+                                  className="w-full accent-indigo-600"
+                                />
+                              </div>
+                              <div>
+                                <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500">
+                                  <span>До</span>
+                                  <span>{item.rangeEnd}</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={item.minValue}
+                                  max={item.maxValue}
+                                  step={item.step || 1}
+                                  value={Number.isFinite(item.rangeEnd) ? Number(item.rangeEnd) : item.maxValue}
+                                  onChange={(e) => updateDraftItemRange(item.localId, 'end', Number(e.target.value))}
+                                  className="w-full accent-indigo-600"
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[11px] text-slate-500">
+                                <span>Мин: {item.minValue}</span>
+                                <span>Макс: {item.maxValue}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-3">
+                            <div className="text-xs font-medium text-slate-600">Какой именно ответ / уровень ты связываешь</div>
+                            <input
+                              value={item.answerValue}
+                              onChange={(e) => updateDraftItem(item.localId, { answerValue: e.target.value })}
+                              className="input mt-2"
+                              placeholder="Например: низкий / высокий / выражен / ведущий"
+                            />
+                            {item.suggestedValues.length ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {item.suggestedValues.map((value) => (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() => updateDraftItem(item.localId, { answerValue: value })}
+                                    className={`rounded-full border px-2.5 py-1 text-[11px] ${item.answerValue === value ? 'border-indigo-300 bg-indigo-100 text-indigo-950' : 'border-indigo-100 bg-white text-slate-600 hover:bg-indigo-50'}`}
+                                  >
+                                    {value}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        )}
+
                         <div className="mt-3">
                           <div className="text-xs font-medium text-slate-600">Уточнение / заметка</div>
                           <textarea
@@ -594,7 +754,7 @@ export default function SpecialistMethodBasePage() {
                           />
                         </div>
                       </div>
-                    </>
+                    </Fragment>
                   ))}
                 </div>
                 <div className="mt-4 text-xs text-slate-500">Сейчас в связи: {draft.items.length} показателей · тестов: {uniqueDraftTestCount}</div>
