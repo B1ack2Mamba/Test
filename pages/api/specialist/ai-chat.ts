@@ -77,7 +77,6 @@ async function callOpenAI(args: { model: string; messages: ChatMessage[]; temper
       input: transcriptForOpenAI(args.messages),
       background: true,
       max_output_tokens: args.maxOutputTokens,
-      temperature: args.temperature,
     }),
   });
   const json = await response.json().catch(() => null);
