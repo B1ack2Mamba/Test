@@ -753,230 +753,219 @@ export default function SpecialistAiChatPage() {
   }
 
   return (
-    <Layout title="AI-чат специалиста" widthClass="max-w-[1500px]">
-      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
-        <Link href="/specialist" className="btn btn-secondary btn-sm">
-          К кабинету специалиста
-        </Link>
-        <Link href="/specialist/analysis" className="btn btn-secondary btn-sm">
-          AI-аналитика клиентов
-        </Link>
+    <Layout title="AI-чат специалиста" widthClass="max-w-[1700px]">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-600">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/specialist" className="btn btn-secondary btn-sm">
+            К кабинету
+          </Link>
+          <Link href="/specialist/analysis" className="btn btn-secondary btn-sm">
+            AI-аналитика
+          </Link>
+        </div>
+        <button type="button" onClick={newChat} disabled={busy} className="btn btn-primary btn-sm disabled:opacity-50">
+          Новый чат
+        </button>
       </div>
 
-      <div className="grid gap-4 mb-4 xl:grid-cols-[minmax(360px,1fr)_minmax(360px,1fr)]">
-        <div className="card">
+      <div className="grid min-h-[calc(100vh-170px)] min-w-0 gap-3 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
+        <aside className="card flex min-h-[360px] flex-col p-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold">Сохранённые чаты</div>
-            <div className="flex gap-2">
-              <button type="button" onClick={newChat} disabled={busy} className="btn btn-secondary btn-sm disabled:opacity-50">
-                Новый
-              </button>
-              <button type="button" onClick={() => loadChats()} disabled={chatsLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
-                {chatsLoading ? "..." : "Обновить"}
-              </button>
-            </div>
+            <div className="text-sm font-semibold text-zinc-900">Чаты</div>
+            <button type="button" onClick={() => loadChats()} disabled={chatsLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
+              {chatsLoading ? "..." : "Обновить"}
+            </button>
           </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-[minmax(160px,1fr)_130px]">
-            <input
-              value={chatSearch}
-              onChange={(e) => setChatSearch(e.target.value)}
-              className="input py-2 text-xs"
-              placeholder="Поиск"
-            />
+          <input
+            value={chatSearch}
+            onChange={(e) => setChatSearch(e.target.value)}
+            className="input mt-3 py-2 text-sm"
+            placeholder="Поиск"
+          />
+          <div className="mt-2 grid grid-cols-2 gap-2">
             <select value={chatProviderFilter} onChange={(e) => setChatProviderFilter(e.target.value as ChatProviderFilter)} className="input py-2 text-xs">
               <option value="all">Все</option>
               <option value="deepseek">DeepSeek</option>
               <option value="openai">OpenAI</option>
             </select>
+            <select value={chatModelFilter} onChange={(e) => setChatModelFilter(e.target.value)} className="input py-2 text-xs">
+              <option value="all">Модели</option>
+              {chatModelOptions.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
           </div>
-          <select value={chatModelFilter} onChange={(e) => setChatModelFilter(e.target.value)} className="input mt-2 py-2 text-xs">
-            <option value="all">Все модели</option>
-            {chatModelOptions.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <div className="mt-3 grid max-h-44 gap-2 overflow-y-auto pr-1">
+
+          <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
             {filteredChats.length === 0 ? (
-              <div className="text-xs text-zinc-500">Сохранённых чатов пока нет.</div>
+              <div className="rounded-lg border border-dashed border-zinc-200 bg-white/70 p-3 text-xs text-zinc-500">Сохранённых чатов пока нет.</div>
             ) : (
-              filteredChats.map((chat) => (
-                <div
-                  key={chat.id}
-                  className={`min-w-0 rounded-lg border p-2 text-xs ${
-                    chat.id === activeChatId ? "border-emerald-300 bg-emerald-50" : "border-zinc-200 bg-white"
-                  }`}
-                >
-                  {editingChatId === chat.id ? (
-                    <div className="grid gap-2">
-                      <input value={editingChatTitle} onChange={(e) => setEditingChatTitle(e.target.value)} className="input py-1.5 text-xs" autoFocus />
-                      <div className="flex gap-2">
-                        <button type="button" onClick={saveRenameChat} className="btn btn-primary btn-sm">
-                          Сохранить
-                        </button>
-                        <button type="button" onClick={() => setEditingChatId("")} className="btn btn-secondary btn-sm">
-                          Отмена
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <button type="button" onClick={() => loadChat(chat.id)} className="block w-full min-w-0 text-left">
-                        <div className="truncate font-medium text-zinc-800">{chat.title || "Новый чат"}</div>
-                        <div className="mt-1 truncate text-zinc-500">
-                          {chat.last_provider ? `${chat.last_provider === "openai" ? "OpenAI" : "DeepSeek"} · ${chat.last_model || ""}` : "Без запросов"}
+              <div className="grid gap-2">
+                {filteredChats.map((chat) => (
+                  <div
+                    key={chat.id}
+                    className={`rounded-lg border p-2 text-xs transition ${
+                      chat.id === activeChatId ? "border-indigo-300 bg-indigo-50" : "border-zinc-200 bg-white hover:bg-zinc-50"
+                    }`}
+                  >
+                    {editingChatId === chat.id ? (
+                      <div className="grid gap-2">
+                        <input value={editingChatTitle} onChange={(e) => setEditingChatTitle(e.target.value)} className="input py-1.5 text-xs" autoFocus />
+                        <div className="grid grid-cols-2 gap-2">
+                          <button type="button" onClick={saveRenameChat} className="btn btn-primary btn-sm">
+                            Сохранить
+                          </button>
+                          <button type="button" onClick={() => setEditingChatId("")} className="btn btn-secondary btn-sm">
+                            Отмена
+                          </button>
                         </div>
-                        <div className="mt-1 max-h-8 overflow-hidden break-words text-zinc-500">{chat.last_user_message || "Пустой чат"}</div>
-                      </button>
-                      <div className="mt-2 flex gap-2">
-                        <button type="button" onClick={() => startRenameChat(chat)} className="btn btn-secondary btn-sm">
-                          Переименовать
-                        </button>
-                        <button type="button" onClick={() => deleteChat(chat)} disabled={busy} className="btn btn-secondary btn-sm text-red-700 disabled:opacity-50">
-                          Удалить
-                        </button>
                       </div>
-                    </>
-                  )}
-                </div>
-              ))
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => loadChat(chat.id)} className="block w-full min-w-0 text-left">
+                          <div className="truncate font-medium text-zinc-900">{chat.title || "Новый чат"}</div>
+                          <div className="mt-1 truncate text-zinc-500">
+                            {chat.last_provider ? `${chat.last_provider === "openai" ? "OpenAI" : "DeepSeek"} · ${chat.last_model || ""}` : "Без запросов"}
+                          </div>
+                          <div className="mt-1 line-clamp-2 break-words text-zinc-500">{chat.last_user_message || "Пустой чат"}</div>
+                        </button>
+                        <div className="mt-2 flex gap-1">
+                          <button type="button" onClick={() => startRenameChat(chat)} className="rounded px-2 py-1 text-zinc-500 hover:bg-white hover:text-zinc-900">
+                            Назвать
+                          </button>
+                          <button type="button" onClick={() => deleteChat(chat)} disabled={busy} className="rounded px-2 py-1 text-red-600 hover:bg-white disabled:opacity-50">
+                            Удалить
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-        </div>
+        </aside>
 
-        <div className="card">
-          <div className="text-sm font-semibold">Последний запрос к модели</div>
-          <div className="mt-3 max-h-44 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs leading-relaxed text-zinc-700">
-            {lastModelRequest || "Пока нет запроса."}
+        <main className="card grid min-h-[620px] min-w-0 grid-rows-[auto_1fr_auto] overflow-hidden p-0">
+          <div className="border-b border-zinc-100 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-zinc-950">{activeChat?.title || "Новый чат"}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                  <span>{provider === "openai" ? "OpenAI" : "DeepSeek"} · {model}</span>
+                  {selectedAttempt ? <span>Контекст: {selectedAttempt.test_title}</span> : selectedParticipant ? <span>Контекст: {selectedParticipant.display_name}</span> : selectedRoom ? <span>Контекст: {selectedRoom.name}</span> : null}
+                  {pendingFiles.length ? <span>Файлы: {pendingFiles.length}</span> : null}
+                </div>
+              </div>
+              <div className="text-xs text-zinc-500">
+                {startedAt ? `Ожидание: ${formatDuration(elapsedMs)}` : activeTask ? "OpenAI-задача выполняется" : "Готов"}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div className="card mb-4">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-sm font-semibold">AI-задачи</div>
-          <button type="button" onClick={loadTasks} disabled={tasksLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
-            {tasksLoading ? "..." : "Обновить"}
-          </button>
-        </div>
-        <div className="mt-3 grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-3">
-          {tasks.length === 0 ? (
-            <div className="text-xs text-zinc-500">Сохранённых задач пока нет.</div>
-          ) : (
-            tasks.slice(0, 6).map((task) => {
-              const pending = task.status === "queued" || task.status === "in_progress";
-              const duration = task.finished_at
-                ? Math.max(0, Date.parse(task.finished_at) - Date.parse(task.started_at))
-                : Math.max(0, Date.now() - Date.parse(task.started_at));
-              return (
-                <div
-                  key={task.id}
-                  className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white p-2 text-left text-xs"
-                >
-                  <button type="button" onClick={() => ensureTaskMessage(task)} className="block w-full min-w-0 text-left">
-                    <div className="truncate font-medium text-zinc-800">
-                      {task.provider === "openai" ? "OpenAI" : "DeepSeek"} · {task.model}
-                    </div>
-                    <div className={pending ? "text-amber-700" : task.status === "completed" ? "text-emerald-700" : "text-red-700"}>
-                      {task.status} · {formatDuration(duration)}
-                    </div>
-                    <div className="mt-1 max-h-10 min-w-0 overflow-hidden break-words text-zinc-500">
-                      {task.result_text || task.error_text || task.request_messages?.find((m) => m.role === "user")?.content || "Задача"}
-                    </div>
-                  </button>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => ensureTaskMessage(task)} className="btn btn-secondary btn-sm">
-                      Открыть
-                    </button>
-                    <button type="button" onClick={() => retryTask(task)} className="btn btn-secondary btn-sm">
-                      Повторить
-                    </button>
-                    {task.error_text ? (
-                      <button type="button" onClick={() => copyTaskError(task)} className="btn btn-secondary btn-sm">
-                        Копировать ошибку
-                      </button>
-                    ) : null}
+          <div className="min-h-0 overflow-y-auto bg-white px-4 py-5">
+            {messages.length === 0 ? (
+              <div className="mx-auto flex h-full max-w-2xl items-center justify-center text-center">
+                <div>
+                  <div className="text-lg font-semibold text-zinc-900">AI-чат специалиста</div>
+                  <div className="mt-2 text-sm leading-relaxed text-zinc-500">
+                    Выберите модель, добавьте контекст или файлы справа и напишите запрос.
                   </div>
                 </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[320px_minmax(720px,1fr)]">
-        <div className="card self-start">
-          <div className="text-sm font-semibold">Модель</div>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => changeProvider("deepseek")}
-              className={`btn btn-sm ${provider === "deepseek" ? "btn-primary" : "btn-secondary"}`}
-            >
-              DeepSeek
-            </button>
-            <button
-              type="button"
-              onClick={() => changeProvider("openai")}
-              className={`btn btn-sm ${provider === "openai" ? "btn-primary" : "btn-secondary"}`}
-            >
-              OpenAI
-            </button>
+              </div>
+            ) : (
+              <div className="mx-auto grid max-w-4xl gap-5">
+                {messages.map((m) => (
+                  <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[86%] rounded-lg border px-4 py-3 text-sm shadow-sm ${
+                        m.role === "user" ? "border-indigo-100 bg-indigo-50 text-zinc-900" : "border-zinc-200 bg-white text-zinc-900"
+                      }`}
+                    >
+                      <div className="mb-1 text-xs font-medium text-zinc-500">
+                        {m.role === "user" ? "Вы" : `${m.provider === "openai" ? "OpenAI" : "DeepSeek"} · ${m.model}`}
+                        {m.durationMs ? ` · ${formatDuration(m.durationMs)}` : m.pending ? " · выполняется" : ""}
+                      </div>
+                      <div className="whitespace-pre-wrap leading-relaxed">{m.content || (m.pending ? "..." : "")}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <label className="mt-4 block text-xs font-medium text-zinc-700">Версия</label>
-          <select value={model} onChange={(e) => setModel(e.target.value)} className="input mt-1">
-            {modelOptions.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          <div className="border-t border-zinc-100 bg-white p-3">
+            {err ? <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
+            <div className="mx-auto max-w-4xl rounded-xl border border-indigo-100 bg-white p-2 shadow-sm">
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send();
+                }}
+                rows={3}
+                className="min-h-[88px] w-full resize-none rounded-lg border-0 bg-transparent px-2 py-2 text-sm text-zinc-900 outline-none placeholder:text-zinc-400"
+                placeholder="Напишите сообщение"
+                disabled={busy}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-100 pt-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                  <span>{provider === "openai" ? "OpenAI" : "DeepSeek"}</span>
+                  <span>{model}</span>
+                  {platformContext ? <span>контекст подключён</span> : null}
+                  {pendingFiles.length ? <span>{pendingFiles.length} файл.</span> : null}
+                </div>
+                <div className="flex gap-2">
+                  {busy ? (
+                    <button type="button" onClick={stop} className="btn btn-secondary btn-sm">
+                      Остановить
+                    </button>
+                  ) : null}
+                  <button type="button" onClick={send} disabled={busy || !!activeTask || !draft.trim()} className="btn btn-primary btn-sm disabled:opacity-50">
+                    {busy ? "Жду ответ..." : "Отправить"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
 
-          <label className="mt-4 block text-xs font-medium text-zinc-700">
-            Креативность ответа: {temperature.toFixed(1)}
-          </label>
-          <input
-            type="range"
-            min="0"
-            max="1.5"
-            step="0.1"
-            value={temperature}
-            onChange={(e) => setTemperature(Number(e.target.value))}
-            className="mt-2 w-full"
-          />
-          <div className="mt-1 text-xs text-zinc-500">0 — строже и стабильнее, 1+ — свободнее и разнообразнее.</div>
+        <aside className="grid content-start gap-3">
+          <section className="card p-3">
+            <div className="text-sm font-semibold text-zinc-900">Модель</div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => changeProvider("deepseek")} className={`btn btn-sm ${provider === "deepseek" ? "btn-primary" : "btn-secondary"}`}>
+                DeepSeek
+              </button>
+              <button type="button" onClick={() => changeProvider("openai")} className={`btn btn-sm ${provider === "openai" ? "btn-primary" : "btn-secondary"}`}>
+                OpenAI
+              </button>
+            </div>
+            <label className="mt-3 block text-xs font-medium text-zinc-700">Версия</label>
+            <select value={model} onChange={(e) => setModel(e.target.value)} className="input mt-1 py-2 text-sm">
+              {modelOptions.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <label className="mt-3 block text-xs font-medium text-zinc-700">Креативность: {temperature.toFixed(1)}</label>
+            <input type="range" min="0" max="1.5" step="0.1" value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} className="mt-2 w-full" />
+            <label className="mt-3 block text-xs font-medium text-zinc-700">Максимум токенов</label>
+            <input type="number" min="256" max="12000" step="256" value={maxOutputTokens} onChange={(e) => setMaxOutputTokens(Number(e.target.value))} className="input mt-1 py-2 text-sm" />
+          </section>
 
-          <label className="mt-4 block text-xs font-medium text-zinc-700">Максимум токенов ответа</label>
-          <input
-            type="number"
-            min="256"
-            max="12000"
-            step="256"
-            value={maxOutputTokens}
-            onChange={(e) => setMaxOutputTokens(Number(e.target.value))}
-            className="input mt-1"
-          />
-
-          <button
-            type="button"
-            onClick={newChat}
-            disabled={busy || messages.length === 0}
-            className="btn btn-secondary btn-sm mt-4 w-full disabled:opacity-50"
-          >
-            Начать новый чат
-          </button>
-
-          <div className="mt-5 border-t border-zinc-200 pt-4">
+          <section className="card p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold">Контекст платформы</div>
+              <div className="text-sm font-semibold text-zinc-900">Контекст</div>
               <button type="button" onClick={loadContext} disabled={contextLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
                 {contextLoading ? "..." : "Обновить"}
               </button>
             </div>
             <label className="mt-3 block text-xs font-medium text-zinc-700">Комната</label>
-            <select value={selectedRoomId} onChange={(e) => setSelectedRoomId(e.target.value)} className="input mt-1 text-sm">
+            <select value={selectedRoomId} onChange={(e) => setSelectedRoomId(e.target.value)} className="input mt-1 py-2 text-sm">
               <option value="">Без контекста</option>
               {contextRooms.map((room) => (
                 <option key={room.id} value={room.id}>
@@ -984,11 +973,10 @@ export default function SpecialistAiChatPage() {
                 </option>
               ))}
             </select>
-
             {selectedRoom ? (
               <>
                 <label className="mt-3 block text-xs font-medium text-zinc-700">Участник</label>
-                <select value={selectedParticipantId} onChange={(e) => setSelectedParticipantId(e.target.value)} className="input mt-1 text-sm">
+                <select value={selectedParticipantId} onChange={(e) => setSelectedParticipantId(e.target.value)} className="input mt-1 py-2 text-sm">
                   <option value="">Вся комната</option>
                   {selectedRoom.participants.map((participant) => (
                     <option key={participant.user_id} value={participant.user_id}>
@@ -998,12 +986,11 @@ export default function SpecialistAiChatPage() {
                 </select>
               </>
             ) : null}
-
             {selectedParticipant ? (
               <>
                 <label className="mt-3 block text-xs font-medium text-zinc-700">Попытка</label>
-                <select value={selectedAttemptId} onChange={(e) => setSelectedAttemptId(e.target.value)} className="input mt-1 text-sm">
-                  <option value="">Все попытки участника</option>
+                <select value={selectedAttemptId} onChange={(e) => setSelectedAttemptId(e.target.value)} className="input mt-1 py-2 text-sm">
+                  <option value="">Все попытки</option>
                   {selectedParticipant.attempts.map((attempt) => (
                     <option key={attempt.id} value={attempt.id}>
                       {attempt.test_title} · {new Date(attempt.created_at).toLocaleDateString("ru-RU")}
@@ -1012,16 +999,15 @@ export default function SpecialistAiChatPage() {
                 </select>
               </>
             ) : null}
-
             {platformContext ? (
-              <div className="mt-3 max-h-36 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-2 text-xs leading-relaxed text-zinc-600">
+              <div className="mt-3 max-h-32 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-2 text-xs leading-relaxed text-zinc-600">
                 {platformContext}
               </div>
             ) : null}
-          </div>
+          </section>
 
-          <div className="mt-5 border-t border-zinc-200 pt-4">
-            <div className="text-sm font-semibold">Файлы для анализа</div>
+          <section className="card p-3">
+            <div className="text-sm font-semibold text-zinc-900">Файлы</div>
             <label className={`btn btn-secondary btn-sm mt-3 w-full ${busy || activeTask ? "pointer-events-none opacity-50" : ""}`}>
               Добавить файл
               <input
@@ -1036,9 +1022,8 @@ export default function SpecialistAiChatPage() {
                 }}
               />
             </label>
-            <div className="mt-2 text-xs text-zinc-500">До 4 файлов, каждый до 10 МБ.</div>
             {pendingFiles.length ? (
-              <div className="mt-3 grid gap-2">
+              <div className="mt-3 grid max-h-64 gap-2 overflow-y-auto pr-1">
                 {pendingFiles.map((file) => (
                   <div key={file.id} className="rounded-lg border border-zinc-200 bg-zinc-50 p-2 text-xs">
                     <div className="flex items-start justify-between gap-2">
@@ -1046,92 +1031,74 @@ export default function SpecialistAiChatPage() {
                         <div className="truncate font-medium text-zinc-800">{file.name}</div>
                         <div className="text-zinc-500">
                           {formatBytes(file.size)}
-                          {file.textChars ? ` · текст: ${file.textChars} симв.` : ""}
+                          {file.textChars ? ` · ${file.textChars} симв.` : ""}
                           {file.truncated ? " · обрезан" : ""}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setPendingFiles((prev) => prev.filter((x) => x.id !== file.id))}
-                        disabled={busy}
-                        className="text-zinc-500 hover:text-red-600 disabled:opacity-50"
-                      >
+                      <button type="button" onClick={() => setPendingFiles((prev) => prev.filter((x) => x.id !== file.id))} disabled={busy} className="text-zinc-500 hover:text-red-600 disabled:opacity-50">
                         Убрать
                       </button>
                     </div>
                     {file.previewLoading ? <div className="mt-2 text-zinc-500">Извлекаю текст...</div> : null}
                     {file.previewError ? <div className="mt-2 text-red-600">{file.previewError}</div> : null}
-                    {file.preview ? (
-                      <div className="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap rounded border border-zinc-200 bg-white p-2 leading-relaxed text-zinc-600">
-                        {file.preview}
-                      </div>
-                    ) : null}
+                    {file.preview ? <div className="mt-2 max-h-24 overflow-y-auto whitespace-pre-wrap rounded border border-zinc-200 bg-white p-2 leading-relaxed text-zinc-600">{file.preview}</div> : null}
                   </div>
                 ))}
               </div>
-            ) : null}
-          </div>
+            ) : (
+              <div className="mt-3 rounded-lg border border-dashed border-zinc-200 bg-white/70 p-3 text-xs text-zinc-500">PDF, DOCX, XLSX, CSV, TXT, MD до 10 МБ.</div>
+            )}
+          </section>
 
-        </div>
-
-        <div className="grid min-h-[70vh] min-w-0 grid-rows-[1fr_auto] gap-3">
-          <div className="card min-h-[420px] overflow-hidden">
-            <div className="h-full max-h-[62vh] overflow-y-auto pr-1">
-              {messages.length === 0 ? (
-                <div className="text-sm text-zinc-500">
-                  Напишите запрос к модели. История текущего чата отправляется вместе с новым сообщением.
-                </div>
+          <section className="card p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-zinc-900">Задачи</div>
+              <button type="button" onClick={loadTasks} disabled={tasksLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
+                {tasksLoading ? "..." : "Обновить"}
+              </button>
+            </div>
+            <div className="mt-3 grid max-h-72 gap-2 overflow-y-auto pr-1">
+              {tasks.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-zinc-200 bg-white/70 p-3 text-xs text-zinc-500">Сохранённых задач пока нет.</div>
               ) : (
-                <div className="grid gap-3">
-                  {messages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={`rounded-lg border p-3 text-sm ${
-                        m.role === "user" ? "border-zinc-200 bg-zinc-50" : "border-emerald-100 bg-emerald-50"
-                      }`}
-                    >
-                      <div className="mb-1 text-xs font-semibold text-zinc-500">
-                        {m.role === "user" ? "Вы" : `${m.provider === "openai" ? "OpenAI" : "DeepSeek"} · ${m.model}`}
-                        {m.durationMs ? ` · время: ${formatDuration(m.durationMs)}` : m.pending ? " · выполняется" : ""}
+                tasks.slice(0, 6).map((task) => {
+                  const pending = task.status === "queued" || task.status === "in_progress";
+                  const duration = task.finished_at
+                    ? Math.max(0, Date.parse(task.finished_at) - Date.parse(task.started_at))
+                    : Math.max(0, Date.now() - Date.parse(task.started_at));
+                  return (
+                    <div key={task.id} className="rounded-lg border border-zinc-200 bg-white p-2 text-xs">
+                      <button type="button" onClick={() => ensureTaskMessage(task)} className="block w-full min-w-0 text-left">
+                        <div className="truncate font-medium text-zinc-800">
+                          {task.provider === "openai" ? "OpenAI" : "DeepSeek"} · {task.model}
+                        </div>
+                        <div className={pending ? "text-amber-700" : task.status === "completed" ? "text-emerald-700" : "text-red-700"}>
+                          {task.status} · {formatDuration(duration)}
+                        </div>
+                        <div className="mt-1 line-clamp-2 break-words text-zinc-500">
+                          {task.result_text || task.error_text || task.request_messages?.find((m) => m.role === "user")?.content || "Задача"}
+                        </div>
+                      </button>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <button type="button" onClick={() => ensureTaskMessage(task)} className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900">
+                          Открыть
+                        </button>
+                        <button type="button" onClick={() => retryTask(task)} className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900">
+                          Повторить
+                        </button>
+                        {task.error_text ? (
+                          <button type="button" onClick={() => copyTaskError(task)} className="rounded px-2 py-1 text-red-600 hover:bg-red-50">
+                            Ошибка
+                          </button>
+                        ) : null}
                       </div>
-                      <div className="whitespace-pre-wrap leading-relaxed text-zinc-800">{m.content}</div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })
               )}
             </div>
-          </div>
-
-          <div className="card">
-            {err ? <div className="mb-2 text-sm text-red-600">{err}</div> : null}
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send();
-              }}
-              rows={5}
-              className="input min-h-[120px]"
-              placeholder="Введите запрос"
-              disabled={busy}
-            />
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="text-xs text-zinc-500">
-                {startedAt ? `Время ожидания: ${formatDuration(elapsedMs)}` : activeTask ? "Есть незавершённая OpenAI-задача." : provider === "openai" ? "Нужен OPENAI_API_KEY на сервере." : "Используется DEEPSEEK_API_KEY на сервере."}
-              </div>
-              <div className="flex gap-2">
-                {busy ? (
-                  <button type="button" onClick={stop} className="btn btn-secondary">
-                    Остановить
-                  </button>
-                ) : null}
-                <button type="button" onClick={send} disabled={busy || !!activeTask || !draft.trim()} className="btn btn-primary disabled:opacity-50">
-                  {busy ? "Жду ответ..." : "Отправить"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+          </section>
+        </aside>
       </div>
     </Layout>
   );
