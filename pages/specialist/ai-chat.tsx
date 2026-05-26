@@ -30,6 +30,13 @@ type AiTask = {
   created_at: string;
   updated_at: string;
 };
+type PendingFile = {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  data: string;
+};
 
 const OPENAI_MODELS = [
   { id: "gpt-5.4-mini", label: "OpenAI GPT-5.4 mini" },
@@ -56,6 +63,21 @@ function formatDuration(ms: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Не удалось прочитать файл"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function SpecialistAiChatPage() {
   const { session, user } = useSession();
   const [provider, setProvider] = useState<Provider>("deepseek");
@@ -63,6 +85,7 @@ export default function SpecialistAiChatPage() {
   const [temperature, setTemperature] = useState(0.3);
   const [maxOutputTokens, setMaxOutputTokens] = useState(3000);
   const [draft, setDraft] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [tasks, setTasks] = useState<AiTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -151,6 +174,32 @@ export default function SpecialistAiChatPage() {
     setModel(next === "openai" ? "gpt-5.4-mini" : "deepseek-v4-pro");
   };
 
+  const addFiles = async (fileList: FileList | null) => {
+    if (!fileList || busy || activeTask) return;
+    setErr("");
+    try {
+      const files = Array.from(fileList).slice(0, Math.max(0, 4 - pendingFiles.length));
+      const next: PendingFile[] = [];
+      for (const file of files) {
+        const lower = file.name.toLowerCase();
+        if (!/\.(docx|xlsx|xls|csv|txt|md)$/.test(lower)) {
+          throw new Error(`Файл ${file.name}: поддерживаются .docx, .xlsx, .xls, .csv, .txt, .md`);
+        }
+        if (file.size > 10 * 1024 * 1024) throw new Error(`Файл ${file.name}: максимум 10 МБ`);
+        next.push({
+          id: uid(),
+          name: file.name,
+          size: file.size,
+          type: file.type || "",
+          data: await readFileAsDataUrl(file),
+        });
+      }
+      setPendingFiles((prev) => [...prev, ...next].slice(0, 4));
+    } catch (e: any) {
+      setErr(e?.message || "Не удалось добавить файл");
+    }
+  };
+
   const send = async () => {
     if (!session || busy || activeTask) return;
     const text = draft.trim();
@@ -182,11 +231,13 @@ export default function SpecialistAiChatPage() {
           temperature,
           max_output_tokens: maxOutputTokens,
           messages: nextMessages.map((m) => ({ role: m.role, content: m.content })),
+          files: pendingFiles.map((f) => ({ name: f.name, type: f.type, size: f.size, data: f.data })),
         }),
         signal: controller.signal,
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось получить ответ");
+      setPendingFiles([]);
       if (provider === "openai" && j.responseId) {
         backgroundStarted = true;
         const task = j.task as AiTask | undefined;
@@ -384,6 +435,45 @@ export default function SpecialistAiChatPage() {
           >
             Очистить чат
           </button>
+
+          <div className="mt-5 border-t border-zinc-200 pt-4">
+            <div className="text-sm font-semibold">Файлы для анализа</div>
+            <label className={`btn btn-secondary btn-sm mt-3 w-full ${busy || activeTask ? "pointer-events-none opacity-50" : ""}`}>
+              Добавить файл
+              <input
+                type="file"
+                accept=".docx,.xlsx,.xls,.csv,.txt,.md"
+                multiple
+                className="hidden"
+                disabled={busy || !!activeTask}
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.currentTarget.value = "";
+                }}
+              />
+            </label>
+            <div className="mt-2 text-xs text-zinc-500">До 4 файлов, каждый до 10 МБ.</div>
+            {pendingFiles.length ? (
+              <div className="mt-3 grid gap-2">
+                {pendingFiles.map((file) => (
+                  <div key={file.id} className="flex items-start justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2 text-xs">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-zinc-800">{file.name}</div>
+                      <div className="text-zinc-500">{formatBytes(file.size)}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPendingFiles((prev) => prev.filter((x) => x.id !== file.id))}
+                      disabled={busy}
+                      className="text-zinc-500 hover:text-red-600 disabled:opacity-50"
+                    >
+                      Убрать
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
 
           <div className="mt-5 border-t border-zinc-200 pt-4">
             <div className="flex items-center justify-between gap-2">

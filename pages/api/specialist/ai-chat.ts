@@ -1,4 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import mammoth from "mammoth";
+import * as XLSX from "xlsx";
 import { requireUser } from "@/lib/serverAuth";
 import { isSpecialistUser } from "@/lib/specialist";
 import { setNoStore } from "@/lib/apiHardening";
@@ -8,9 +10,18 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
+type UploadedFile = {
+  name: string;
+  type?: string;
+  size?: number;
+  data: string;
+};
 
 const OPENAI_MODELS = ["gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro"];
 const DEEPSEEK_MODELS = ["deepseek-v4-flash", "deepseek-v4-pro"];
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_TEXT_CHARS = 60_000;
+const MAX_TOTAL_FILE_TEXT_CHARS = 90_000;
 
 function normalizeDeepseekBaseUrl(input?: string) {
   return String(input || "https://api.deepseek.com")
@@ -28,6 +39,81 @@ function cleanMessages(input: any): ChatMessage[] {
     }))
     .filter((m) => m.content)
     .slice(-16);
+}
+
+function decodeBase64Payload(data: string) {
+  const raw = String(data || "");
+  const comma = raw.indexOf(",");
+  const b64 = raw.startsWith("data:") && comma >= 0 ? raw.slice(comma + 1) : raw;
+  return Buffer.from(b64, "base64");
+}
+
+function trimForPrompt(text: string, maxChars: number) {
+  const clean = String(text || "").replace(/\u0000/g, "").trim();
+  if (clean.length <= maxChars) return clean;
+  return `${clean.slice(0, maxChars).trimEnd()}\n\n[Файл обрезан: показаны первые ${maxChars} символов.]`;
+}
+
+async function extractFileText(file: UploadedFile) {
+  const name = String(file?.name || "file").trim();
+  const lower = name.toLowerCase();
+  const buffer = decodeBase64Payload(file?.data || "");
+  if (!buffer.length) throw new Error(`Файл ${name}: пустой файл`);
+  if (buffer.byteLength > MAX_FILE_BYTES) throw new Error(`Файл ${name}: максимум 10 МБ`);
+
+  let text = "";
+  if (lower.endsWith(".docx")) {
+    const out = await mammoth.extractRawText({ buffer });
+    text = out.value || "";
+  } else if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+    const parts: string[] = [];
+    for (const sheetName of workbook.SheetNames.slice(0, 12)) {
+      const sheet = workbook.Sheets[sheetName];
+      const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+      if (csv.trim()) parts.push(`Лист: ${sheetName}\n${csv}`);
+    }
+    text = parts.join("\n\n");
+  } else if (lower.endsWith(".csv") || lower.endsWith(".txt") || lower.endsWith(".md")) {
+    text = buffer.toString("utf8");
+  } else {
+    throw new Error(`Файл ${name}: поддерживаются .docx, .xlsx, .xls, .csv, .txt, .md`);
+  }
+
+  return {
+    name,
+    size: buffer.byteLength,
+    text: trimForPrompt(text, MAX_FILE_TEXT_CHARS),
+  };
+}
+
+async function appendFilesToLastUserMessage(messages: ChatMessage[], filesInput: any): Promise<ChatMessage[]> {
+  const files = Array.isArray(filesInput) ? filesInput.slice(0, 4) : [];
+  if (!files.length) return messages;
+
+  const extracted = await Promise.all(files.map((f) => extractFileText(f)));
+  let used = 0;
+  const blocks: string[] = [];
+  for (const file of extracted) {
+    const remaining = MAX_TOTAL_FILE_TEXT_CHARS - used;
+    if (remaining <= 0) break;
+    const text = trimForPrompt(file.text, remaining);
+    used += text.length;
+    blocks.push(`Файл: ${file.name}\nРазмер: ${file.size} байт\nСодержимое:\n${text}`);
+  }
+  if (!blocks.length) return messages;
+
+  const next = [...messages];
+  for (let i = next.length - 1; i >= 0; i--) {
+    if (next[i].role === "user") {
+      next[i] = {
+        ...next[i],
+        content: `${next[i].content}\n\nПриложенные файлы для анализа:\n\n${blocks.join("\n\n---\n\n")}`,
+      };
+      return next;
+    }
+  }
+  return [...next, { role: "user", content: `Приложенные файлы для анализа:\n\n${blocks.join("\n\n---\n\n")}` }];
 }
 
 function extractOpenAIText(json: any): string {
@@ -131,7 +217,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const provider = String(req.body?.provider || "").trim() as ChatProvider;
   const model = String(req.body?.model || "").trim();
-  const messages = cleanMessages(req.body?.messages);
+  let messages = cleanMessages(req.body?.messages);
   const temperature = Math.min(1.5, Math.max(0, Number(req.body?.temperature ?? 0.3)));
   const maxOutputTokens = Math.min(12000, Math.max(256, Number(req.body?.max_output_tokens ?? 3000)));
 
@@ -147,6 +233,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    messages = await appendFilesToLastUserMessage(messages, req.body?.files);
     if (provider === "openai") {
       const result = await callOpenAI({ model, messages, temperature, maxOutputTokens });
       if ("responseId" in result) {
