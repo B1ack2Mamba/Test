@@ -496,13 +496,13 @@ export default function SpecialistAiChatPage() {
                       key={task.id}
                       type="button"
                       onClick={() => ensureTaskMessage(task)}
-                      className="rounded-lg border border-zinc-200 bg-white p-2 text-left text-xs hover:bg-zinc-50"
+                      className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white p-2 text-left text-xs hover:bg-zinc-50"
                     >
-                      <div className="font-medium text-zinc-800">{task.model}</div>
+                      <div className="min-w-0 break-words font-medium text-zinc-800">{task.model}</div>
                       <div className={pending ? "text-amber-700" : task.status === "completed" ? "text-emerald-700" : "text-red-700"}>
                         {task.status} · {formatDuration(duration)}
                       </div>
-                      <div className="mt-1 truncate text-zinc-500">
+                      <div className="mt-1 max-h-12 min-w-0 overflow-hidden break-words text-zinc-500">
                         {task.result_text || task.error_text || task.request_messages?.find((m) => m.role === "user")?.content || "Задача"}
                       </div>
                     </button>
