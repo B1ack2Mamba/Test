@@ -348,7 +348,9 @@ export default function SpecialistAiChatPage() {
             ))}
           </select>
 
-          <label className="mt-4 block text-xs font-medium text-zinc-700">Температура: {temperature.toFixed(1)}</label>
+          <label className="mt-4 block text-xs font-medium text-zinc-700">
+            Креативность ответа: {temperature.toFixed(1)}
+          </label>
           <input
             type="range"
             min="0"
@@ -358,6 +360,7 @@ export default function SpecialistAiChatPage() {
             onChange={(e) => setTemperature(Number(e.target.value))}
             className="mt-2 w-full"
           />
+          <div className="mt-1 text-xs text-zinc-500">0 — строже и стабильнее, 1+ — свободнее и разнообразнее.</div>
 
           <label className="mt-4 block text-xs font-medium text-zinc-700">Максимум токенов ответа</label>
           <input
