@@ -13,6 +13,22 @@ type ChatMessage = {
   model?: string;
   durationMs?: number;
   pending?: boolean;
+  taskId?: string;
+};
+
+type AiTask = {
+  id: string;
+  provider: Provider;
+  model: string;
+  response_id?: string | null;
+  status: string;
+  request_messages?: Array<{ role: "user" | "assistant"; content: string }>;
+  result_text?: string;
+  error_text?: string;
+  started_at: string;
+  finished_at?: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 const OPENAI_MODELS = [
@@ -48,6 +64,8 @@ export default function SpecialistAiChatPage() {
   const [maxOutputTokens, setMaxOutputTokens] = useState(3000);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [tasks, setTasks] = useState<AiTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -64,13 +82,77 @@ export default function SpecialistAiChatPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!session) return;
+    loadTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token]);
+
+  const activeTask = tasks.find((t) => t.provider === "openai" && (t.status === "queued" || t.status === "in_progress")) || null;
+
+  useEffect(() => {
+    if (!session || !activeTask || pollTimerRef.current) return;
+    const started = Date.parse(activeTask.started_at || activeTask.created_at || "") || Date.now();
+    setBusy(true);
+    setStartedAt(started);
+    setElapsedMs(Date.now() - started);
+    const ticker = window.setInterval(() => setElapsedMs(Date.now() - started), 1000);
+    ensureTaskMessage(activeTask);
+    pollOpenAI(activeTask.id, activeTask.id, started, ticker);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token, activeTask?.id]);
+
+  const loadTasks = async () => {
+    if (!session) return;
+    setTasksLoading(true);
+    try {
+      const r = await fetch("/api/specialist/ai-chat-tasks", {
+        headers: { authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить задачи");
+      setTasks(j.tasks || []);
+    } catch (e: any) {
+      setErr(e?.message || "Ошибка загрузки задач");
+    } finally {
+      setTasksLoading(false);
+    }
+  };
+
+  const ensureTaskMessage = (task: AiTask) => {
+    setMessages((prev) => {
+      if (prev.some((m) => m.taskId === task.id)) return prev;
+      const requestMessages = Array.isArray(task.request_messages) ? task.request_messages : [];
+      const lastUser = [...requestMessages].reverse().find((m) => m.role === "user");
+      const next = [...prev];
+      if (lastUser?.content) next.push({ id: `${task.id}-user`, role: "user", content: lastUser.content });
+      next.push({
+        id: task.id,
+        taskId: task.id,
+        role: "assistant",
+        content:
+          task.status === "completed"
+            ? task.result_text || ""
+            : task.status === "failed"
+              ? task.error_text || "Задача завершилась ошибкой"
+              : `OpenAI обрабатывает задачу. Статус: ${task.status}.`,
+        provider: "openai",
+        model: task.model,
+        pending: task.status === "queued" || task.status === "in_progress",
+        durationMs: task.finished_at ? Math.max(0, Date.parse(task.finished_at) - Date.parse(task.started_at)) : undefined,
+      });
+      return next;
+    });
+  };
+
   const changeProvider = (next: Provider) => {
     setProvider(next);
     setModel(next === "openai" ? "gpt-5.4-mini" : "deepseek-v4-pro");
   };
 
   const send = async () => {
-    if (!session || busy) return;
+    if (!session || busy || activeTask) return;
     const text = draft.trim();
     if (!text) return;
 
@@ -107,11 +189,14 @@ export default function SpecialistAiChatPage() {
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось получить ответ");
       if (provider === "openai" && j.responseId) {
         backgroundStarted = true;
-        const pendingId = uid();
+        const task = j.task as AiTask | undefined;
+        if (task) setTasks((prev) => [task, ...prev.filter((t) => t.id !== task.id)]);
+        const pendingId = task?.id || uid();
         setMessages((prev) => [
           ...prev,
           {
             id: pendingId,
+            taskId: task?.id,
             role: "assistant",
             content: `OpenAI принял задачу в фон. Статус: ${j.status || "queued"}.`,
             provider,
@@ -119,7 +204,7 @@ export default function SpecialistAiChatPage() {
             pending: true,
           },
         ]);
-        pollOpenAI(String(j.responseId), pendingId, started, ticker);
+        pollOpenAI(task?.id || String(j.responseId), pendingId, started, ticker);
         return;
       }
       setMessages((prev) => [
@@ -138,20 +223,26 @@ export default function SpecialistAiChatPage() {
     }
   };
 
-  const pollOpenAI = (responseId: string, pendingId: string, started: number, ticker: number) => {
+  const pollOpenAI = (taskOrResponseId: string, pendingId: string, started: number, ticker: number) => {
     const poll = async () => {
       if (!session) return;
       try {
-        const r = await fetch(`/api/specialist/ai-chat-status?response_id=${encodeURIComponent(responseId)}`, {
+        const query = taskOrResponseId.startsWith("resp_")
+          ? `response_id=${encodeURIComponent(taskOrResponseId)}`
+          : `task_id=${encodeURIComponent(taskOrResponseId)}`;
+        const r = await fetch(`/api/specialist/ai-chat-status?${query}`, {
           headers: { authorization: `Bearer ${session.access_token}` },
           cache: "no-store",
         });
         const j = await r.json().catch(() => ({}));
         if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось проверить статус OpenAI");
+        if (j.task) {
+          setTasks((prev) => [j.task, ...prev.filter((t) => t.id !== j.task.id)]);
+        }
         if (!j.done) {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === pendingId
+              m.id === pendingId || m.taskId === taskOrResponseId
                 ? { ...m, content: `OpenAI обрабатывает задачу. Статус: ${j.status}. Прошло: ${formatDuration(Date.now() - started)}.` }
                 : m
             )
@@ -163,11 +254,12 @@ export default function SpecialistAiChatPage() {
         window.clearInterval(ticker);
         setStartedAt(null);
         setBusy(false);
+        pollTimerRef.current = null;
         const durationMs = Date.now() - started;
         if (j.error) throw new Error(j.error);
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === pendingId
+            m.id === pendingId || m.taskId === taskOrResponseId
               ? { ...m, content: String(j.text || ""), pending: false, durationMs }
               : m
           )
@@ -176,8 +268,9 @@ export default function SpecialistAiChatPage() {
         window.clearInterval(ticker);
         setStartedAt(null);
         setBusy(false);
+        pollTimerRef.current = null;
         setErr(e?.message || "Ошибка");
-        setMessages((prev) => prev.filter((m) => m.id !== pendingId));
+        setMessages((prev) => prev.map((m) => (m.id === pendingId ? { ...m, pending: false, content: e?.message || "Ошибка" } : m)));
       }
     };
     pollTimerRef.current = setTimeout(poll, 3000);
@@ -288,6 +381,43 @@ export default function SpecialistAiChatPage() {
           >
             Очистить чат
           </button>
+
+          <div className="mt-5 border-t border-zinc-200 pt-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold">OpenAI-задачи</div>
+              <button type="button" onClick={loadTasks} disabled={tasksLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
+                {tasksLoading ? "..." : "Обновить"}
+              </button>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {tasks.length === 0 ? (
+                <div className="text-xs text-zinc-500">Сохранённых задач пока нет.</div>
+              ) : (
+                tasks.slice(0, 6).map((task) => {
+                  const pending = task.status === "queued" || task.status === "in_progress";
+                  const duration = task.finished_at
+                    ? Math.max(0, Date.parse(task.finished_at) - Date.parse(task.started_at))
+                    : Math.max(0, Date.now() - Date.parse(task.started_at));
+                  return (
+                    <button
+                      key={task.id}
+                      type="button"
+                      onClick={() => ensureTaskMessage(task)}
+                      className="rounded-lg border border-zinc-200 bg-white p-2 text-left text-xs hover:bg-zinc-50"
+                    >
+                      <div className="font-medium text-zinc-800">{task.model}</div>
+                      <div className={pending ? "text-amber-700" : task.status === "completed" ? "text-emerald-700" : "text-red-700"}>
+                        {task.status} · {formatDuration(duration)}
+                      </div>
+                      <div className="mt-1 truncate text-zinc-500">
+                        {task.result_text || task.error_text || task.request_messages?.find((m) => m.role === "user")?.content || "Задача"}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="grid min-h-[70vh] grid-rows-[1fr_auto] gap-3">
@@ -333,7 +463,7 @@ export default function SpecialistAiChatPage() {
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs text-zinc-500">
-                {startedAt ? `Время ожидания: ${formatDuration(elapsedMs)}` : provider === "openai" ? "Нужен OPENAI_API_KEY на сервере." : "Используется DEEPSEEK_API_KEY на сервере."}
+                {startedAt ? `Время ожидания: ${formatDuration(elapsedMs)}` : activeTask ? "Есть незавершённая OpenAI-задача." : provider === "openai" ? "Нужен OPENAI_API_KEY на сервере." : "Используется DEEPSEEK_API_KEY на сервере."}
               </div>
               <div className="flex gap-2">
                 {busy ? (
@@ -341,7 +471,7 @@ export default function SpecialistAiChatPage() {
                     Остановить
                   </button>
                 ) : null}
-                <button type="button" onClick={send} disabled={busy || !draft.trim()} className="btn btn-primary disabled:opacity-50">
+                <button type="button" onClick={send} disabled={busy || !!activeTask || !draft.trim()} className="btn btn-primary disabled:opacity-50">
                   {busy ? "Жду ответ..." : "Отправить"}
                 </button>
               </div>

@@ -150,6 +150,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     if (provider === "openai") {
       const result = await callOpenAI({ model, messages, temperature, maxOutputTokens });
+      if ("responseId" in result) {
+        const { data: task, error } = await auth.supabaseAdmin
+          .from("specialist_ai_chat_tasks")
+          .insert({
+            specialist_user_id: auth.user.id,
+            provider,
+            model,
+            response_id: result.responseId,
+            status: result.status || "queued",
+            request_messages: messages,
+            temperature,
+            max_output_tokens: maxOutputTokens,
+            started_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .select("id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at")
+          .single();
+        if (error) {
+          return res.status(500).json({
+            ok: false,
+            error: /specialist_ai_chat_tasks/i.test(error.message || "")
+              ? "В базе нет таблицы specialist_ai_chat_tasks. Выполните SQL миграцию supabase/specialist_ai_chat_tasks.sql."
+              : error.message,
+          });
+        }
+        return res.status(200).json({ ok: true, provider, model, ...result, task });
+      }
       return res.status(200).json({ ok: true, provider, model, ...result });
     }
     const text = await callDeepseek({ model, messages, temperature, maxOutputTokens });
