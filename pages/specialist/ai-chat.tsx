@@ -360,7 +360,7 @@ export default function SpecialistAiChatPage() {
   }
 
   return (
-    <Layout title="AI-чат специалиста">
+    <Layout title="AI-чат специалиста" widthClass="max-w-[1500px]">
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
         <Link href="/specialist" className="btn btn-secondary btn-sm">
           К кабинету специалиста
@@ -370,7 +370,44 @@ export default function SpecialistAiChatPage() {
         </Link>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="card mb-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">OpenAI-задачи</div>
+          <button type="button" onClick={loadTasks} disabled={tasksLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
+            {tasksLoading ? "..." : "Обновить"}
+          </button>
+        </div>
+        <div className="mt-3 grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {tasks.length === 0 ? (
+            <div className="text-xs text-zinc-500">Сохранённых задач пока нет.</div>
+          ) : (
+            tasks.slice(0, 6).map((task) => {
+              const pending = task.status === "queued" || task.status === "in_progress";
+              const duration = task.finished_at
+                ? Math.max(0, Date.parse(task.finished_at) - Date.parse(task.started_at))
+                : Math.max(0, Date.now() - Date.parse(task.started_at));
+              return (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => ensureTaskMessage(task)}
+                  className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white p-2 text-left text-xs hover:bg-zinc-50"
+                >
+                  <div className="truncate font-medium text-zinc-800">{task.model}</div>
+                  <div className={pending ? "text-amber-700" : task.status === "completed" ? "text-emerald-700" : "text-red-700"}>
+                    {task.status} · {formatDuration(duration)}
+                  </div>
+                  <div className="mt-1 max-h-10 min-w-0 overflow-hidden break-words text-zinc-500">
+                    {task.result_text || task.error_text || task.request_messages?.find((m) => m.role === "user")?.content || "Задача"}
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[320px_minmax(720px,1fr)]">
         <div className="card self-start">
           <div className="text-sm font-semibold">Модель</div>
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -475,45 +512,9 @@ export default function SpecialistAiChatPage() {
             ) : null}
           </div>
 
-          <div className="mt-5 border-t border-zinc-200 pt-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold">OpenAI-задачи</div>
-              <button type="button" onClick={loadTasks} disabled={tasksLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
-                {tasksLoading ? "..." : "Обновить"}
-              </button>
-            </div>
-            <div className="mt-3 grid gap-2">
-              {tasks.length === 0 ? (
-                <div className="text-xs text-zinc-500">Сохранённых задач пока нет.</div>
-              ) : (
-                tasks.slice(0, 6).map((task) => {
-                  const pending = task.status === "queued" || task.status === "in_progress";
-                  const duration = task.finished_at
-                    ? Math.max(0, Date.parse(task.finished_at) - Date.parse(task.started_at))
-                    : Math.max(0, Date.now() - Date.parse(task.started_at));
-                  return (
-                    <button
-                      key={task.id}
-                      type="button"
-                      onClick={() => ensureTaskMessage(task)}
-                      className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white p-2 text-left text-xs hover:bg-zinc-50"
-                    >
-                      <div className="min-w-0 break-words font-medium text-zinc-800">{task.model}</div>
-                      <div className={pending ? "text-amber-700" : task.status === "completed" ? "text-emerald-700" : "text-red-700"}>
-                        {task.status} · {formatDuration(duration)}
-                      </div>
-                      <div className="mt-1 max-h-12 min-w-0 overflow-hidden break-words text-zinc-500">
-                        {task.result_text || task.error_text || task.request_messages?.find((m) => m.role === "user")?.content || "Задача"}
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
         </div>
 
-        <div className="grid min-h-[70vh] grid-rows-[1fr_auto] gap-3">
+        <div className="grid min-h-[70vh] min-w-0 grid-rows-[1fr_auto] gap-3">
           <div className="card min-h-[420px] overflow-hidden">
             <div className="h-full max-h-[62vh] overflow-y-auto pr-1">
               {messages.length === 0 ? (
