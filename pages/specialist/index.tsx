@@ -162,8 +162,8 @@ export default function SpecialistHome() {
           <Link href="/specialist/analysis" className="btn btn-secondary btn-sm">
             Перейти в AI-аналитику клиентов
           </Link>
-          <Link href="/specialist/method-base" className="btn btn-secondary btn-sm">
-            Методическая база
+          <Link href="/specialist/ai-chat" className="btn btn-secondary btn-sm">
+            AI-чат
           </Link>
         </div>
       </div>
@@ -232,11 +232,11 @@ export default function SpecialistHome() {
                 AI-аналитика
               </Link>
               <Link
-                href={`/specialist/method-base?room_id=${encodeURIComponent(r.id)}`}
+                href="/specialist/ai-chat"
                 className="btn btn-secondary w-full sm:w-auto sm:min-h-[34px] sm:rounded-lg sm:px-3 sm:py-1.5 sm:text-[13px]"
-                title="Методическая база"
+                title="AI-чат"
               >
-                Методическая база
+                AI-чат
               </Link>
             </div>
 

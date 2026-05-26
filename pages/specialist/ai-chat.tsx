@@ -1,0 +1,354 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { Layout } from "@/components/Layout";
+import { useSession } from "@/lib/useSession";
+import { isSpecialistUser } from "@/lib/specialist";
+
+type Provider = "openai" | "deepseek";
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  provider?: Provider;
+  model?: string;
+  durationMs?: number;
+  pending?: boolean;
+};
+
+const OPENAI_MODELS = [
+  { id: "gpt-5.4-mini", label: "OpenAI GPT-5.4 mini" },
+  { id: "gpt-5.4", label: "OpenAI GPT-5.4" },
+  { id: "gpt-5.5", label: "OpenAI GPT-5.5" },
+  { id: "gpt-5.5-pro", label: "OpenAI GPT-5.5 pro" },
+];
+
+const DEEPSEEK_MODELS = [
+  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+];
+
+function uid() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function formatDuration(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+export default function SpecialistAiChatPage() {
+  const { session, user } = useSession();
+  const [provider, setProvider] = useState<Provider>("deepseek");
+  const [model, setModel] = useState("deepseek-v4-pro");
+  const [temperature, setTemperature] = useState(0.3);
+  const [maxOutputTokens, setMaxOutputTokens] = useState(3000);
+  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const modelOptions = useMemo(() => (provider === "openai" ? OPENAI_MODELS : DEEPSEEK_MODELS), [provider]);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+  }, []);
+
+  const changeProvider = (next: Provider) => {
+    setProvider(next);
+    setModel(next === "openai" ? "gpt-5.4-mini" : "deepseek-v4-pro");
+  };
+
+  const send = async () => {
+    if (!session || busy) return;
+    const text = draft.trim();
+    if (!text) return;
+
+    const nextMessages: ChatMessage[] = [...messages, { id: uid(), role: "user", content: text }];
+    setMessages(nextMessages);
+    setDraft("");
+    setErr("");
+    setBusy(true);
+    const started = Date.now();
+    setStartedAt(started);
+    setElapsedMs(0);
+    const ticker = window.setInterval(() => setElapsedMs(Date.now() - started), 1000);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let backgroundStarted = false;
+    try {
+      const r = await fetch("/api/specialist/ai-chat", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          provider,
+          model,
+          temperature,
+          max_output_tokens: maxOutputTokens,
+          messages: nextMessages.map((m) => ({ role: m.role, content: m.content })),
+        }),
+        signal: controller.signal,
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось получить ответ");
+      if (provider === "openai" && j.responseId) {
+        backgroundStarted = true;
+        const pendingId = uid();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: pendingId,
+            role: "assistant",
+            content: `OpenAI принял задачу в фон. Статус: ${j.status || "queued"}.`,
+            provider,
+            model,
+            pending: true,
+          },
+        ]);
+        pollOpenAI(String(j.responseId), pendingId, started, ticker);
+        return;
+      }
+      setMessages((prev) => [
+        ...prev,
+        { id: uid(), role: "assistant", content: String(j.text || ""), provider, model, durationMs: Date.now() - started },
+      ]);
+    } catch (e: any) {
+      if (e?.name !== "AbortError") setErr(e?.message || "Ошибка");
+    } finally {
+      if (!backgroundStarted) {
+        window.clearInterval(ticker);
+        setStartedAt(null);
+        setBusy(false);
+      }
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  };
+
+  const pollOpenAI = (responseId: string, pendingId: string, started: number, ticker: number) => {
+    const poll = async () => {
+      if (!session) return;
+      try {
+        const r = await fetch(`/api/specialist/ai-chat-status?response_id=${encodeURIComponent(responseId)}`, {
+          headers: { authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось проверить статус OpenAI");
+        if (!j.done) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === pendingId
+                ? { ...m, content: `OpenAI обрабатывает задачу. Статус: ${j.status}. Прошло: ${formatDuration(Date.now() - started)}.` }
+                : m
+            )
+          );
+          pollTimerRef.current = setTimeout(poll, 15000);
+          return;
+        }
+
+        window.clearInterval(ticker);
+        setStartedAt(null);
+        setBusy(false);
+        const durationMs = Date.now() - started;
+        if (j.error) throw new Error(j.error);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === pendingId
+              ? { ...m, content: String(j.text || ""), pending: false, durationMs }
+              : m
+          )
+        );
+      } catch (e: any) {
+        window.clearInterval(ticker);
+        setStartedAt(null);
+        setBusy(false);
+        setErr(e?.message || "Ошибка");
+        setMessages((prev) => prev.filter((m) => m.id !== pendingId));
+      }
+    };
+    pollTimerRef.current = setTimeout(poll, 3000);
+  };
+
+  const stop = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    pollTimerRef.current = null;
+    setStartedAt(null);
+    setBusy(false);
+  };
+
+  if (!session || !user) {
+    return (
+      <Layout title="AI-чат">
+        <div className="card text-sm text-zinc-700">
+          Войдите, чтобы открыть AI-чат специалиста.
+          <div className="mt-3">
+            <Link href="/auth?next=%2Fspecialist%2Fai-chat" className="btn btn-secondary btn-sm">
+              Вход / регистрация
+            </Link>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!isSpecialistUser(user)) {
+    return (
+      <Layout title="AI-чат">
+        <div className="card text-sm text-zinc-700">Этот раздел доступен только специалисту.</div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout title="AI-чат специалиста">
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
+        <Link href="/specialist" className="btn btn-secondary btn-sm">
+          К кабинету специалиста
+        </Link>
+        <Link href="/specialist/analysis" className="btn btn-secondary btn-sm">
+          AI-аналитика клиентов
+        </Link>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="card self-start">
+          <div className="text-sm font-semibold">Модель</div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => changeProvider("deepseek")}
+              className={`btn btn-sm ${provider === "deepseek" ? "btn-primary" : "btn-secondary"}`}
+            >
+              DeepSeek
+            </button>
+            <button
+              type="button"
+              onClick={() => changeProvider("openai")}
+              className={`btn btn-sm ${provider === "openai" ? "btn-primary" : "btn-secondary"}`}
+            >
+              OpenAI
+            </button>
+          </div>
+
+          <label className="mt-4 block text-xs font-medium text-zinc-700">Версия</label>
+          <select value={model} onChange={(e) => setModel(e.target.value)} className="input mt-1">
+            {modelOptions.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+
+          <label className="mt-4 block text-xs font-medium text-zinc-700">Температура: {temperature.toFixed(1)}</label>
+          <input
+            type="range"
+            min="0"
+            max="1.5"
+            step="0.1"
+            value={temperature}
+            onChange={(e) => setTemperature(Number(e.target.value))}
+            className="mt-2 w-full"
+          />
+
+          <label className="mt-4 block text-xs font-medium text-zinc-700">Максимум токенов ответа</label>
+          <input
+            type="number"
+            min="256"
+            max="12000"
+            step="256"
+            value={maxOutputTokens}
+            onChange={(e) => setMaxOutputTokens(Number(e.target.value))}
+            className="input mt-1"
+          />
+
+          <button
+            type="button"
+            onClick={() => {
+              setMessages([]);
+              setErr("");
+            }}
+            disabled={busy || messages.length === 0}
+            className="btn btn-secondary btn-sm mt-4 w-full disabled:opacity-50"
+          >
+            Очистить чат
+          </button>
+        </div>
+
+        <div className="grid min-h-[70vh] grid-rows-[1fr_auto] gap-3">
+          <div className="card min-h-[420px] overflow-hidden">
+            <div className="h-full max-h-[62vh] overflow-y-auto pr-1">
+              {messages.length === 0 ? (
+                <div className="text-sm text-zinc-500">
+                  Напишите запрос к модели. История текущего чата отправляется вместе с новым сообщением.
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {messages.map((m) => (
+                    <div
+                      key={m.id}
+                      className={`rounded-lg border p-3 text-sm ${
+                        m.role === "user" ? "border-zinc-200 bg-zinc-50" : "border-emerald-100 bg-emerald-50"
+                      }`}
+                    >
+                      <div className="mb-1 text-xs font-semibold text-zinc-500">
+                        {m.role === "user" ? "Вы" : `${m.provider === "openai" ? "OpenAI" : "DeepSeek"} · ${m.model}`}
+                        {m.durationMs ? ` · время: ${formatDuration(m.durationMs)}` : m.pending ? " · выполняется" : ""}
+                      </div>
+                      <div className="whitespace-pre-wrap leading-relaxed text-zinc-800">{m.content}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="card">
+            {err ? <div className="mb-2 text-sm text-red-600">{err}</div> : null}
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send();
+              }}
+              rows={5}
+              className="input min-h-[120px]"
+              placeholder="Введите запрос"
+              disabled={busy}
+            />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs text-zinc-500">
+                {startedAt ? `Время ожидания: ${formatDuration(elapsedMs)}` : provider === "openai" ? "Нужен OPENAI_API_KEY на сервере." : "Используется DEEPSEEK_API_KEY на сервере."}
+              </div>
+              <div className="flex gap-2">
+                {busy ? (
+                  <button type="button" onClick={stop} className="btn btn-secondary">
+                    Остановить
+                  </button>
+                ) : null}
+                <button type="button" onClick={send} disabled={busy || !draft.trim()} className="btn btn-primary disabled:opacity-50">
+                  {busy ? "Жду ответ..." : "Отправить"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Layout>
+  );
+}
