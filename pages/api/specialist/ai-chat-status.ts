@@ -3,6 +3,27 @@ import { requireUser } from "@/lib/serverAuth";
 import { isSpecialistUser } from "@/lib/specialist";
 import { setNoStore } from "@/lib/apiHardening";
 
+const TASK_SELECT =
+  "id,chat_id,assistant_message_id,specialist_user_id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at";
+
+async function updateTranscriptAssistant(auth: Awaited<ReturnType<typeof requireUser>>, args: { chatId?: string | null; messageId?: string | null; patch: Record<string, any> }) {
+  if (!auth || !args.chatId || !args.messageId) return;
+  const { data: chat } = await auth.supabaseAdmin
+    .from("specialist_ai_chats")
+    .select("id,transcript")
+    .eq("id", args.chatId)
+    .eq("specialist_user_id", auth.user.id)
+    .maybeSingle();
+  const transcript = Array.isArray((chat as any)?.transcript) ? (chat as any).transcript : [];
+  if (!transcript.length) return;
+  const next = transcript.map((m: any) => (m?.id === args.messageId ? { ...m, ...args.patch, updated_at: new Date().toISOString() } : m));
+  await auth.supabaseAdmin
+    .from("specialist_ai_chats")
+    .update({ transcript: next, updated_at: new Date().toISOString() })
+    .eq("id", args.chatId)
+    .eq("specialist_user_id", auth.user.id);
+}
+
 function extractOpenAIText(json: any): string {
   if (typeof json?.output_text === "string" && json.output_text.trim()) return json.output_text.trim();
   const output = Array.isArray(json?.output) ? json.output : [];
@@ -35,7 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (taskId) {
     const { data, error } = await auth.supabaseAdmin
       .from("specialist_ai_chat_tasks")
-      .select("id,specialist_user_id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at")
+      .select(TASK_SELECT)
       .eq("id", taskId)
       .eq("specialist_user_id", auth.user.id)
       .maybeSingle();
@@ -76,9 +97,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .update({ status, updated_at: new Date().toISOString() })
         .eq("id", task.id)
         .eq("specialist_user_id", auth.user.id)
-        .select("id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at")
+        .select(TASK_SELECT)
         .maybeSingle();
       task = updated || task;
+      if (task?.assistant_message_id) {
+        await auth.supabaseAdmin
+          .from("specialist_ai_chat_messages")
+          .update({ status, content: `OpenAI обрабатывает задачу. Статус: ${status}.`, updated_at: new Date().toISOString() })
+          .eq("id", task.assistant_message_id)
+          .eq("specialist_user_id", auth.user.id);
+        await updateTranscriptAssistant(auth, {
+          chatId: task.chat_id,
+          messageId: task.assistant_message_id,
+          patch: { status, content: `OpenAI обрабатывает задачу. Статус: ${status}.` },
+        });
+      }
     }
     return res.status(200).json({ ok: true, done: false, status, task });
   }
@@ -90,23 +123,54 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .update({ status: "failed", error_text: errorText, finished_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq("id", task.id)
         .eq("specialist_user_id", auth.user.id)
-        .select("id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at")
+        .select(TASK_SELECT)
         .maybeSingle();
       task = updated || task;
+      if (task?.assistant_message_id) {
+        await auth.supabaseAdmin
+          .from("specialist_ai_chat_messages")
+          .update({ status: "failed", content: errorText, updated_at: new Date().toISOString() })
+          .eq("id", task.assistant_message_id)
+          .eq("specialist_user_id", auth.user.id);
+        await updateTranscriptAssistant(auth, {
+          chatId: task.chat_id,
+          messageId: task.assistant_message_id,
+          patch: { status: "failed", content: errorText },
+        });
+      }
     }
     return res.status(200).json({ ok: true, done: true, status: "failed", error: errorText, task });
   }
 
   const text = extractOpenAIText(json);
   if (task) {
+    const finishedAt = new Date().toISOString();
+    const durationMs = task.started_at ? Math.max(0, Date.now() - Date.parse(task.started_at)) : null;
     const { data: updated } = await auth.supabaseAdmin
       .from("specialist_ai_chat_tasks")
-      .update({ status: "completed", result_text: text, finished_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update({ status: "completed", result_text: text, finished_at: finishedAt, updated_at: finishedAt })
       .eq("id", task.id)
       .eq("specialist_user_id", auth.user.id)
-      .select("id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at")
+      .select(TASK_SELECT)
       .maybeSingle();
     task = updated || task;
+    if (task?.assistant_message_id) {
+      await auth.supabaseAdmin
+        .from("specialist_ai_chat_messages")
+        .update({
+          status: "completed",
+          content: text,
+          duration_ms: durationMs,
+          updated_at: finishedAt,
+        })
+        .eq("id", task.assistant_message_id)
+        .eq("specialist_user_id", auth.user.id);
+      await updateTranscriptAssistant(auth, {
+        chatId: task.chat_id,
+        messageId: task.assistant_message_id,
+        patch: { status: "completed", content: text, duration_ms: durationMs },
+      });
+    }
   }
   return res.status(200).json({ ok: true, done: true, status: "completed", text, task });
 }

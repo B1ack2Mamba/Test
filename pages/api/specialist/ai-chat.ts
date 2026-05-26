@@ -1,27 +1,28 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import mammoth from "mammoth";
-import * as XLSX from "xlsx";
 import { requireUser } from "@/lib/serverAuth";
 import { isSpecialistUser } from "@/lib/specialist";
 import { setNoStore } from "@/lib/apiHardening";
+import { appendAttachmentsToLastUserMessage } from "@/lib/aiChatFiles";
 
 type ChatProvider = "openai" | "deepseek";
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
-type UploadedFile = {
-  name: string;
-  type?: string;
-  size?: number;
-  data: string;
-};
 
 const OPENAI_MODELS = ["gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro"];
 const DEEPSEEK_MODELS = ["deepseek-v4-flash", "deepseek-v4-pro"];
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_FILE_TEXT_CHARS = 60_000;
-const MAX_TOTAL_FILE_TEXT_CHARS = 90_000;
+const TASK_SELECT =
+  "id,chat_id,assistant_message_id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at";
+const CHAT_SELECT = "id,provider,title,last_provider,last_model,last_user_message,transcript,created_at,updated_at";
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "45mb",
+    },
+  },
+};
 
 function normalizeDeepseekBaseUrl(input?: string) {
   return String(input || "https://api.deepseek.com")
@@ -37,83 +38,101 @@ function cleanMessages(input: any): ChatMessage[] {
       role: m?.role === "assistant" ? "assistant" : "user",
       content: String(m?.content || "").trim(),
     }))
-    .filter((m) => m.content)
-    .slice(-16);
+    .filter((m) => m.content);
 }
 
-function decodeBase64Payload(data: string) {
-  const raw = String(data || "");
-  const comma = raw.indexOf(",");
-  const b64 = raw.startsWith("data:") && comma >= 0 ? raw.slice(comma + 1) : raw;
-  return Buffer.from(b64, "base64");
+function titleFromMessage(input: string) {
+  const text = String(input || "").replace(/\s+/g, " ").trim();
+  if (!text) return "Новый чат";
+  return text.length > 64 ? `${text.slice(0, 64).trim()}...` : text;
 }
 
-function trimForPrompt(text: string, maxChars: number) {
-  const clean = String(text || "").replace(/\u0000/g, "").trim();
-  if (clean.length <= maxChars) return clean;
-  return `${clean.slice(0, maxChars).trimEnd()}\n\n[Файл обрезан: показаны первые ${maxChars} символов.]`;
-}
-
-async function extractFileText(file: UploadedFile) {
-  const name = String(file?.name || "file").trim();
-  const lower = name.toLowerCase();
-  const buffer = decodeBase64Payload(file?.data || "");
-  if (!buffer.length) throw new Error(`Файл ${name}: пустой файл`);
-  if (buffer.byteLength > MAX_FILE_BYTES) throw new Error(`Файл ${name}: максимум 10 МБ`);
-
-  let text = "";
-  if (lower.endsWith(".docx")) {
-    const out = await mammoth.extractRawText({ buffer });
-    text = out.value || "";
-  } else if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
-    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
-    const parts: string[] = [];
-    for (const sheetName of workbook.SheetNames.slice(0, 12)) {
-      const sheet = workbook.Sheets[sheetName];
-      const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
-      if (csv.trim()) parts.push(`Лист: ${sheetName}\n${csv}`);
-    }
-    text = parts.join("\n\n");
-  } else if (lower.endsWith(".csv") || lower.endsWith(".txt") || lower.endsWith(".md")) {
-    text = buffer.toString("utf8");
-  } else {
-    throw new Error(`Файл ${name}: поддерживаются .docx, .xlsx, .xls, .csv, .txt, .md`);
+async function getOrCreateChat(auth: Awaited<ReturnType<typeof requireUser>>, chatId: string, provider: ChatProvider, firstUserText: string) {
+  if (!auth) throw new Error("Unauthorized");
+  if (chatId) {
+    const { data, error } = await auth.supabaseAdmin
+      .from("specialist_ai_chats")
+      .select(CHAT_SELECT)
+      .eq("id", chatId)
+      .eq("specialist_user_id", auth.user.id)
+      .eq("provider", provider)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Chat not found");
+    return data;
   }
 
+  const { data, error } = await auth.supabaseAdmin
+    .from("specialist_ai_chats")
+    .insert({
+      specialist_user_id: auth.user.id,
+      provider,
+      last_provider: provider,
+      title: titleFromMessage(firstUserText),
+      last_user_message: firstUserText,
+      updated_at: new Date().toISOString(),
+    })
+    .select(CHAT_SELECT)
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function updateChatSummary(auth: Awaited<ReturnType<typeof requireUser>>, args: { chatId: string; provider: ChatProvider; model: string; lastUser: string }) {
+  if (!auth) return;
+  await auth.supabaseAdmin
+    .from("specialist_ai_chats")
+    .update({
+      last_provider: args.provider,
+      last_model: args.model,
+      last_user_message: args.lastUser,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", args.chatId)
+    .eq("specialist_user_id", auth.user.id);
+}
+
+function transcriptFromChat(chat: any): any[] {
+  return Array.isArray(chat?.transcript) ? chat.transcript : [];
+}
+
+function transcriptUserMessage(message: any) {
   return {
-    name,
-    size: buffer.byteLength,
-    text: trimForPrompt(text, MAX_FILE_TEXT_CHARS),
+    id: message.id,
+    chat_id: message.chat_id,
+    role: "user",
+    content: message.content,
+    status: "completed",
+    metadata: message.metadata || {},
+    created_at: message.created_at,
+    updated_at: message.updated_at,
   };
 }
 
-async function appendFilesToLastUserMessage(messages: ChatMessage[], filesInput: any): Promise<ChatMessage[]> {
-  const files = Array.isArray(filesInput) ? filesInput.slice(0, 4) : [];
-  if (!files.length) return messages;
+function transcriptAssistantMessage(message: any, taskId?: string | null) {
+  return {
+    id: message.id,
+    chat_id: message.chat_id,
+    role: "assistant",
+    content: message.content,
+    provider: message.provider,
+    model: message.model,
+    task_id: taskId || message.task_id || null,
+    status: message.status || "completed",
+    duration_ms: message.duration_ms || null,
+    metadata: message.metadata || {},
+    created_at: message.created_at,
+    updated_at: message.updated_at,
+  };
+}
 
-  const extracted = await Promise.all(files.map((f) => extractFileText(f)));
-  let used = 0;
-  const blocks: string[] = [];
-  for (const file of extracted) {
-    const remaining = MAX_TOTAL_FILE_TEXT_CHARS - used;
-    if (remaining <= 0) break;
-    const text = trimForPrompt(file.text, remaining);
-    used += text.length;
-    blocks.push(`Файл: ${file.name}\nРазмер: ${file.size} байт\nСодержимое:\n${text}`);
-  }
-  if (!blocks.length) return messages;
-
-  const next = [...messages];
-  for (let i = next.length - 1; i >= 0; i--) {
-    if (next[i].role === "user") {
-      next[i] = {
-        ...next[i],
-        content: `${next[i].content}\n\nПриложенные файлы для анализа:\n\n${blocks.join("\n\n---\n\n")}`,
-      };
-      return next;
-    }
-  }
-  return [...next, { role: "user", content: `Приложенные файлы для анализа:\n\n${blocks.join("\n\n---\n\n")}` }];
+async function saveChatTranscript(auth: Awaited<ReturnType<typeof requireUser>>, chatId: string, transcript: any[]) {
+  if (!auth) return;
+  await auth.supabaseAdmin
+    .from("specialist_ai_chats")
+    .update({ transcript, updated_at: new Date().toISOString() })
+    .eq("id", chatId)
+    .eq("specialist_user_id", auth.user.id);
 }
 
 function extractOpenAIText(json: any): string {
@@ -207,6 +226,84 @@ async function callDeepseek(args: { model: string; messages: ChatMessage[]; temp
   return text;
 }
 
+function deepseekPayload(args: { model: string; messages: ChatMessage[]; temperature: number; maxOutputTokens: number; stream?: boolean }) {
+  return {
+    model: args.model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "Ты встроенный помощник специалиста платформы психологического тестирования. Отвечай по-русски, структурно и практически. Не ставь медицинские диагнозы и не выдумывай данные.",
+      },
+      ...args.messages,
+    ],
+    max_tokens: args.maxOutputTokens,
+    temperature: args.temperature,
+    stream: Boolean(args.stream),
+  };
+}
+
+function writeStreamEvent(res: NextApiResponse, event: Record<string, any>) {
+  res.write(`${JSON.stringify(event)}\n`);
+}
+
+async function callDeepseekStream(args: {
+  model: string;
+  messages: ChatMessage[];
+  temperature: number;
+  maxOutputTokens: number;
+  signal?: AbortSignal;
+  onDelta: (text: string) => void;
+}) {
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) throw new Error("DEEPSEEK_API_KEY is missing");
+  const base = normalizeDeepseekBaseUrl(process.env.DEEPSEEK_BASE_URL);
+
+  const response = await fetch(`${base}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify(deepseekPayload({ ...args, stream: true })),
+    signal: args.signal,
+  });
+
+  if (!response.ok) {
+    const json = await response.json().catch(() => null);
+    throw new Error(String(json?.error?.message || `DeepSeek error ${response.status}`));
+  }
+  if (!response.body) throw new Error("DeepSeek stream is empty");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      const json = JSON.parse(data);
+      const delta = json?.choices?.[0]?.delta?.content || "";
+      if (delta) {
+        text += delta;
+        args.onDelta(delta);
+      }
+    }
+  }
+
+  if (!text.trim()) throw new Error("DeepSeek ответил без текста");
+  return text.trim();
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   setNoStore(res);
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -218,6 +315,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const provider = String(req.body?.provider || "").trim() as ChatProvider;
   const model = String(req.body?.model || "").trim();
   let messages = cleanMessages(req.body?.messages);
+  const chatId = String(req.body?.chat_id || "").trim();
   const temperature = Math.min(1.5, Math.max(0, Number(req.body?.temperature ?? 0.3)));
   const maxOutputTokens = Math.min(12000, Math.max(256, Number(req.body?.max_output_tokens ?? 3000)));
 
@@ -233,14 +331,55 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    messages = await appendFilesToLastUserMessage(messages, req.body?.files);
+    const originalLastUser = [...messages].reverse().find((m) => m.role === "user")?.content || "";
+    const chat = await getOrCreateChat(auth, chatId, provider, originalLastUser);
+    const withFiles = await appendAttachmentsToLastUserMessage(messages, req.body?.files, req.body?.platform_context);
+    messages = withFiles.messages;
+    const savedLastUser = [...messages].reverse().find((m) => m.role === "user")?.content || originalLastUser;
+    const { data: userMessage, error: userMessageError } = await auth.supabaseAdmin
+      .from("specialist_ai_chat_messages")
+      .insert({
+        chat_id: chat.id,
+        specialist_user_id: auth.user.id,
+        role: "user",
+        content: savedLastUser,
+        metadata: {
+          files: withFiles.files,
+          platform_context_chars: withFiles.platformContextChars,
+          platform_context_truncated: withFiles.platformContextTruncated,
+        },
+      })
+      .select("id,chat_id,role,content,provider,model,task_id,status,duration_ms,metadata,created_at,updated_at")
+      .single();
+    if (userMessageError) throw new Error(userMessageError.message);
+    await updateChatSummary(auth, { chatId: chat.id, provider, model, lastUser: savedLastUser });
+    const baseTranscript = [...transcriptFromChat(chat), transcriptUserMessage(userMessage)];
+
     if (provider === "openai") {
+      const started = Date.now();
       const result = await callOpenAI({ model, messages, temperature, maxOutputTokens });
       if ("responseId" in result) {
+        const { data: assistantMessage, error: assistantMessageError } = await auth.supabaseAdmin
+          .from("specialist_ai_chat_messages")
+          .insert({
+            chat_id: chat.id,
+            specialist_user_id: auth.user.id,
+            role: "assistant",
+            content: `OpenAI обрабатывает задачу. Статус: ${result.status || "queued"}.`,
+            provider,
+            model,
+            status: result.status || "queued",
+          })
+          .select("id,chat_id,role,content,provider,model,task_id,status,duration_ms,metadata,created_at,updated_at")
+          .single();
+        if (assistantMessageError) throw new Error(assistantMessageError.message);
+
         const { data: task, error } = await auth.supabaseAdmin
           .from("specialist_ai_chat_tasks")
           .insert({
             specialist_user_id: auth.user.id,
+            chat_id: chat.id,
+            assistant_message_id: assistantMessage.id,
             provider,
             model,
             response_id: result.responseId,
@@ -251,7 +390,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             started_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
-          .select("id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at")
+          .select(TASK_SELECT)
           .single();
         if (error) {
           return res.status(500).json({
@@ -261,12 +400,178 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               : error.message,
           });
         }
-        return res.status(200).json({ ok: true, provider, model, ...result, task });
+        await auth.supabaseAdmin
+          .from("specialist_ai_chat_messages")
+          .update({ task_id: task.id, updated_at: new Date().toISOString() })
+          .eq("id", assistantMessage.id)
+          .eq("specialist_user_id", auth.user.id);
+        const savedAssistantMessage = { ...assistantMessage, task_id: task.id };
+        await saveChatTranscript(auth, chat.id, [...baseTranscript, transcriptAssistantMessage(savedAssistantMessage, task.id)]);
+        return res.status(200).json({ ok: true, provider, model, chat, userMessage, assistantMessage: { ...assistantMessage, task_id: task.id }, ...result, task });
       }
-      return res.status(200).json({ ok: true, provider, model, ...result });
+      const durationMs = Date.now() - started;
+      const { data: assistantMessage, error: assistantMessageError } = await auth.supabaseAdmin
+        .from("specialist_ai_chat_messages")
+        .insert({
+          chat_id: chat.id,
+          specialist_user_id: auth.user.id,
+          role: "assistant",
+          content: result.text || "",
+          provider,
+          model,
+          status: "completed",
+          duration_ms: durationMs,
+        })
+        .select("id,chat_id,role,content,provider,model,task_id,status,duration_ms,metadata,created_at,updated_at")
+        .single();
+      if (assistantMessageError) throw new Error(assistantMessageError.message);
+      const { data: task, error: taskError } = await auth.supabaseAdmin
+        .from("specialist_ai_chat_tasks")
+        .insert({
+          specialist_user_id: auth.user.id,
+          chat_id: chat.id,
+          assistant_message_id: assistantMessage.id,
+          provider,
+          model,
+          status: "completed",
+          request_messages: messages,
+          result_text: result.text || "",
+          temperature,
+          max_output_tokens: maxOutputTokens,
+          started_at: new Date(started).toISOString(),
+          finished_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select(TASK_SELECT)
+        .single();
+      if (taskError) throw new Error(taskError.message);
+      await auth.supabaseAdmin
+        .from("specialist_ai_chat_messages")
+        .update({ task_id: task.id, updated_at: new Date().toISOString() })
+        .eq("id", assistantMessage.id)
+        .eq("specialist_user_id", auth.user.id);
+      const savedAssistantMessage = { ...assistantMessage, task_id: task.id };
+      await saveChatTranscript(auth, chat.id, [...baseTranscript, transcriptAssistantMessage(savedAssistantMessage, task.id)]);
+      return res.status(200).json({ ok: true, provider, model, chat, userMessage, assistantMessage: { ...assistantMessage, task_id: task.id }, task, ...result });
     }
+    if (req.body?.stream === true) {
+      const started = Date.now();
+      const controller = new AbortController();
+      req.on("close", () => controller.abort());
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("X-Accel-Buffering", "no");
+      writeStreamEvent(res, { type: "meta", ok: true, provider, model, chat, userMessage });
+
+      try {
+        const text = await callDeepseekStream({
+          model,
+          messages,
+          temperature,
+          maxOutputTokens,
+          signal: controller.signal,
+          onDelta: (delta) => writeStreamEvent(res, { type: "delta", text: delta }),
+        });
+        const durationMs = Date.now() - started;
+        const { data: assistantMessage, error: assistantMessageError } = await auth.supabaseAdmin
+          .from("specialist_ai_chat_messages")
+          .insert({
+            chat_id: chat.id,
+            specialist_user_id: auth.user.id,
+            role: "assistant",
+            content: text,
+            provider,
+            model,
+            status: "completed",
+            duration_ms: durationMs,
+          })
+          .select("id,chat_id,role,content,provider,model,task_id,status,duration_ms,metadata,created_at,updated_at")
+          .single();
+        if (assistantMessageError) throw new Error(assistantMessageError.message);
+        const { data: task, error: taskError } = await auth.supabaseAdmin
+          .from("specialist_ai_chat_tasks")
+          .insert({
+            specialist_user_id: auth.user.id,
+            chat_id: chat.id,
+            assistant_message_id: assistantMessage.id,
+            provider,
+            model,
+            status: "completed",
+            request_messages: messages,
+            result_text: text,
+            temperature,
+            max_output_tokens: maxOutputTokens,
+            started_at: new Date(started).toISOString(),
+            finished_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .select(TASK_SELECT)
+          .single();
+        if (taskError) throw new Error(taskError.message);
+        await auth.supabaseAdmin
+          .from("specialist_ai_chat_messages")
+          .update({ task_id: task.id, updated_at: new Date().toISOString() })
+          .eq("id", assistantMessage.id)
+          .eq("specialist_user_id", auth.user.id);
+        const savedAssistantMessage = { ...assistantMessage, task_id: task.id };
+        await saveChatTranscript(auth, chat.id, [...baseTranscript, transcriptAssistantMessage(savedAssistantMessage, task.id)]);
+        writeStreamEvent(res, { type: "done", ok: true, text, chat, assistantMessage: { ...assistantMessage, task_id: task.id }, task });
+      } catch (e: any) {
+        const errorText = e?.name === "AbortError" ? "Запрос остановлен" : e?.message || "DeepSeek stream failed";
+        writeStreamEvent(res, { type: "error", ok: false, error: errorText });
+      } finally {
+        res.end();
+      }
+      return;
+    }
+
+    const started = Date.now();
     const text = await callDeepseek({ model, messages, temperature, maxOutputTokens });
-    return res.status(200).json({ ok: true, provider, model, text });
+    const durationMs = Date.now() - started;
+    const { data: assistantMessage, error: assistantMessageError } = await auth.supabaseAdmin
+      .from("specialist_ai_chat_messages")
+      .insert({
+        chat_id: chat.id,
+        specialist_user_id: auth.user.id,
+        role: "assistant",
+        content: text,
+        provider,
+        model,
+        status: "completed",
+        duration_ms: durationMs,
+      })
+      .select("id,chat_id,role,content,provider,model,task_id,status,duration_ms,metadata,created_at,updated_at")
+      .single();
+    if (assistantMessageError) throw new Error(assistantMessageError.message);
+    const { data: task, error: taskError } = await auth.supabaseAdmin
+      .from("specialist_ai_chat_tasks")
+      .insert({
+        specialist_user_id: auth.user.id,
+        chat_id: chat.id,
+        assistant_message_id: assistantMessage.id,
+        provider,
+        model,
+        status: "completed",
+        request_messages: messages,
+        result_text: text,
+        temperature,
+        max_output_tokens: maxOutputTokens,
+        started_at: new Date(started).toISOString(),
+        finished_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select(TASK_SELECT)
+      .single();
+    if (taskError) throw new Error(taskError.message);
+    await auth.supabaseAdmin
+      .from("specialist_ai_chat_messages")
+      .update({ task_id: task.id, updated_at: new Date().toISOString() })
+      .eq("id", assistantMessage.id)
+      .eq("specialist_user_id", auth.user.id);
+    const savedAssistantMessage = { ...assistantMessage, task_id: task.id };
+    await saveChatTranscript(auth, chat.id, [...baseTranscript, transcriptAssistantMessage(savedAssistantMessage, task.id)]);
+    return res.status(200).json({ ok: true, provider, model, chat, userMessage, assistantMessage: { ...assistantMessage, task_id: task.id }, task, text });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || "AI request failed" });
   }

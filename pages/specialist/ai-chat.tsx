@@ -15,9 +15,32 @@ type ChatMessage = {
   pending?: boolean;
   taskId?: string;
 };
+type ChatSummary = {
+  id: string;
+  provider: Provider;
+  title: string;
+  last_provider?: Provider | null;
+  last_model?: string | null;
+  last_user_message?: string;
+  created_at: string;
+  updated_at: string;
+};
+type StoredChatMessage = {
+  id: string;
+  chat_id: string;
+  role: "user" | "assistant";
+  content: string;
+  provider?: Provider | null;
+  model?: string | null;
+  task_id?: string | null;
+  status?: string;
+  duration_ms?: number | null;
+};
 
 type AiTask = {
   id: string;
+  chat_id?: string | null;
+  assistant_message_id?: string | null;
   provider: Provider;
   model: string;
   response_id?: string | null;
@@ -36,6 +59,33 @@ type PendingFile = {
   size: number;
   type: string;
   data: string;
+  preview?: string;
+  textChars?: number;
+  truncated?: boolean;
+  previewLoading?: boolean;
+  previewError?: string;
+};
+type ChatProviderFilter = Provider | "all";
+type ChatContextAttempt = {
+  id: string;
+  test_slug: string;
+  test_title: string;
+  created_at: string;
+  summary: string;
+  context_text: string;
+};
+type ChatContextParticipant = {
+  user_id: string;
+  display_name: string;
+  attempts: ChatContextAttempt[];
+  context_text: string;
+};
+type ChatContextRoom = {
+  id: string;
+  name: string;
+  is_active: boolean;
+  participants: ChatContextParticipant[];
+  context_text: string;
 };
 
 const OPENAI_MODELS = [
@@ -86,6 +136,19 @@ export default function SpecialistAiChatPage() {
   const [maxOutputTokens, setMaxOutputTokens] = useState(3000);
   const [draft, setDraft] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [chatSearch, setChatSearch] = useState("");
+  const [chatProviderFilter, setChatProviderFilter] = useState<ChatProviderFilter>("all");
+  const [chatModelFilter, setChatModelFilter] = useState("all");
+  const [editingChatId, setEditingChatId] = useState("");
+  const [editingChatTitle, setEditingChatTitle] = useState("");
+  const [activeChatId, setActiveChatId] = useState("");
+  const [chatsLoading, setChatsLoading] = useState(false);
+  const [contextRooms, setContextRooms] = useState<ChatContextRoom[]>([]);
+  const [contextLoading, setContextLoading] = useState(false);
+  const [selectedRoomId, setSelectedRoomId] = useState("");
+  const [selectedParticipantId, setSelectedParticipantId] = useState("");
+  const [selectedAttemptId, setSelectedAttemptId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [tasks, setTasks] = useState<AiTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -97,6 +160,33 @@ export default function SpecialistAiChatPage() {
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const modelOptions = useMemo(() => (provider === "openai" ? OPENAI_MODELS : DEEPSEEK_MODELS), [provider]);
+  const activeChat = useMemo(() => chats.find((c) => c.id === activeChatId) || null, [chats, activeChatId]);
+  const lastModelRequest = useMemo(() => {
+    const last = [...messages].reverse().find((m) => m.role === "user");
+    return last?.content || activeChat?.last_user_message || "";
+  }, [messages, activeChat?.last_user_message]);
+  const chatModelOptions = useMemo(() => {
+    return Array.from(new Set(chats.map((c) => c.last_model).filter((x): x is string => Boolean(x)))).sort();
+  }, [chats]);
+  const filteredChats = useMemo(() => {
+    const q = chatSearch.trim().toLowerCase();
+    return chats.filter((chat) => {
+      if (chatProviderFilter !== "all" && chat.provider !== chatProviderFilter) return false;
+      if (chatModelFilter !== "all" && chat.last_model !== chatModelFilter) return false;
+      if (!q) return true;
+      return `${chat.title || ""} ${chat.last_user_message || ""} ${chat.last_model || ""}`.toLowerCase().includes(q);
+    });
+  }, [chats, chatSearch, chatProviderFilter, chatModelFilter]);
+  const selectedRoom = useMemo(() => contextRooms.find((room) => room.id === selectedRoomId) || null, [contextRooms, selectedRoomId]);
+  const selectedParticipant = useMemo(
+    () => selectedRoom?.participants.find((participant) => participant.user_id === selectedParticipantId) || null,
+    [selectedRoom, selectedParticipantId]
+  );
+  const selectedAttempt = useMemo(
+    () => selectedParticipant?.attempts.find((attempt) => attempt.id === selectedAttemptId) || null,
+    [selectedParticipant, selectedAttemptId]
+  );
+  const platformContext = selectedAttempt?.context_text || selectedParticipant?.context_text || selectedRoom?.context_text || "";
 
   useEffect(() => {
     return () => {
@@ -107,11 +197,24 @@ export default function SpecialistAiChatPage() {
 
   useEffect(() => {
     if (!session) return;
+    bootstrapChats();
+    loadContext();
     loadTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token]);
 
-  const activeTask = tasks.find((t) => t.provider === "openai" && (t.status === "queued" || t.status === "in_progress")) || null;
+  useEffect(() => {
+    setSelectedParticipantId("");
+    setSelectedAttemptId("");
+  }, [selectedRoomId]);
+
+  useEffect(() => {
+    setSelectedAttemptId("");
+  }, [selectedParticipantId]);
+
+  const activeTask =
+    tasks.find((t) => t.provider === "openai" && (t.status === "queued" || t.status === "in_progress") && (!activeChatId || t.chat_id === activeChatId)) ||
+    null;
 
   useEffect(() => {
     if (!session || !activeTask || pollTimerRef.current) return;
@@ -124,6 +227,133 @@ export default function SpecialistAiChatPage() {
     pollOpenAI(activeTask.id, activeTask.id, started, ticker);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token, activeTask?.id]);
+
+  const mapStoredMessage = (m: StoredChatMessage): ChatMessage => ({
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    provider: m.provider || undefined,
+    model: m.model || undefined,
+    taskId: m.task_id || undefined,
+    pending: m.status === "queued" || m.status === "in_progress",
+    durationMs: m.duration_ms || undefined,
+  });
+
+  const bootstrapChats = async () => {
+    const loaded = await loadChats();
+    if (loaded.length && !activeChatId) {
+      await loadChat(loaded[0].id);
+    }
+  };
+
+  const loadChats = async (providerOverride?: ChatProviderFilter): Promise<ChatSummary[]> => {
+    if (!session) return [];
+    const providerForLoad = providerOverride || "all";
+    setChatsLoading(true);
+    try {
+      const r = await fetch(`/api/specialist/ai-chat-chats?provider=${encodeURIComponent(providerForLoad)}`, {
+        headers: { authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить чаты");
+      const loaded = j.chats || [];
+      setChats(loaded);
+      return loaded;
+    } catch (e: any) {
+      setErr(e?.message || "Ошибка загрузки чатов");
+      return [];
+    } finally {
+      setChatsLoading(false);
+    }
+  };
+
+  const loadContext = async () => {
+    if (!session) return;
+    setContextLoading(true);
+    try {
+      const r = await fetch("/api/specialist/ai-chat-context", {
+        headers: { authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось загрузить контекст");
+      setContextRooms(Array.isArray(j.rooms) ? j.rooms : []);
+    } catch (e: any) {
+      setErr(e?.message || "Ошибка загрузки контекста");
+    } finally {
+      setContextLoading(false);
+    }
+  };
+
+  const loadChat = async (chatId: string) => {
+    if (!session || !chatId) return;
+    setErr("");
+    const r = await fetch(`/api/specialist/ai-chat-chat?chat_id=${encodeURIComponent(chatId)}`, {
+      headers: { authorization: `Bearer ${session.access_token}` },
+      cache: "no-store",
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j?.ok) {
+      setErr(j?.error || "Не удалось загрузить чат");
+      return;
+    }
+    setActiveChatId(chatId);
+    setMessages((j.messages || []).map(mapStoredMessage));
+  };
+
+  const newChat = () => {
+    setActiveChatId("");
+    setMessages([]);
+    setDraft("");
+    setPendingFiles([]);
+    setErr("");
+  };
+
+  const startRenameChat = (chat: ChatSummary) => {
+    setEditingChatId(chat.id);
+    setEditingChatTitle(chat.title || "Новый чат");
+  };
+
+  const saveRenameChat = async () => {
+    if (!session || !editingChatId) return;
+    const title = editingChatTitle.trim();
+    if (!title) return;
+    try {
+      const r = await fetch("/api/specialist/ai-chat-chats", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ chat_id: editingChatId, title }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось переименовать чат");
+      setChats((prev) => prev.map((chat) => (chat.id === editingChatId ? j.chat : chat)));
+      setEditingChatId("");
+      setEditingChatTitle("");
+    } catch (e: any) {
+      setErr(e?.message || "Ошибка переименования чата");
+    }
+  };
+
+  const deleteChat = async (chat: ChatSummary) => {
+    if (!session || busy) return;
+    if (!window.confirm(`Удалить чат "${chat.title || "Новый чат"}"?`)) return;
+    try {
+      const r = await fetch(`/api/specialist/ai-chat-chats?chat_id=${encodeURIComponent(chat.id)}`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${session.access_token}` },
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось удалить чат");
+      setChats((prev) => prev.filter((item) => item.id !== chat.id));
+      if (activeChatId === chat.id) newChat();
+    } catch (e: any) {
+      setErr(e?.message || "Ошибка удаления чата");
+    }
+  };
 
   const loadTasks = async () => {
     if (!session) return;
@@ -144,6 +374,10 @@ export default function SpecialistAiChatPage() {
   };
 
   const ensureTaskMessage = (task: AiTask) => {
+    if (task.chat_id && task.chat_id !== activeChatId) {
+      loadChat(task.chat_id);
+      return;
+    }
     setMessages((prev) => {
       if (prev.some((m) => m.taskId === task.id)) return prev;
       const requestMessages = Array.isArray(task.request_messages) ? task.request_messages : [];
@@ -159,8 +393,8 @@ export default function SpecialistAiChatPage() {
             ? task.result_text || ""
             : task.status === "failed"
               ? task.error_text || "Задача завершилась ошибкой"
-              : `OpenAI обрабатывает задачу. Статус: ${task.status}.`,
-        provider: "openai",
+              : `${task.provider === "openai" ? "OpenAI" : "DeepSeek"} обрабатывает задачу. Статус: ${task.status}.`,
+        provider: task.provider,
         model: task.model,
         pending: task.status === "queued" || task.status === "in_progress",
         durationMs: task.finished_at ? Math.max(0, Date.parse(task.finished_at) - Date.parse(task.started_at)) : undefined,
@@ -169,9 +403,67 @@ export default function SpecialistAiChatPage() {
     });
   };
 
+  const retryTask = (task: AiTask) => {
+    const lastUser = [...(task.request_messages || [])].reverse().find((m) => m.role === "user")?.content || "";
+    setProvider(task.provider);
+    setModel(task.model);
+    setDraft(lastUser);
+    if (task.chat_id) loadChat(task.chat_id);
+  };
+
+  const copyTaskError = async (task: AiTask) => {
+    const text = task.error_text || task.result_text || "";
+    if (!text) return;
+    try {
+      await navigator.clipboard?.writeText(text);
+    } catch {}
+  };
+
   const changeProvider = (next: Provider) => {
     setProvider(next);
     setModel(next === "openai" ? "gpt-5.4-mini" : "deepseek-v4-pro");
+    setActiveChatId("");
+    setMessages([]);
+    setPendingFiles([]);
+    loadChats();
+  };
+
+  const previewFiles = async (files: PendingFile[]) => {
+    if (!session || !files.length) return;
+    try {
+      const r = await fetch("/api/specialist/ai-chat-file-preview", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          files: files.map((f) => ({ id: f.id, name: f.name, type: f.type, size: f.size, data: f.data })),
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось извлечь текст файлов");
+      const byId = new Map<string, any>((j.previews || []).map((p: any) => [String(p.id || ""), p]));
+      setPendingFiles((prev) =>
+        prev.map((file) => {
+          const preview = byId.get(file.id);
+          if (!preview) return file;
+          return {
+            ...file,
+            previewLoading: false,
+            preview: preview.preview || "",
+            textChars: preview.textChars,
+            truncated: Boolean(preview.truncated),
+            previewError: preview.error || "",
+          };
+        })
+      );
+    } catch (e: any) {
+      const message = e?.message || "Ошибка предпросмотра файла";
+      setPendingFiles((prev) =>
+        prev.map((file) => (files.some((x) => x.id === file.id) ? { ...file, previewLoading: false, previewError: message } : file))
+      );
+    }
   };
 
   const addFiles = async (fileList: FileList | null) => {
@@ -182,8 +474,8 @@ export default function SpecialistAiChatPage() {
       const next: PendingFile[] = [];
       for (const file of files) {
         const lower = file.name.toLowerCase();
-        if (!/\.(docx|xlsx|xls|csv|txt|md)$/.test(lower)) {
-          throw new Error(`Файл ${file.name}: поддерживаются .docx, .xlsx, .xls, .csv, .txt, .md`);
+        if (!/\.(docx|xlsx|xls|csv|txt|md|pdf)$/.test(lower)) {
+          throw new Error(`Файл ${file.name}: поддерживаются .docx, .xlsx, .xls, .csv, .txt, .md, .pdf`);
         }
         if (file.size > 10 * 1024 * 1024) throw new Error(`Файл ${file.name}: максимум 10 МБ`);
         next.push({
@@ -192,9 +484,11 @@ export default function SpecialistAiChatPage() {
           size: file.size,
           type: file.type || "",
           data: await readFileAsDataUrl(file),
+          previewLoading: true,
         });
       }
       setPendingFiles((prev) => [...prev, ...next].slice(0, 4));
+      previewFiles(next);
     } catch (e: any) {
       setErr(e?.message || "Не удалось добавить файл");
     }
@@ -206,7 +500,15 @@ export default function SpecialistAiChatPage() {
     if (!text) return;
 
     const nextMessages: ChatMessage[] = [...messages, { id: uid(), role: "user", content: text }];
-    setMessages(nextMessages);
+    const streamPendingId = provider === "deepseek" ? uid() : "";
+    setMessages(
+      streamPendingId
+        ? [
+            ...nextMessages,
+            { id: streamPendingId, role: "assistant", content: "", provider, model, pending: true },
+          ]
+        : nextMessages
+    );
     setDraft("");
     setErr("");
     setBusy(true);
@@ -228,16 +530,92 @@ export default function SpecialistAiChatPage() {
         body: JSON.stringify({
           provider,
           model,
+          chat_id: activeChatId || undefined,
           temperature,
           max_output_tokens: maxOutputTokens,
+          stream: provider === "deepseek",
+          platform_context: platformContext,
           messages: nextMessages.map((m) => ({ role: m.role, content: m.content })),
-          files: pendingFiles.map((f) => ({ name: f.name, type: f.type, size: f.size, data: f.data })),
+          files: pendingFiles.map((f) => ({ id: f.id, name: f.name, type: f.type, size: f.size, data: f.data })),
         }),
         signal: controller.signal,
       });
+      if (provider === "deepseek" && r.body && (r.headers.get("content-type") || "").includes("application/x-ndjson")) {
+        if (!r.ok) throw new Error("Не удалось получить потоковый ответ");
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let streamText = "";
+        let streamDone = false;
+
+        const handleEvent = (event: any) => {
+          if (event?.type === "meta") {
+            if (event.chat?.id) {
+              setActiveChatId(event.chat.id);
+              setChats((prev) => [event.chat, ...prev.filter((c) => c.id !== event.chat.id)]);
+            }
+            return;
+          }
+          if (event?.type === "delta") {
+            const delta = String(event.text || "");
+            streamText += delta;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === streamPendingId
+                  ? { ...m, content: streamText || "DeepSeek отвечает...", pending: true, durationMs: Date.now() - started }
+                  : m
+              )
+            );
+            return;
+          }
+          if (event?.type === "done") {
+            streamDone = true;
+            setPendingFiles([]);
+            if (event.chat?.id) setActiveChatId(event.chat.id);
+            if (event.task) setTasks((prev) => [event.task, ...prev.filter((t) => t.id !== event.task.id)]);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === streamPendingId
+                  ? {
+                      ...m,
+                      content: String(event.text || streamText || ""),
+                      pending: false,
+                      durationMs: Date.now() - started,
+                      taskId: event.task?.id,
+                    }
+                  : m
+              )
+            );
+            return;
+          }
+          if (event?.type === "error") {
+            throw new Error(event.error || "Ошибка потокового ответа");
+          }
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            handleEvent(JSON.parse(line));
+          }
+        }
+        if (buffer.trim()) handleEvent(JSON.parse(buffer));
+        if (!streamDone) throw new Error("Поток завершился без финального ответа");
+        await loadChats();
+        return;
+      }
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j?.ok) throw new Error(j?.error || "Не удалось получить ответ");
       setPendingFiles([]);
+      if (j.chat?.id) {
+        setActiveChatId(j.chat.id);
+        setChats((prev) => [j.chat, ...prev.filter((c) => c.id !== j.chat.id)]);
+      }
       if (provider === "openai" && j.responseId) {
         backgroundStarted = true;
         const task = j.task as AiTask | undefined;
@@ -256,13 +634,28 @@ export default function SpecialistAiChatPage() {
           },
         ]);
         pollOpenAI(task?.id || String(j.responseId), pendingId, started, ticker);
+        await loadChats();
         return;
       }
+      if (j.task) setTasks((prev) => [j.task, ...prev.filter((t) => t.id !== j.task.id)]);
+      if (j.chat?.id) {
+        await loadChat(j.chat.id);
+        await loadChats();
+        return;
+      }
+      await loadChats();
       setMessages((prev) => [
         ...prev,
         { id: uid(), role: "assistant", content: String(j.text || ""), provider, model, durationMs: Date.now() - started },
       ]);
     } catch (e: any) {
+      if (streamPendingId) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === streamPendingId ? { ...m, pending: false, content: e?.name === "AbortError" ? "Запрос остановлен" : e?.message || "Ошибка" } : m
+          )
+        );
+      }
       if (e?.name !== "AbortError") setErr(e?.message || "Ошибка");
     } finally {
       if (!backgroundStarted) {
@@ -370,9 +763,99 @@ export default function SpecialistAiChatPage() {
         </Link>
       </div>
 
+      <div className="grid gap-4 mb-4 xl:grid-cols-[minmax(360px,1fr)_minmax(360px,1fr)]">
+        <div className="card">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold">Сохранённые чаты</div>
+            <div className="flex gap-2">
+              <button type="button" onClick={newChat} disabled={busy} className="btn btn-secondary btn-sm disabled:opacity-50">
+                Новый
+              </button>
+              <button type="button" onClick={() => loadChats()} disabled={chatsLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
+                {chatsLoading ? "..." : "Обновить"}
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-[minmax(160px,1fr)_130px]">
+            <input
+              value={chatSearch}
+              onChange={(e) => setChatSearch(e.target.value)}
+              className="input py-2 text-xs"
+              placeholder="Поиск"
+            />
+            <select value={chatProviderFilter} onChange={(e) => setChatProviderFilter(e.target.value as ChatProviderFilter)} className="input py-2 text-xs">
+              <option value="all">Все</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="openai">OpenAI</option>
+            </select>
+          </div>
+          <select value={chatModelFilter} onChange={(e) => setChatModelFilter(e.target.value)} className="input mt-2 py-2 text-xs">
+            <option value="all">Все модели</option>
+            {chatModelOptions.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+          <div className="mt-3 grid max-h-44 gap-2 overflow-y-auto pr-1">
+            {filteredChats.length === 0 ? (
+              <div className="text-xs text-zinc-500">Сохранённых чатов пока нет.</div>
+            ) : (
+              filteredChats.map((chat) => (
+                <div
+                  key={chat.id}
+                  className={`min-w-0 rounded-lg border p-2 text-xs ${
+                    chat.id === activeChatId ? "border-emerald-300 bg-emerald-50" : "border-zinc-200 bg-white"
+                  }`}
+                >
+                  {editingChatId === chat.id ? (
+                    <div className="grid gap-2">
+                      <input value={editingChatTitle} onChange={(e) => setEditingChatTitle(e.target.value)} className="input py-1.5 text-xs" autoFocus />
+                      <div className="flex gap-2">
+                        <button type="button" onClick={saveRenameChat} className="btn btn-primary btn-sm">
+                          Сохранить
+                        </button>
+                        <button type="button" onClick={() => setEditingChatId("")} className="btn btn-secondary btn-sm">
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => loadChat(chat.id)} className="block w-full min-w-0 text-left">
+                        <div className="truncate font-medium text-zinc-800">{chat.title || "Новый чат"}</div>
+                        <div className="mt-1 truncate text-zinc-500">
+                          {chat.last_provider ? `${chat.last_provider === "openai" ? "OpenAI" : "DeepSeek"} · ${chat.last_model || ""}` : "Без запросов"}
+                        </div>
+                        <div className="mt-1 max-h-8 overflow-hidden break-words text-zinc-500">{chat.last_user_message || "Пустой чат"}</div>
+                      </button>
+                      <div className="mt-2 flex gap-2">
+                        <button type="button" onClick={() => startRenameChat(chat)} className="btn btn-secondary btn-sm">
+                          Переименовать
+                        </button>
+                        <button type="button" onClick={() => deleteChat(chat)} disabled={busy} className="btn btn-secondary btn-sm text-red-700 disabled:opacity-50">
+                          Удалить
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="text-sm font-semibold">Последний запрос к модели</div>
+          <div className="mt-3 max-h-44 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs leading-relaxed text-zinc-700">
+            {lastModelRequest || "Пока нет запроса."}
+          </div>
+        </div>
+      </div>
+
       <div className="card mb-4">
         <div className="flex items-center justify-between gap-2">
-          <div className="text-sm font-semibold">OpenAI-задачи</div>
+          <div className="text-sm font-semibold">AI-задачи</div>
           <button type="button" onClick={loadTasks} disabled={tasksLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
             {tasksLoading ? "..." : "Обновить"}
           </button>
@@ -387,20 +870,35 @@ export default function SpecialistAiChatPage() {
                 ? Math.max(0, Date.parse(task.finished_at) - Date.parse(task.started_at))
                 : Math.max(0, Date.now() - Date.parse(task.started_at));
               return (
-                <button
+                <div
                   key={task.id}
-                  type="button"
-                  onClick={() => ensureTaskMessage(task)}
-                  className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white p-2 text-left text-xs hover:bg-zinc-50"
+                  className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white p-2 text-left text-xs"
                 >
-                  <div className="truncate font-medium text-zinc-800">{task.model}</div>
-                  <div className={pending ? "text-amber-700" : task.status === "completed" ? "text-emerald-700" : "text-red-700"}>
-                    {task.status} · {formatDuration(duration)}
+                  <button type="button" onClick={() => ensureTaskMessage(task)} className="block w-full min-w-0 text-left">
+                    <div className="truncate font-medium text-zinc-800">
+                      {task.provider === "openai" ? "OpenAI" : "DeepSeek"} · {task.model}
+                    </div>
+                    <div className={pending ? "text-amber-700" : task.status === "completed" ? "text-emerald-700" : "text-red-700"}>
+                      {task.status} · {formatDuration(duration)}
+                    </div>
+                    <div className="mt-1 max-h-10 min-w-0 overflow-hidden break-words text-zinc-500">
+                      {task.result_text || task.error_text || task.request_messages?.find((m) => m.role === "user")?.content || "Задача"}
+                    </div>
+                  </button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => ensureTaskMessage(task)} className="btn btn-secondary btn-sm">
+                      Открыть
+                    </button>
+                    <button type="button" onClick={() => retryTask(task)} className="btn btn-secondary btn-sm">
+                      Повторить
+                    </button>
+                    {task.error_text ? (
+                      <button type="button" onClick={() => copyTaskError(task)} className="btn btn-secondary btn-sm">
+                        Копировать ошибку
+                      </button>
+                    ) : null}
                   </div>
-                  <div className="mt-1 max-h-10 min-w-0 overflow-hidden break-words text-zinc-500">
-                    {task.result_text || task.error_text || task.request_messages?.find((m) => m.role === "user")?.content || "Задача"}
-                  </div>
-                </button>
+                </div>
               );
             })
           )}
@@ -463,15 +961,64 @@ export default function SpecialistAiChatPage() {
 
           <button
             type="button"
-            onClick={() => {
-              setMessages([]);
-              setErr("");
-            }}
+            onClick={newChat}
             disabled={busy || messages.length === 0}
             className="btn btn-secondary btn-sm mt-4 w-full disabled:opacity-50"
           >
-            Очистить чат
+            Начать новый чат
           </button>
+
+          <div className="mt-5 border-t border-zinc-200 pt-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold">Контекст платформы</div>
+              <button type="button" onClick={loadContext} disabled={contextLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
+                {contextLoading ? "..." : "Обновить"}
+              </button>
+            </div>
+            <label className="mt-3 block text-xs font-medium text-zinc-700">Комната</label>
+            <select value={selectedRoomId} onChange={(e) => setSelectedRoomId(e.target.value)} className="input mt-1 text-sm">
+              <option value="">Без контекста</option>
+              {contextRooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                </option>
+              ))}
+            </select>
+
+            {selectedRoom ? (
+              <>
+                <label className="mt-3 block text-xs font-medium text-zinc-700">Участник</label>
+                <select value={selectedParticipantId} onChange={(e) => setSelectedParticipantId(e.target.value)} className="input mt-1 text-sm">
+                  <option value="">Вся комната</option>
+                  {selectedRoom.participants.map((participant) => (
+                    <option key={participant.user_id} value={participant.user_id}>
+                      {participant.display_name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : null}
+
+            {selectedParticipant ? (
+              <>
+                <label className="mt-3 block text-xs font-medium text-zinc-700">Попытка</label>
+                <select value={selectedAttemptId} onChange={(e) => setSelectedAttemptId(e.target.value)} className="input mt-1 text-sm">
+                  <option value="">Все попытки участника</option>
+                  {selectedParticipant.attempts.map((attempt) => (
+                    <option key={attempt.id} value={attempt.id}>
+                      {attempt.test_title} · {new Date(attempt.created_at).toLocaleDateString("ru-RU")}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : null}
+
+            {platformContext ? (
+              <div className="mt-3 max-h-36 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-2 text-xs leading-relaxed text-zinc-600">
+                {platformContext}
+              </div>
+            ) : null}
+          </div>
 
           <div className="mt-5 border-t border-zinc-200 pt-4">
             <div className="text-sm font-semibold">Файлы для анализа</div>
@@ -479,7 +1026,7 @@ export default function SpecialistAiChatPage() {
               Добавить файл
               <input
                 type="file"
-                accept=".docx,.xlsx,.xls,.csv,.txt,.md"
+                accept=".docx,.xlsx,.xls,.csv,.txt,.md,.pdf"
                 multiple
                 className="hidden"
                 disabled={busy || !!activeTask}
@@ -493,19 +1040,32 @@ export default function SpecialistAiChatPage() {
             {pendingFiles.length ? (
               <div className="mt-3 grid gap-2">
                 {pendingFiles.map((file) => (
-                  <div key={file.id} className="flex items-start justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2 text-xs">
-                    <div className="min-w-0">
-                      <div className="truncate font-medium text-zinc-800">{file.name}</div>
-                      <div className="text-zinc-500">{formatBytes(file.size)}</div>
+                  <div key={file.id} className="rounded-lg border border-zinc-200 bg-zinc-50 p-2 text-xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-zinc-800">{file.name}</div>
+                        <div className="text-zinc-500">
+                          {formatBytes(file.size)}
+                          {file.textChars ? ` · текст: ${file.textChars} симв.` : ""}
+                          {file.truncated ? " · обрезан" : ""}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPendingFiles((prev) => prev.filter((x) => x.id !== file.id))}
+                        disabled={busy}
+                        className="text-zinc-500 hover:text-red-600 disabled:opacity-50"
+                      >
+                        Убрать
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setPendingFiles((prev) => prev.filter((x) => x.id !== file.id))}
-                      disabled={busy}
-                      className="text-zinc-500 hover:text-red-600 disabled:opacity-50"
-                    >
-                      Убрать
-                    </button>
+                    {file.previewLoading ? <div className="mt-2 text-zinc-500">Извлекаю текст...</div> : null}
+                    {file.previewError ? <div className="mt-2 text-red-600">{file.previewError}</div> : null}
+                    {file.preview ? (
+                      <div className="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap rounded border border-zinc-200 bg-white p-2 leading-relaxed text-zinc-600">
+                        {file.preview}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>

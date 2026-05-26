@@ -13,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { data, error } = await auth.supabaseAdmin
     .from("specialist_ai_chat_tasks")
-    .select("id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at")
+    .select("id,chat_id,assistant_message_id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at")
     .eq("specialist_user_id", auth.user.id)
     .order("created_at", { ascending: false })
     .limit(20);
