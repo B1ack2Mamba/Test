@@ -151,7 +151,6 @@ export default function SpecialistAiChatPage() {
   const [selectedAttemptId, setSelectedAttemptId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [tasks, setTasks] = useState<AiTask[]>([]);
-  const [tasksLoading, setTasksLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -212,9 +211,9 @@ export default function SpecialistAiChatPage() {
     setSelectedAttemptId("");
   }, [selectedParticipantId]);
 
-  const activeTask =
-    tasks.find((t) => t.provider === "openai" && (t.status === "queued" || t.status === "in_progress") && (!activeChatId || t.chat_id === activeChatId)) ||
-    null;
+  const activeTask = activeChatId
+    ? tasks.find((t) => t.provider === "openai" && (t.status === "queued" || t.status === "in_progress") && t.chat_id === activeChatId) || null
+    : null;
 
   useEffect(() => {
     if (!session || !activeTask || pollTimerRef.current) return;
@@ -357,7 +356,6 @@ export default function SpecialistAiChatPage() {
 
   const loadTasks = async () => {
     if (!session) return;
-    setTasksLoading(true);
     try {
       const r = await fetch("/api/specialist/ai-chat-tasks", {
         headers: { authorization: `Bearer ${session.access_token}` },
@@ -368,14 +366,11 @@ export default function SpecialistAiChatPage() {
       setTasks(j.tasks || []);
     } catch (e: any) {
       setErr(e?.message || "Ошибка загрузки задач");
-    } finally {
-      setTasksLoading(false);
     }
   };
 
   const ensureTaskMessage = (task: AiTask) => {
     if (task.chat_id && task.chat_id !== activeChatId) {
-      loadChat(task.chat_id);
       return;
     }
     setMessages((prev) => {
@@ -393,7 +388,7 @@ export default function SpecialistAiChatPage() {
             ? task.result_text || ""
             : task.status === "failed"
               ? task.error_text || "Задача завершилась ошибкой"
-              : `${task.provider === "openai" ? "OpenAI" : "DeepSeek"} обрабатывает задачу. Статус: ${task.status}.`,
+              : "Готовлю ответ...",
         provider: task.provider,
         model: task.model,
         pending: task.status === "queued" || task.status === "in_progress",
@@ -401,22 +396,6 @@ export default function SpecialistAiChatPage() {
       });
       return next;
     });
-  };
-
-  const retryTask = (task: AiTask) => {
-    const lastUser = [...(task.request_messages || [])].reverse().find((m) => m.role === "user")?.content || "";
-    setProvider(task.provider);
-    setModel(task.model);
-    setDraft(lastUser);
-    if (task.chat_id) loadChat(task.chat_id);
-  };
-
-  const copyTaskError = async (task: AiTask) => {
-    const text = task.error_text || task.result_text || "";
-    if (!text) return;
-    try {
-      await navigator.clipboard?.writeText(text);
-    } catch {}
   };
 
   const changeProvider = (next: Provider) => {
@@ -627,7 +606,7 @@ export default function SpecialistAiChatPage() {
             id: pendingId,
             taskId: task?.id,
             role: "assistant",
-            content: `OpenAI принял задачу в фон. Статус: ${j.status || "queued"}.`,
+            content: "Готовлю ответ...",
             provider,
             model,
             pending: true,
@@ -687,7 +666,7 @@ export default function SpecialistAiChatPage() {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === pendingId || m.taskId === taskOrResponseId
-                ? { ...m, content: `OpenAI обрабатывает задачу. Статус: ${j.status}. Прошло: ${formatDuration(Date.now() - started)}.` }
+                ? { ...m, content: `Готовлю ответ... ${formatDuration(Date.now() - started)}` }
                 : m
             )
           );
@@ -860,7 +839,7 @@ export default function SpecialistAiChatPage() {
                 </div>
               </div>
               <div className="text-xs text-zinc-500">
-                {startedAt ? `Ожидание: ${formatDuration(elapsedMs)}` : activeTask ? "OpenAI-задача выполняется" : "Готов"}
+                {startedAt ? `Ожидание: ${formatDuration(elapsedMs)}` : activeTask ? "Ответ формируется" : "Готов"}
               </div>
             </div>
           </div>
@@ -1050,54 +1029,6 @@ export default function SpecialistAiChatPage() {
             )}
           </section>
 
-          <section className="card p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-zinc-900">Задачи</div>
-              <button type="button" onClick={loadTasks} disabled={tasksLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
-                {tasksLoading ? "..." : "Обновить"}
-              </button>
-            </div>
-            <div className="mt-3 grid max-h-72 gap-2 overflow-y-auto pr-1">
-              {tasks.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-zinc-200 bg-white/70 p-3 text-xs text-zinc-500">Сохранённых задач пока нет.</div>
-              ) : (
-                tasks.slice(0, 6).map((task) => {
-                  const pending = task.status === "queued" || task.status === "in_progress";
-                  const duration = task.finished_at
-                    ? Math.max(0, Date.parse(task.finished_at) - Date.parse(task.started_at))
-                    : Math.max(0, Date.now() - Date.parse(task.started_at));
-                  return (
-                    <div key={task.id} className="rounded-lg border border-zinc-200 bg-white p-2 text-xs">
-                      <button type="button" onClick={() => ensureTaskMessage(task)} className="block w-full min-w-0 text-left">
-                        <div className="truncate font-medium text-zinc-800">
-                          {task.provider === "openai" ? "OpenAI" : "DeepSeek"} · {task.model}
-                        </div>
-                        <div className={pending ? "text-amber-700" : task.status === "completed" ? "text-emerald-700" : "text-red-700"}>
-                          {task.status} · {formatDuration(duration)}
-                        </div>
-                        <div className="mt-1 line-clamp-2 break-words text-zinc-500">
-                          {task.result_text || task.error_text || task.request_messages?.find((m) => m.role === "user")?.content || "Задача"}
-                        </div>
-                      </button>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        <button type="button" onClick={() => ensureTaskMessage(task)} className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900">
-                          Открыть
-                        </button>
-                        <button type="button" onClick={() => retryTask(task)} className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900">
-                          Повторить
-                        </button>
-                        {task.error_text ? (
-                          <button type="button" onClick={() => copyTaskError(task)} className="rounded px-2 py-1 text-red-600 hover:bg-red-50">
-                            Ошибка
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </section>
         </aside>
       </div>
     </Layout>
