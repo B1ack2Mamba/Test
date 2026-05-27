@@ -61,22 +61,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!isSpecialistUser(auth.user)) return res.status(403).json({ ok: false, error: "Forbidden" });
 
   const sb: any = auth.supabaseAdmin as any;
-  const [membershipsResp, ownedRoomsResp] = await Promise.all([
+  const [membershipsResp, ownedRoomsResp, activeRoomsResp] = await Promise.all([
     sb
       .from("training_room_members")
       .select("room_id")
       .eq("user_id", auth.user.id)
       .eq("role", "specialist"),
     sb.from("training_rooms").select("id").eq("created_by", auth.user.id),
+    sb.from("training_rooms").select("id").eq("is_active", true),
   ]);
 
   if (membershipsResp.error) return res.status(500).json({ ok: false, error: membershipsResp.error.message });
   if (ownedRoomsResp.error) return res.status(500).json({ ok: false, error: ownedRoomsResp.error.message });
+  if (activeRoomsResp.error) return res.status(500).json({ ok: false, error: activeRoomsResp.error.message });
 
   const roomIds = Array.from(
     new Set([
       ...(membershipsResp.data || []).map((m: any) => String(m.room_id)).filter(Boolean),
       ...(ownedRoomsResp.data || []).map((room: any) => String(room.id)).filter(Boolean),
+      ...(activeRoomsResp.data || []).map((room: any) => String(room.id)).filter(Boolean),
     ])
   );
   if (!roomIds.length) return res.status(200).json({ ok: true, rooms: [] });
