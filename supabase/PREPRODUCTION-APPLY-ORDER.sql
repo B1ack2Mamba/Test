@@ -1,6 +1,7 @@
--- Run these files separately in this order:
+-- Run these files separately in this order after the base schema/table migrations:
 -- 1) training_room_sessions.sql
 -- 2) training_rooms_personal_data_consent.sql
 -- 3) training_room_join_queue.sql
 -- 4) training_rooms_hardening.sql
+-- 5) data_api_grants.sql
 -- This file is a reminder only.
