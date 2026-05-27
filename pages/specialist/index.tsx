@@ -159,8 +159,8 @@ export default function SpecialistHome() {
       <div className="mb-4 card text-sm text-zinc-700">
         Здесь вы создаёте комнаты тренинга, наблюдаете участников и открываете результаты в цифрах.
         <div className="mt-3 flex flex-wrap gap-2">
-          <Link href="/specialist/ai-chat" className="btn btn-secondary btn-sm">
-            AI-чат
+          <Link href="/specialist/ai-chat" className="btn btn-secondary">
+            AI-чат с аналитикой
           </Link>
         </div>
       </div>
@@ -223,10 +223,10 @@ export default function SpecialistHome() {
             <div className="flex w-full flex-col gap-2 sm:w-auto">
               <Link
                 href="/specialist/ai-chat"
-                className="btn btn-secondary w-full sm:w-auto sm:min-h-[34px] sm:rounded-lg sm:px-3 sm:py-1.5 sm:text-[13px]"
-                title="AI-чат"
+                className="btn btn-secondary w-full font-semibold sm:h-full sm:min-h-[110px] sm:w-[120px] sm:rounded-lg sm:px-4 sm:py-3 sm:text-[15px] sm:leading-tight"
+                title="AI-чат с аналитикой"
               >
-                AI-чат
+                AI-чат с аналитикой
               </Link>
             </div>
 

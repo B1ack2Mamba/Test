@@ -100,6 +100,24 @@ const DEEPSEEK_MODELS = [
   { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
 ];
 
+const QUICK_SCENARIOS = [
+  {
+    label: "Разбор",
+    prompt:
+      "Разбери выбранный контекст клиента: выдели ключевые наблюдения, возможные гипотезы, сильные стороны, зоны риска и вопросы для уточнения. Если методическая база подключена, учитывай релевантные связи.",
+  },
+  {
+    label: "План консультации",
+    prompt:
+      "Составь понятный план консультации по выбранному контексту: цель встречи, 3-5 ключевых тем, вопросы клиенту и аккуратные рекомендации специалисту.",
+  },
+  {
+    label: "Риски",
+    prompt:
+      "Найди возможные риски и противоречия в выбранном контексте. Отдели факты от гипотез и предложи, что стоит уточнить перед выводами.",
+  },
+];
+
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -149,10 +167,12 @@ export default function SpecialistAiChatPage() {
   const [selectedRoomId, setSelectedRoomId] = useState("");
   const [selectedParticipantId, setSelectedParticipantId] = useState("");
   const [selectedAttemptId, setSelectedAttemptId] = useState("");
+  const [methodBaseEnabled, setMethodBaseEnabled] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [tasks, setTasks] = useState<AiTask[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [copiedMessageId, setCopiedMessageId] = useState("");
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -514,6 +534,7 @@ export default function SpecialistAiChatPage() {
           max_output_tokens: maxOutputTokens,
           stream: provider === "deepseek",
           platform_context: platformContext,
+          method_base_enabled: methodBaseEnabled,
           messages: nextMessages.map((m) => ({ role: m.role, content: m.content })),
           files: pendingFiles.map((f) => ({ id: f.id, name: f.name, type: f.type, size: f.size, data: f.data })),
         }),
@@ -708,6 +729,21 @@ export default function SpecialistAiChatPage() {
     setBusy(false);
   };
 
+  const applyQuickScenario = (prompt: string) => {
+    setDraft((prev) => (prev.trim() ? `${prev.trim()}\n\n${prompt}` : prompt));
+  };
+
+  const copyAnswer = async (message: ChatMessage) => {
+    if (!message.content.trim()) return;
+    try {
+      await navigator.clipboard?.writeText(message.content);
+      setCopiedMessageId(message.id);
+      window.setTimeout(() => setCopiedMessageId((current) => (current === message.id ? "" : current)), 1600);
+    } catch (e: any) {
+      setErr(e?.message || "Не удалось скопировать ответ");
+    }
+  };
+
   if (!session || !user) {
     return (
       <Layout title="AI-чат">
@@ -860,9 +896,16 @@ export default function SpecialistAiChatPage() {
                         m.role === "user" ? "border-indigo-100 bg-indigo-50 text-zinc-900" : "border-zinc-200 bg-white text-zinc-900"
                       }`}
                     >
-                      <div className="mb-1 text-xs font-medium text-zinc-500">
-                        {m.role === "user" ? "Вы" : `${m.provider === "openai" ? "OpenAI" : "DeepSeek"} · ${m.model}`}
-                        {m.durationMs ? ` · ${formatDuration(m.durationMs)}` : m.pending ? " · выполняется" : ""}
+                      <div className="mb-1 flex items-center justify-between gap-3 text-xs font-medium text-zinc-500">
+                        <span className="min-w-0 truncate">
+                          {m.role === "user" ? "Вы" : `${m.provider === "openai" ? "OpenAI" : "DeepSeek"} · ${m.model}`}
+                          {m.durationMs ? ` · ${formatDuration(m.durationMs)}` : m.pending ? " · выполняется" : ""}
+                        </span>
+                        {m.role === "assistant" && !m.pending && m.content ? (
+                          <button type="button" onClick={() => copyAnswer(m)} className="shrink-0 text-zinc-400 hover:text-zinc-900">
+                            {copiedMessageId === m.id ? "Скопировано" : "Копировать"}
+                          </button>
+                        ) : null}
                       </div>
                       <div className="whitespace-pre-wrap leading-relaxed">{m.content || (m.pending ? "..." : "")}</div>
                     </div>
@@ -875,6 +918,19 @@ export default function SpecialistAiChatPage() {
           <div className="border-t border-zinc-100 bg-white p-3">
             {err ? <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
             <div className="mx-auto max-w-4xl rounded-xl border border-indigo-100 bg-white p-2 shadow-sm">
+              <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+                {QUICK_SCENARIOS.map((scenario) => (
+                  <button
+                    key={scenario.label}
+                    type="button"
+                    onClick={() => applyQuickScenario(scenario.prompt)}
+                    disabled={busy || !!activeTask}
+                    className="shrink-0 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-white disabled:opacity-50"
+                  >
+                    {scenario.label}
+                  </button>
+                ))}
+              </div>
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
@@ -891,6 +947,7 @@ export default function SpecialistAiChatPage() {
                   <span>{provider === "openai" ? "OpenAI" : "DeepSeek"}</span>
                   <span>{model}</span>
                   {platformContext ? <span>контекст подключён</span> : null}
+                  {methodBaseEnabled ? <span>методическая база</span> : null}
                   {pendingFiles.length ? <span>{pendingFiles.length} файл.</span> : null}
                 </div>
                 <div className="flex gap-2">
@@ -980,6 +1037,18 @@ export default function SpecialistAiChatPage() {
                 {platformContext}
               </div>
             ) : null}
+            <label className="mt-3 flex items-start gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-700">
+              <input
+                type="checkbox"
+                checked={methodBaseEnabled}
+                onChange={(e) => setMethodBaseEnabled(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-zinc-900">Методическая база</span>
+                <span className="mt-0.5 block text-zinc-500">Учитывать сохранённые связи тестов в ответах.</span>
+              </span>
+            </label>
           </section>
 
           <section className="card p-3">

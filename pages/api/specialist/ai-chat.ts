@@ -15,6 +15,7 @@ const DEEPSEEK_MODELS = ["deepseek-v4-flash", "deepseek-v4-pro"];
 const TASK_SELECT =
   "id,chat_id,assistant_message_id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at";
 const CHAT_SELECT = "id,provider,title,last_provider,last_model,last_user_message,transcript,created_at,updated_at";
+const TOKEN_LIMIT_MESSAGE = "Не хватило лимита токенов. Увеличьте количество токенов справа и повторите запрос.";
 
 export const config = {
   api: {
@@ -161,8 +162,113 @@ function extractDeepseekText(json: any): string {
   return "";
 }
 
+function isTokenLimitError(input: any) {
+  const text = String(input || "").toLowerCase();
+  return /max[_\s-]?tokens|max[_\s-]?output[_\s-]?tokens|token limit|context length|finish_reason[^\n]*length|output limit/.test(text);
+}
+
+function normalizeAiErrorMessage(input: any) {
+  return isTokenLimitError(input) ? TOKEN_LIMIT_MESSAGE : String(input || "AI request failed");
+}
+
 function transcriptForOpenAI(messages: ChatMessage[]) {
   return messages.map((m) => `${m.role === "assistant" ? "Ассистент" : "Пользователь"}:\n${m.content}`).join("\n\n");
+}
+
+function isMissingMethodBaseTableError(err: any) {
+  const code = String(err?.code || "");
+  const msg = String(err?.message || "");
+  return code === "42P01" || /does not exist|relation .* does not exist/i.test(msg);
+}
+
+function compactContextText(input: any, max = 36000) {
+  const text = String(input || "")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return text.length > max ? `${text.slice(0, max).trimEnd()}\n\n[Методическая база обрезана.]` : text;
+}
+
+function appendToLastUserMessage(messages: ChatMessage[], addition: string) {
+  const next = [...messages];
+  for (let i = next.length - 1; i >= 0; i--) {
+    if (next[i].role === "user") {
+      next[i] = { ...next[i], content: `${next[i].content}\n\n${addition}` };
+      return next;
+    }
+  }
+  return [...next, { role: "user" as const, content: addition }];
+}
+
+async function loadMethodBaseContext(auth: Awaited<ReturnType<typeof requireUser>>) {
+  if (!auth) return { text: "", count: 0 };
+  const { data: links, error: linksError } = await auth.supabaseAdmin
+    .from("specialist_method_links")
+    .select("id,title,ai_task,final_text,is_active,updated_at")
+    .eq("specialist_user_id", auth.user.id)
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
+    .limit(24);
+
+  if (linksError) {
+    if (isMissingMethodBaseTableError(linksError)) return { text: "", count: 0 };
+    throw new Error(linksError.message);
+  }
+  const activeLinks = links || [];
+  const linkIds = activeLinks.map((link: any) => String(link.id)).filter(Boolean);
+  if (!linkIds.length) return { text: "", count: 0 };
+
+  const { data: items, error: itemsError } = await auth.supabaseAdmin
+    .from("specialist_method_link_items")
+    .select("link_id,sort_order,test_title,result_label,answer_value,answer_note")
+    .in("link_id", linkIds)
+    .order("sort_order", { ascending: true });
+
+  if (itemsError) {
+    if (isMissingMethodBaseTableError(itemsError)) return { text: "", count: 0 };
+    throw new Error(itemsError.message);
+  }
+
+  const itemsByLink = new Map<string, any[]>();
+  for (const item of items || []) {
+    const key = String(item.link_id);
+    itemsByLink.set(key, [...(itemsByLink.get(key) || []), item]);
+  }
+
+  const blocks = activeLinks.map((link: any, idx: number) => {
+    const linkedItems = itemsByLink.get(String(link.id)) || [];
+    const points = linkedItems
+      .map((item: any) => {
+        const value = item.answer_value ? `: ${item.answer_value}` : "";
+        const note = item.answer_note ? ` (${item.answer_note})` : "";
+        return `- ${item.test_title || "Тест"} — ${item.result_label || "показатель"}${value}${note}`;
+      })
+      .join("\n");
+    const finalText = String(link.final_text || "").trim();
+    const task = String(link.ai_task || "").trim();
+    return compactContextText(
+      [
+        `${idx + 1}. ${link.title || "Методическая связь"}`,
+        points,
+        task ? `Задача связи: ${task}` : "",
+        finalText ? `Методический вывод: ${finalText}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      2800
+    );
+  });
+
+  const text = compactContextText(
+    [
+      "Методическая база специалиста:",
+      "Используй эти активные связи тестов как внутренний ориентир, когда вопрос связан с интерпретацией результатов. Не упоминай методическую базу без необходимости.",
+      "",
+      blocks.join("\n\n---\n\n"),
+    ].join("\n")
+  );
+  return { text, count: activeLinks.length };
 }
 
 async function callOpenAI(args: { model: string; messages: ChatMessage[]; temperature: number; maxOutputTokens: number }) {
@@ -185,9 +291,12 @@ async function callOpenAI(args: { model: string; messages: ChatMessage[]; temper
     }),
   });
   const json = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(String(json?.error?.message || `OpenAI error ${response.status}`));
+  if (!response.ok) throw new Error(normalizeAiErrorMessage(json?.error?.message || `OpenAI error ${response.status}`));
   if (json?.id && (json?.status === "queued" || json?.status === "in_progress")) {
     return { responseId: String(json.id), status: String(json.status) };
+  }
+  if (json?.status === "incomplete" || json?.incomplete_details?.reason) {
+    throw new Error(normalizeAiErrorMessage(json?.incomplete_details?.reason || "OpenAI response incomplete"));
   }
   const text = extractOpenAIText(json);
   if (!text) throw new Error("OpenAI ответил без текста");
@@ -220,7 +329,8 @@ async function callDeepseek(args: { model: string; messages: ChatMessage[]; temp
     }),
   });
   const json = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(String(json?.error?.message || `DeepSeek error ${response.status}`));
+  if (!response.ok) throw new Error(normalizeAiErrorMessage(json?.error?.message || `DeepSeek error ${response.status}`));
+  if (json?.choices?.[0]?.finish_reason === "length") throw new Error(TOKEN_LIMIT_MESSAGE);
   const text = extractDeepseekText(json);
   if (!text) throw new Error("DeepSeek ответил без текста");
   return text;
@@ -279,6 +389,7 @@ async function callDeepseekStream(args: {
   const decoder = new TextDecoder();
   let buffer = "";
   let text = "";
+  let stoppedByTokenLimit = false;
 
   while (true) {
     const { value, done } = await reader.read();
@@ -293,6 +404,7 @@ async function callDeepseekStream(args: {
       if (!data || data === "[DONE]") continue;
       const json = JSON.parse(data);
       const delta = json?.choices?.[0]?.delta?.content || "";
+      if (json?.choices?.[0]?.finish_reason === "length") stoppedByTokenLimit = true;
       if (delta) {
         text += delta;
         args.onDelta(delta);
@@ -300,6 +412,7 @@ async function callDeepseekStream(args: {
     }
   }
 
+  if (stoppedByTokenLimit) throw new Error(TOKEN_LIMIT_MESSAGE);
   if (!text.trim()) throw new Error("DeepSeek ответил без текста");
   return text.trim();
 }
@@ -334,8 +447,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const originalLastUser = [...messages].reverse().find((m) => m.role === "user")?.content || "";
     const chat = await getOrCreateChat(auth, chatId, provider, originalLastUser);
     const withFiles = await appendAttachmentsToLastUserMessage(messages, req.body?.files, req.body?.platform_context);
-    messages = withFiles.messages;
-    const savedLastUser = [...messages].reverse().find((m) => m.role === "user")?.content || originalLastUser;
+    const methodBaseEnabled = req.body?.method_base_enabled !== false;
+    const methodBase = methodBaseEnabled ? await loadMethodBaseContext(auth) : { text: "", count: 0 };
+    const requestMessagesForTask = withFiles.messages;
+    messages = methodBase.text ? appendToLastUserMessage(withFiles.messages, methodBase.text) : withFiles.messages;
+    const savedLastUser = [...withFiles.messages].reverse().find((m) => m.role === "user")?.content || originalLastUser;
     const { data: userMessage, error: userMessageError } = await auth.supabaseAdmin
       .from("specialist_ai_chat_messages")
       .insert({
@@ -347,6 +463,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           files: withFiles.files,
           platform_context_chars: withFiles.platformContextChars,
           platform_context_truncated: withFiles.platformContextTruncated,
+          method_base_enabled: methodBaseEnabled,
+          method_base_links: methodBase.count,
         },
       })
       .select("id,chat_id,role,content,provider,model,task_id,status,duration_ms,metadata,created_at,updated_at")
@@ -384,7 +502,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             model,
             response_id: result.responseId,
             status: result.status || "queued",
-            request_messages: messages,
+            request_messages: requestMessagesForTask,
             temperature,
             max_output_tokens: maxOutputTokens,
             started_at: new Date().toISOString(),
@@ -434,7 +552,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           provider,
           model,
           status: "completed",
-          request_messages: messages,
+          request_messages: requestMessagesForTask,
           result_text: result.text || "",
           temperature,
           max_output_tokens: maxOutputTokens,
@@ -498,7 +616,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             provider,
             model,
             status: "completed",
-            request_messages: messages,
+            request_messages: requestMessagesForTask,
             result_text: text,
             temperature,
             max_output_tokens: maxOutputTokens,
@@ -518,7 +636,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await saveChatTranscript(auth, chat.id, [...baseTranscript, transcriptAssistantMessage(savedAssistantMessage, task.id)]);
         writeStreamEvent(res, { type: "done", ok: true, text, chat, assistantMessage: { ...assistantMessage, task_id: task.id }, task });
       } catch (e: any) {
-        const errorText = e?.name === "AbortError" ? "Запрос остановлен" : e?.message || "DeepSeek stream failed";
+        const errorText = e?.name === "AbortError" ? "Запрос остановлен" : normalizeAiErrorMessage(e?.message || "DeepSeek stream failed");
         writeStreamEvent(res, { type: "error", ok: false, error: errorText });
       } finally {
         res.end();
@@ -553,7 +671,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         provider,
         model,
         status: "completed",
-        request_messages: messages,
+        request_messages: requestMessagesForTask,
         result_text: text,
         temperature,
         max_output_tokens: maxOutputTokens,
@@ -573,6 +691,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await saveChatTranscript(auth, chat.id, [...baseTranscript, transcriptAssistantMessage(savedAssistantMessage, task.id)]);
     return res.status(200).json({ ok: true, provider, model, chat, userMessage, assistantMessage: { ...assistantMessage, task_id: task.id }, task, text });
   } catch (e: any) {
-    return res.status(500).json({ ok: false, error: e?.message || "AI request failed" });
+    return res.status(500).json({ ok: false, error: normalizeAiErrorMessage(e?.message || "AI request failed") });
   }
 }

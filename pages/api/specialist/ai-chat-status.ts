@@ -5,6 +5,7 @@ import { setNoStore } from "@/lib/apiHardening";
 
 const TASK_SELECT =
   "id,chat_id,assistant_message_id,specialist_user_id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at";
+const TOKEN_LIMIT_MESSAGE = "Не хватило лимита токенов. Увеличьте количество токенов справа и повторите запрос.";
 
 async function updateTranscriptAssistant(auth: Awaited<ReturnType<typeof requireUser>>, args: { chatId?: string | null; messageId?: string | null; patch: Record<string, any> }) {
   if (!auth || !args.chatId || !args.messageId) return;
@@ -36,6 +37,15 @@ function extractOpenAIText(json: any): string {
     }
   }
   return chunks.join("").trim();
+}
+
+function isTokenLimitError(input: any) {
+  const text = String(input || "").toLowerCase();
+  return /max[_\s-]?tokens|max[_\s-]?output[_\s-]?tokens|token limit|context length|finish_reason[^\n]*length|output limit/.test(text);
+}
+
+function normalizeAiErrorMessage(input: any) {
+  return isTokenLimitError(input) ? TOKEN_LIMIT_MESSAGE : String(input || "OpenAI response did not complete");
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -87,7 +97,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     },
   });
   const json = await response.json().catch(() => null);
-  if (!response.ok) return res.status(response.status).json({ ok: false, error: String(json?.error?.message || `OpenAI error ${response.status}`) });
+  if (!response.ok) return res.status(response.status).json({ ok: false, error: normalizeAiErrorMessage(json?.error?.message || `OpenAI error ${response.status}`) });
 
   const status = String(json?.status || "");
   if (status === "queued" || status === "in_progress") {
@@ -116,7 +126,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ ok: true, done: false, status, task });
   }
   if (status !== "completed") {
-    const errorText = String(json?.error?.message || json?.incomplete_details?.reason || "OpenAI response did not complete");
+    const errorText = normalizeAiErrorMessage(json?.error?.message || json?.incomplete_details?.reason || "OpenAI response did not complete");
     if (task) {
       const { data: updated } = await auth.supabaseAdmin
         .from("specialist_ai_chat_tasks")
