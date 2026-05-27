@@ -747,8 +747,8 @@ export default function SpecialistAiChatPage() {
         </button>
       </div>
 
-      <div className="grid min-h-[calc(100vh-170px)] min-w-0 gap-3 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
-        <aside className="card flex min-h-[360px] flex-col p-3">
+      <div className="grid min-w-0 gap-3 xl:h-[calc(100dvh-250px)] xl:min-h-0 xl:grid-cols-[280px_minmax(0,1fr)_340px] xl:overflow-hidden">
+        <aside className="card flex min-h-[360px] flex-col p-3 xl:min-h-0">
           <div className="flex items-center justify-between gap-2">
             <div className="text-sm font-semibold text-zinc-900">Чаты</div>
             <button type="button" onClick={() => loadChats()} disabled={chatsLoading} className="btn btn-secondary btn-sm disabled:opacity-50">
@@ -827,7 +827,7 @@ export default function SpecialistAiChatPage() {
           </div>
         </aside>
 
-        <main className="card grid min-h-[620px] min-w-0 grid-rows-[auto_1fr_auto] overflow-hidden p-0">
+        <main className="card grid min-h-[620px] min-w-0 grid-rows-[auto_1fr_auto] overflow-hidden p-0 xl:min-h-0">
           <div className="border-b border-zinc-100 px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
@@ -911,7 +911,7 @@ export default function SpecialistAiChatPage() {
           </div>
         </main>
 
-        <aside className="grid content-start gap-3">
+        <aside className="grid content-start gap-3 xl:min-h-0 xl:overflow-y-auto xl:pr-1">
           <section className="card p-3">
             <div className="text-sm font-semibold text-zinc-900">Модель</div>
             <div className="mt-3 grid grid-cols-2 gap-2">
