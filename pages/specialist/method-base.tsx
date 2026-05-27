@@ -465,7 +465,6 @@ export default function SpecialistMethodBasePage() {
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link href="/specialist" className="btn btn-secondary btn-sm">Назад в кабинет специалиста</Link>
-          <Link href="/specialist/analysis" className="btn btn-secondary btn-sm">AI-аналитика клиентов</Link>
           <button onClick={() => { resetDraft(false); setErr(''); }} className="btn btn-secondary btn-sm">Новая связь</button>
           <button onClick={() => { loadCatalog(); loadLinks(); }} disabled={catalogLoading || linksLoading} className="btn btn-secondary btn-sm">
             {catalogLoading || linksLoading ? 'Обновление…' : 'Обновить'}

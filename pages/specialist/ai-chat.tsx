@@ -738,9 +738,6 @@ export default function SpecialistAiChatPage() {
           <Link href="/specialist" className="btn btn-secondary btn-sm">
             К кабинету
           </Link>
-          <Link href="/specialist/analysis" className="btn btn-secondary btn-sm">
-            AI-аналитика
-          </Link>
         </div>
         <button type="button" onClick={newChat} disabled={busy} className="btn btn-primary btn-sm disabled:opacity-50">
           Новый чат
