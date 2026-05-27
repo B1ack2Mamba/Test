@@ -15,7 +15,7 @@ const DEEPSEEK_MODELS = ["deepseek-v4-flash", "deepseek-v4-pro"];
 const TASK_SELECT =
   "id,chat_id,assistant_message_id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at";
 const CHAT_SELECT = "id,provider,title,last_provider,last_model,last_user_message,transcript,created_at,updated_at";
-const TOKEN_LIMIT_MESSAGE = "Не хватило лимита токенов. Увеличьте количество токенов справа и повторите запрос.";
+const TOKEN_LIMIT_MESSAGE = "Не хватило длины ответа. Увеличьте длину ответа справа и повторите запрос.";
 
 export const config = {
   api: {

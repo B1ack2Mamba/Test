@@ -223,7 +223,7 @@ export default function SpecialistHome() {
             <div className="flex w-full flex-col gap-2 sm:w-auto">
               <Link
                 href="/specialist/ai-chat"
-                className="btn btn-secondary w-full font-semibold sm:h-full sm:min-h-[110px] sm:w-[120px] sm:rounded-lg sm:px-4 sm:py-3 sm:text-[15px] sm:leading-tight"
+                className="btn btn-secondary w-full whitespace-normal text-center font-semibold leading-tight sm:h-full sm:min-h-[110px] sm:w-[160px] sm:rounded-lg sm:px-4 sm:py-3 sm:text-[15px]"
                 title="AI-чат с аналитикой"
               >
                 AI-чат с аналитикой

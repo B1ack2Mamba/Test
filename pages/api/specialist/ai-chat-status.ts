@@ -5,7 +5,7 @@ import { setNoStore } from "@/lib/apiHardening";
 
 const TASK_SELECT =
   "id,chat_id,assistant_message_id,specialist_user_id,provider,model,response_id,status,request_messages,result_text,error_text,started_at,finished_at,created_at,updated_at";
-const TOKEN_LIMIT_MESSAGE = "Не хватило лимита токенов. Увеличьте количество токенов справа и повторите запрос.";
+const TOKEN_LIMIT_MESSAGE = "Не хватило длины ответа. Увеличьте длину ответа справа и повторите запрос.";
 
 async function updateTranscriptAssistant(auth: Awaited<ReturnType<typeof requireUser>>, args: { chatId?: string | null; messageId?: string | null; patch: Record<string, any> }) {
   if (!auth || !args.chatId || !args.messageId) return;

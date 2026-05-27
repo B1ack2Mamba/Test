@@ -986,7 +986,7 @@ export default function SpecialistAiChatPage() {
             </select>
             <label className="mt-3 block text-xs font-medium text-zinc-700">Креативность: {temperature.toFixed(1)}</label>
             <input type="range" min="0" max="1.5" step="0.1" value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} className="mt-2 w-full" />
-            <label className="mt-3 block text-xs font-medium text-zinc-700">Максимум токенов</label>
+            <label className="mt-3 block text-xs font-medium text-zinc-700">Длина ответа</label>
             <input type="number" min="256" max="12000" step="256" value={maxOutputTokens} onChange={(e) => setMaxOutputTokens(Number(e.target.value))} className="input mt-1 py-2 text-sm" />
           </section>
 
